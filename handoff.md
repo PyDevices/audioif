@@ -99,27 +99,40 @@ The native release is configured to validate exactly 16 wheels:
 
 macOS, musllinux, win32, Linux ARM, and MIP publication are excluded.
 
-## Remaining release work
+## Release outcome
 
-1. Done. The `.github` changes are merged to `main` and tagged
-   `publishing-v4` (`7bd6919`); the audioif caller is pinned to that tag.
-   `publishing-v3` was left in place so earlier release retries stay
-   reproducible. The other six callers remain on v3, which is safe because
-   `expected-wheel-count` defaults to `0`.
-2. Done. The `audioif` branch merged to `main` after CI went green on all ten
-   Linux and Windows jobs.
-3. Confirm the organization `TESTPYPI_API_TOKEN` is visible to `audioif`.
-   The release workflow contains a credentials preflight; the current local
-   GitHub token cannot inspect organization Actions secrets.
-4. Publish GitHub release `v0.0.1`, require exactly 16 collected wheels, and
-   run `python scripts/test_testpypi_install.py` on fresh Linux and Windows
-   hosts.
-5. Validate the installed Pyodide piano/Web Audio path and Android x86_64
-   emulator plus arm64 device playback.
-6. Merge and publish `pydevices` `v0.3.7`; both 0.0.1 and 0.3.7 were confirmed
-   unused before implementation.
-7. Merge the examples, Android, workspace, and generated portal branches, then
-   refresh example package floors after TestPyPI contains 0.0.1 and 0.3.7.
+The rollout is released. `pydevices-audioif` 0.0.1 and `pydevices` 0.3.7 are
+both on TestPyPI, and all seven repositories are merged to `main`.
+
+1. The `.github` changes are merged and tagged `publishing-v4`. The audioif
+   caller is pinned to that tag; the other six callers stay on `publishing-v3`,
+   which is safe because `expected-wheel-count` defaults to `0`. Each tag's
+   nested `uses:` refs point at their own tag, so a v3 caller runs a wholly v3
+   chain.
+2. `audioif` merged to `main` with all ten Linux and Windows CI jobs green.
+3. The organization `TESTPYPI_API_TOKEN` is visible to `audioif`: the release
+   workflow's credentials preflight passed.
+4. Release `v0.0.1` published exactly the 16 expected wheels, and
+   `scripts/test_testpypi_install.py` passes on fresh Linux and Windows hosts.
+5. The Pyodide piano demo installs `pydevices-audioif` through micropip,
+   constructs a `synthio.Synthesizer`, and feeds real PCM into Web Audio -- a
+   headless run scheduled 706 buffers at 24 kHz, 268 of them non-silent with a
+   peak amplitude of 0.33 after tapping keys. **Android playback is the one
+   piece still unvalidated**; the wheels build and publish, but neither the
+   x86_64 emulator nor an arm64 device has been exercised.
+6. `pydevices` `v0.3.7` published to TestPyPI, and the MIP index now serves
+   `pydevices` and `pydevices-desktop` at 0.3.7.
+7. The examples, Android, workspace, and portal branches are merged, and the
+   org portal is live with audioif 0.0.1. The examples `requirements.txt`
+   carries unpinned names rather than floors, so there was nothing to bump;
+   `scripts/refresh-requirements.py` now updates floors in place instead of
+   regenerating the file, which had silently dropped `--extra-index-url`,
+   `pydevices-usdl2`, and `pydevices-uwin32`.
+
+One unrelated pre-existing issue surfaced while validating: the PyScript
+autotest quit handshake never emits `EXAMPLE_RESULT`, reporting the chord as
+`BrowserBack`. It reproduces on demos that do not use audioif, so it is not a
+regression from this work.
 
 ## Parity hashing note
 
