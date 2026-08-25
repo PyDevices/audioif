@@ -27,29 +27,21 @@ static mp_obj_t audiocore_get_buffer(mp_obj_t sample_in) {
     uint32_t buffer_length = 0;
     audioio_get_buffer_result_t gbr = audiosample_get_buffer(sample_in, false, 0, &buffer, &buffer_length);
 
-    // audiosample_get_buffer checked that we're a sample so this is a safe cast
-    audiosample_base_t *sample = MP_OBJ_TO_PTR(sample_in);
-
     mp_obj_t result[2] = { mp_obj_new_int_from_uint(gbr), mp_const_none };
 
     if (gbr != GET_BUFFER_ERROR) {
-        bool single_buffer, samples_signed;
-        uint32_t max_buffer_length;
-        uint8_t spacing;
-
-        uint8_t bits_per_sample = audiosample_get_bits_per_sample(sample);
-        audiosample_get_buffer_structure(sample, false, &single_buffer, &samples_signed, &max_buffer_length, &spacing);
         // copies the data because the gc semantics of get_buffer are unclear
         void *result_buf = m_malloc(buffer_length);
         memcpy(result_buf, buffer, buffer_length);
-        char typecode =
-            (bits_per_sample == 8 && samples_signed) ? 'b' :
-            (bits_per_sample == 8 && !samples_signed) ? 'B' :
-            (bits_per_sample == 16 && samples_signed) ? 'h' :
-            (bits_per_sample == 16 && !samples_signed) ? 'H' :
-            'b';
-        size_t nitems = buffer_length / (bits_per_sample / 8);
-        result[1] = mp_obj_new_memoryview(typecode, nitems, result_buf);
+        // Always a byte view: len(buf) is the buffer length in BYTES, matching
+        // the C protocol (audiosample_get_buffer's buffer_length is bytes).
+        // This used to be a typed view ('h'/'H' for 16-bit samples), whose
+        // len() was the SAMPLE count -- consumers doing byte math on len(buf)
+        // (audiodev's AudioOut pump) then under-counted 16-bit audio by 2x and
+        // overproduced PCM at twice realtime. One length unit, same as
+        // CircuitPython's own convention, ends that class of bug; anything
+        // wanting typed access can cast or struct.unpack the bytes itself.
+        result[1] = mp_obj_new_memoryview('B', buffer_length, result_buf);
     }
 
     return mp_obj_new_tuple(2, result);
