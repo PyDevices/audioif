@@ -1,0 +1,163 @@
+# MicroPython CMake glue for audioif (esp32, rp2, …).
+# For Make-based ports (unix, windows), see micropython.mk in this dir.
+#
+# Point USER_C_MODULES at this repo (or this file) directly, e.g.:
+#   idf.py build -DUSER_C_MODULES=<path to audioif>
+# Or let the workspace aggregator (cmods/micropython.cmake) discover it
+# alongside other usermods.
+
+set(MPAUDIO_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
+set(MPAUDIO_SRC_DIR ${MPAUDIO_MOD_DIR}/src)
+
+add_library(usermod_mpaudio INTERFACE)
+
+# --- cp_compat: see micropython.mk for provenance/rationale (identical
+#     source list, kept in sync by hand -- both build flavors compile the
+#     same C files).
+target_sources(usermod_mpaudio INTERFACE
+    ${MPAUDIO_SRC_DIR}/cp_compat/argcheck.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/enum.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/context_manager_helpers.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/proto.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/util.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/objproperty.c
+    ${MPAUDIO_SRC_DIR}/cp_compat/namedtuple.c
+    ${MPAUDIO_SRC_DIR}/mpaudio_modules.c
+    ${MPAUDIO_SRC_DIR}/audiocore/__init__.c
+    ${MPAUDIO_SRC_DIR}/audiocore/RawSample.c
+    ${MPAUDIO_SRC_DIR}/audiocore/WaveFile.c
+    ${MPAUDIO_SRC_DIR}/audiocore/module.c
+    ${MPAUDIO_SRC_DIR}/synthio/__init__.c
+    ${MPAUDIO_SRC_DIR}/synthio/Math.c
+    ${MPAUDIO_SRC_DIR}/synthio/LFO.c
+    ${MPAUDIO_SRC_DIR}/synthio/Biquad.c
+    ${MPAUDIO_SRC_DIR}/synthio/Note.c
+    ${MPAUDIO_SRC_DIR}/synthio/Synthesizer.c
+    ${MPAUDIO_SRC_DIR}/synthio/MidiTrack.c
+    ${MPAUDIO_SRC_DIR}/audiomixer/Mixer.c
+    ${MPAUDIO_SRC_DIR}/audiomixer/MixerVoice.c
+    ${MPAUDIO_SRC_DIR}/audiomixer/module.c
+    ${MPAUDIO_SRC_DIR}/audiospeed/SpeedChanger.c
+    ${MPAUDIO_SRC_DIR}/audiospeed/module.c
+    ${MPAUDIO_SRC_DIR}/audiofreeverb/Freeverb.c
+    ${MPAUDIO_SRC_DIR}/audiofreeverb/module.c
+    ${MPAUDIO_SRC_DIR}/audiofilters/Filter.c
+    ${MPAUDIO_SRC_DIR}/audiofilters/Distortion.c
+    ${MPAUDIO_SRC_DIR}/audiofilters/Phaser.c
+    ${MPAUDIO_SRC_DIR}/audiofilters/module.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/Chorus.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/Echo.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/MultiTapDelay.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/PitchShift.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/module.c
+)
+
+target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})
+
+# --- tier 5: audiomp3 (MP3Decoder) ---
+#
+# See micropython.mk for the full rationale (license, the cloned cmods/mp3
+# sibling, the allocator wiring, the mp3dec.h platform-detection escape
+# hatch) -- only the CMake-specific parts (target-arch detection, per-file
+# compile flags) are re-explained here.
+#
+# mp3dec.h's closed (__GNUC__, arch) list covers ARM (both `ARM` and
+# `__ARMEL__`) and x86 (`__i386__`/`__amd64__`) but nothing else -- crucially,
+# neither Xtensa nor RISC-V is in it, so *every* esp32 target this workspace
+# builds (Xtensa: esp32/esp32s2/esp32s3; RISC-V: esp32c2/c3/c5/c6/p4) needs
+# the `MP3DEC_GENERIC` escape hatch, while rp2 (RP2040/RP2350, both ARM
+# Cortex-M, matching the `__GNUC__ && __ARMEL__` branch natively) does not.
+# `CONFIG_IDF_TARGET_ARCH_RISCV`/`_ARCH_XTENSA` are the sdkconfig-derived
+# CMake variables ESP-IDF's own esp32_common.cmake uses for this exact same
+# arch branch (its `MICROPY_CROSS_FLAGS` selection) -- reused here instead
+# of re-deriving "which target is this" from scratch; both are reliably set
+# by the time usermod.cmake runs. rp2 has no such variable (native ARM
+# match, no define needed). If a future non-ARM, non-x86 CMake port shows
+# up, add its own arch-detection variable to this same `if()`.
+if(CONFIG_IDF_TARGET_ARCH_RISCV OR CONFIG_IDF_TARGET_ARCH_XTENSA)
+    target_compile_definitions(usermod_mpaudio INTERFACE MP3DEC_GENERIC)
+    # The real compile picks this up fine via the usermod_mpaudio ->
+    # usermod -> MICROPY_TARGET INTERFACE chain (ninja resolves transitive
+    # usage requirements) -- but the QSTR-extraction preprocessing pass
+    # (py/mkrules.cmake's qstr.i.last rule, ~line 63) builds its own flag
+    # list via a raw `get_target_property(... MICROPY_TARGET
+    # COMPILE_DEFINITIONS)`, which does NOT walk linked INTERFACE libraries
+    # the way an actual compile does -- confirmed the hard way: that pass's
+    # actual `-E` invocation was missing MP3DEC_GENERIC even though the
+    # object-compile rule's DEFINES had it, and hit mp3dec.h's `#error`
+    # directly. py.cmake's own `micropy_gather_target_properties()` exists
+    # to bridge exactly this INTERFACE-library gap, but esp32_common.cmake
+    # only calls it over `__COMPONENT_NAMES_RESOLVED` (registered ESP-IDF
+    # components) -- "usermod" is a plain CMake target inside the main
+    # component, not a component itself, so that loop never reaches it.
+    # `MICROPY_CPP_DEF_EXTRA` is the accumulator both that gather-loop and
+    # mkrules.cmake's own qstr flag-building read from (mkrules.cmake:68);
+    # appending to it directly, here, is a normal (non-cache) variable
+    # write in the same include()-preserved scope mkrules.cmake later reads
+    # from -- the portable fix, not an esp32-specific one.
+    list(APPEND MICROPY_CPP_DEF_EXTRA MP3DEC_GENERIC)
+endif()
+
+set(MPAUDIO_MP3_SRC_DIR ${MPAUDIO_MOD_DIR}/../mp3/src)
+if(EXISTS ${MPAUDIO_MP3_SRC_DIR}/mp3dec.c)
+    target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_MP3_SRC_DIR})
+    target_sources(usermod_mpaudio INTERFACE
+        ${MPAUDIO_MP3_SRC_DIR}/bitstream.c
+        ${MPAUDIO_MP3_SRC_DIR}/buffers.c
+        ${MPAUDIO_MP3_SRC_DIR}/dct32.c
+        ${MPAUDIO_MP3_SRC_DIR}/dequant.c
+        ${MPAUDIO_MP3_SRC_DIR}/dqchan.c
+        ${MPAUDIO_MP3_SRC_DIR}/huffman.c
+        ${MPAUDIO_MP3_SRC_DIR}/hufftabs.c
+        ${MPAUDIO_MP3_SRC_DIR}/imdct.c
+        ${MPAUDIO_MP3_SRC_DIR}/mp3dec.c
+        ${MPAUDIO_MP3_SRC_DIR}/mp3tabs.c
+        ${MPAUDIO_MP3_SRC_DIR}/polyphase.c
+        ${MPAUDIO_MP3_SRC_DIR}/scalfact.c
+        ${MPAUDIO_MP3_SRC_DIR}/stproc.c
+        ${MPAUDIO_MP3_SRC_DIR}/subband.c
+        ${MPAUDIO_MP3_SRC_DIR}/trigtabs.c
+        ${MPAUDIO_SRC_DIR}/audiomp3/mp3_alloc.c
+        ${MPAUDIO_SRC_DIR}/audiomp3/MP3Decoder.c
+        ${MPAUDIO_SRC_DIR}/audiomp3/module.c
+    )
+
+    # buffers.c's MPDEC_ALLOCATOR(x)/MPDEC_FREE(x) (used nowhere else in
+    # lib/mp3) route through this port's own mp3_alloc()/mp3_free() -- same
+    # -include + -fwrapv treatment as micropython.mk's buffers.o rule.
+    set_source_files_properties(${MPAUDIO_MP3_SRC_DIR}/buffers.c PROPERTIES
+        COMPILE_OPTIONS "-include;${MPAUDIO_SRC_DIR}/audiomp3/mp3_alloc.h;-DMPDEC_ALLOCATOR(x)=mp3_alloc(x);-DMPDEC_FREE(x)=mp3_free(x);-fwrapv"
+    )
+endif()
+
+# See micropython.mk for why this is needed for `import ulab.numpy` (and any
+# future dotted submodule this tree grows) to work at all.
+target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBPACKAGES=1)
+
+# CIRCUITPY_SYNTHIO_MAX_CHANNELS (phase 8e decision, made while actually
+# building the ESP32-P4 firmware -- see docs/porting-plan.md "8e"): the
+# header default of 2 is not just conservative, it is *broken* for
+# essentially any real patch -- confirmed in phase 7/8d, two notes held on
+# a plain 2-oscillator/detuned voice is already 4 concurrent Notes, and the
+# excess silently steals/truncates rather than erroring. CircuitPython's
+# own more-capable boards all raise it well past 2 (raspberrypi: 24,
+# nordic/mimxrt10xx: 12) -- 2 is really only survivable on the most
+# memory-starved boards, not a sane default for anything with real RAM.
+# 8 is a deliberately modest middle ground for CMake/mcu ports generally
+# (well above the broken value, well below desktop/wasm's 14) rather than
+# copying the desktop number outright, since flash/RAM headroom varies a
+# lot more across mcu boards than across this workspace's three host
+# targets. A board with more headroom (the ESP32-P4 has plenty of PSRAM)
+# or less can still override via CFLAGS_EXTRA/board-specific
+# target_compile_definitions; per-board tuning is the fuller phase 10 (port
+# matrix) job, not this one.
+target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=8)
+
+target_link_libraries(usermod INTERFACE usermod_mpaudio)
+
+# ulab (numpy-alike): a cloned sibling dependency (see docs/porting-plan.md),
+# not part of this module. The workspace CMake aggregator
+# (cmods/micropython.cmake) already finds cmods/ulab/code/micropython.cmake
+# on its own (it globs mindepth 2/maxdepth 3), so nothing to chain here --
+# unlike the Make flavor, which only globs one level deep and needs the
+# explicit include in micropython.mk.
