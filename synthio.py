@@ -78,6 +78,8 @@ class Envelope(_Envelope):
 
 
 def _value(value):
+    if value is None:
+        return 0.0
     evaluator = getattr(value, "_evaluate", None)
     if evaluator is not None:
         return float(evaluator(_BLOCK_TICK))
