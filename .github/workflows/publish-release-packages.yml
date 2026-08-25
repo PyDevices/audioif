@@ -45,7 +45,7 @@ jobs:
     needs:
       - parity
       - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v3
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v4
     with:
       build-kind: native-and-wasm
       distribution-name: pydevices-audioif
