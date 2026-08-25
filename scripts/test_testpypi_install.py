@@ -13,12 +13,15 @@ with tempfile.TemporaryDirectory(prefix="audioif-testpypi-") as directory:
     root = Path(directory)
     venv.EnvBuilder(with_pip=True).create(root)
     python = root / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    # Run from the throwaway venv, never the caller's directory: inside a
+    # source checkout, pip reads the tree as an already-installed distribution
+    # and the smoke import resolves to the unbuilt sources.
     subprocess.run([
         str(python), "-m", "pip", "install",
         "--index-url", "https://test.pypi.org/simple/",
         "--extra-index-url", "https://pypi.org/simple/",
         "pydevices-audioif==0.0.1",
-    ], check=True)
+    ], check=True, cwd=root)
     code = """
 from array import array
 import audiocore, synthio
@@ -28,4 +31,4 @@ r, b = audiocore.get_buffer(s)
 assert r == 1 and b.format == 'B' and len(b) == 512
 assert audiocore.get_buffer(audiocore.RawSample(array('h', [1, 2])))[0] == 0
 """
-    subprocess.run([str(python), "-c", code], check=True)
+    subprocess.run([str(python), "-c", code], check=True, cwd=root)
