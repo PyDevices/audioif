@@ -1,0 +1,5 @@
+{
+  "oracle": "CircuitPython 10.2.1",
+  "midi_stdout_sha256": "3399ca41c8178aae99405ce54c82b167e9fa02f83890a9de0f07b1ffb28d0d65",
+  "streaming_stdout_sha256": "74f62c068765c7e3fb134acd9acab1091f7a7c087a715a233ef63167d18f2fdc"
+}

@@ -22,6 +22,18 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/cp_compat/util.c
     ${MPAUDIO_SRC_DIR}/cp_compat/objproperty.c
     ${MPAUDIO_SRC_DIR}/cp_compat/namedtuple.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_sample.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_rawsample.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_synth_dsp.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_envelope.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_distortion.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_biquad.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_echo.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_phaser.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_chorus.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_multitap.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_pitchshift.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_freeverb.c
     ${MPAUDIO_SRC_DIR}/mpaudio_modules.c
     ${MPAUDIO_SRC_DIR}/audiocore/__init__.c
     ${MPAUDIO_SRC_DIR}/audiocore/RawSample.c

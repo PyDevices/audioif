@@ -21,13 +21,15 @@
 
 #include "cp_compat/enum.h"
 #include "cp_compat/namedtuple.h"
+#include "shared/audioif_envelope.h"
 
 #define SYNTHIO_WAVEFORM_SIZE 16384
 
-typedef enum {
-    SYNTHIO_ENVELOPE_STATE_ATTACK, SYNTHIO_ENVELOPE_STATE_DECAY,
-    SYNTHIO_ENVELOPE_STATE_SUSTAIN, SYNTHIO_ENVELOPE_STATE_RELEASE
-} envelope_state_e;
+typedef audioif_envelope_kind_t envelope_state_e;
+#define SYNTHIO_ENVELOPE_STATE_ATTACK AUDIOIF_ENVELOPE_ATTACK
+#define SYNTHIO_ENVELOPE_STATE_DECAY AUDIOIF_ENVELOPE_DECAY
+#define SYNTHIO_ENVELOPE_STATE_SUSTAIN AUDIOIF_ENVELOPE_SUSTAIN
+#define SYNTHIO_ENVELOPE_STATE_RELEASE AUDIOIF_ENVELOPE_RELEASE
 
 typedef enum synthio_bend_mode_e {
     SYNTHIO_BEND_MODE_STATIC, SYNTHIO_BEND_MODE_VIBRATO, SYNTHIO_BEND_MODE_SWEEP, SYNTHIO_BEND_MODE_SWEEP_IN
@@ -83,19 +85,8 @@ typedef struct {
     mp_obj_t note_obj[CIRCUITPY_SYNTHIO_MAX_CHANNELS];
 } synthio_midi_span_t;
 
-typedef struct {
-    // the number of attack or decay steps (signed) per sample
-    // therefore the maximum time is 32767 samples or 0.68s at 48kHz
-    // provided the level is maximum (this should be increased!)
-    int16_t attack_step, decay_step, release_step;
-    uint16_t attack_level, sustain_level;
-} synthio_envelope_definition_t;
-
-typedef struct {
-    int16_t level;
-    uint16_t substep;
-    envelope_state_e state;
-} synthio_envelope_state_t;
+typedef audioif_envelope_definition_t synthio_envelope_definition_t;
+typedef audioif_envelope_state_t synthio_envelope_state_t;
 
 struct synthio_synth {
     audiosample_base_t base;

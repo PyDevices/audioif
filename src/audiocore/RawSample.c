@@ -28,24 +28,27 @@ void common_hal_audioio_rawsample_construct(audioio_rawsample_obj_t *self,
     uint32_t sample_rate,
     bool single_buffer) {
 
-    self->buffer = buffer;
-    self->base.bits_per_sample = bytes_per_sample * 8;
-    self->base.samples_signed = samples_signed;
-    self->base.max_buffer_length = len;
-    self->base.channel_count = channel_count;
-    self->base.sample_rate = sample_rate;
-    self->base.single_buffer = single_buffer;
-    self->buffer_index = 0;
+    audioif_rawsample_construct(&self->shared_state, &self->shared_info,
+        buffer, len, bytes_per_sample, samples_signed, channel_count,
+        sample_rate, single_buffer);
+    self->base.bits_per_sample = self->shared_info.bits_per_sample;
+    self->base.samples_signed = self->shared_info.samples_signed;
+    self->base.max_buffer_length = self->shared_info.max_buffer_length;
+    self->base.channel_count = self->shared_info.channel_count;
+    self->base.sample_rate = self->shared_info.sample_rate;
+    self->base.single_buffer = self->shared_info.single_buffer;
 }
 
 void common_hal_audioio_rawsample_deinit(audioio_rawsample_obj_t *self) {
-    self->buffer = NULL;
+    audioif_rawsample_deinit(&self->shared_state);
     audiosample_mark_deinit(&self->base);
 }
 
 void audioio_rawsample_reset_buffer(audioio_rawsample_obj_t *self,
     bool single_channel_output,
     uint8_t channel) {
+    audioif_sample_source_t source = audioif_rawsample_source(&self->shared_state);
+    (void)audioif_sample_reset(&source, single_channel_output, channel);
 }
 
 audioio_get_buffer_result_t audioio_rawsample_get_buffer(audioio_rawsample_obj_t *self,
@@ -54,25 +57,18 @@ audioio_get_buffer_result_t audioio_rawsample_get_buffer(audioio_rawsample_obj_t
     uint8_t **buffer,
     uint32_t *buffer_length) {
 
-    if (self->base.single_buffer) {
-        *buffer_length = self->base.max_buffer_length;
-        if (single_channel_output) {
-            *buffer = self->buffer + (channel % self->base.channel_count) * (self->base.bits_per_sample / 8);
-        } else {
-            *buffer = self->buffer;
-        }
-        return GET_BUFFER_DONE;
-    } else {
-        *buffer_length = self->base.max_buffer_length / 2;
-        if (single_channel_output) {
-            *buffer = self->buffer + (channel % self->base.channel_count) * (self->base.bits_per_sample / 8) + \
-                self->base.max_buffer_length / 2 * self->buffer_index;
-        } else {
-            *buffer = self->buffer + self->base.max_buffer_length / 2 * self->buffer_index;
-        }
-        self->buffer_index = 1 - self->buffer_index;
-        return GET_BUFFER_DONE;
+    audioif_sample_source_t source = audioif_rawsample_source(&self->shared_state);
+    const uint8_t *shared_buffer = NULL;
+    audioif_buffer_result_t result = AUDIOIF_BUFFER_ERROR;
+    audioif_status_t status = audioif_sample_get(&source, single_channel_output,
+        channel, &shared_buffer, buffer_length, &result);
+    if (status != AUDIOIF_STATUS_OK) {
+        *buffer = NULL;
+        *buffer_length = 0;
+        return GET_BUFFER_ERROR;
     }
+    *buffer = (uint8_t *)shared_buffer;
+    return (audioio_get_buffer_result_t)result;
 }
 
 // --- from shared-bindings/audiocore/RawSample.c --------------------------

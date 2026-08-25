@@ -34,14 +34,14 @@ typedef struct {
     bool loop;
     bool more_data;
 
-    int16_t combbuffersizes[16];
+    uint16_t combbuffersizes[16];
     int16_t *combbuffers[16];
-    int16_t combbufferindex[16];
+    uint16_t combbufferindex[16];
     int16_t combfitlers[16];
 
-    int16_t allpassbuffersizes[8];
+    uint16_t allpassbuffersizes[8];
     int16_t *allpassbuffers[8];
-    int16_t allpassbufferindex[8];
+    uint16_t allpassbufferindex[8];
 
     mp_obj_t sample;
 } audiofreeverb_freeverb_obj_t;

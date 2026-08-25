@@ -12,7 +12,8 @@
 
 import sys
 
-_here = __file__.rsplit("/", 1)[0] if "/" in __file__ else "."
+_filename = __file__.replace("\\", "/")
+_here = _filename.rsplit("/", 1)[0] if "/" in _filename else "."
 sys.path.insert(0, _here + "/../vendor")
 
 # waves.py's random_phase_wave() reseeds an oscillator's start phase on

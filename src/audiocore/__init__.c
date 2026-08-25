@@ -20,21 +20,79 @@
 #include "cp_compat/argcheck.h"
 #include "cp_compat/objproperty.h"
 #include "cp_compat/util.h"
+#include "shared/audioif_sample.h"
 
 #include "py/obj.h"
 #include "py/runtime.h"
 
+typedef struct {
+    mp_obj_t object;
+    const audiosample_p_t *protocol;
+} micropython_sample_adapter_t;
+
+static audioif_status_t micropython_sample_reset(void *context,
+    bool single_channel_output, uint8_t audio_channel) {
+    micropython_sample_adapter_t *adapter = context;
+    adapter->protocol->reset_buffer(MP_OBJ_TO_PTR(adapter->object),
+        single_channel_output, audio_channel);
+    return AUDIOIF_STATUS_OK;
+}
+
+static audioif_status_t micropython_sample_get(void *context,
+    bool single_channel_output, uint8_t audio_channel,
+    const uint8_t **buffer, uint32_t *buffer_length,
+    audioif_buffer_result_t *result) {
+    micropython_sample_adapter_t *adapter = context;
+    uint8_t *runtime_buffer = NULL;
+    audioio_get_buffer_result_t runtime_result = adapter->protocol->get_buffer(
+        MP_OBJ_TO_PTR(adapter->object), single_channel_output, audio_channel,
+        &runtime_buffer, buffer_length);
+    *buffer = runtime_buffer;
+    *result = (audioif_buffer_result_t)runtime_result;
+    return AUDIOIF_STATUS_OK;
+}
+
+static const audioif_sample_ops_t micropython_sample_ops = {
+    .reset_buffer = micropython_sample_reset,
+    .get_buffer = micropython_sample_get,
+};
+
+static audioif_sample_source_t micropython_sample_source(mp_obj_t sample_obj,
+    micropython_sample_adapter_t *adapter) {
+    adapter->object = sample_obj;
+    adapter->protocol = mp_proto_get_or_throw(MP_QSTR_protocol_audiosample,
+        sample_obj);
+    audioif_sample_source_t source = {
+        .ops = &micropython_sample_ops,
+        .context = adapter,
+        .info = NULL,
+    };
+    return source;
+}
+
 void audiosample_reset_buffer(mp_obj_t sample_obj, bool single_channel_output, uint8_t audio_channel) {
-    const audiosample_p_t *proto = mp_proto_get_or_throw(MP_QSTR_protocol_audiosample, sample_obj);
-    proto->reset_buffer(MP_OBJ_TO_PTR(sample_obj), single_channel_output, audio_channel);
+    micropython_sample_adapter_t adapter;
+    audioif_sample_source_t source = micropython_sample_source(sample_obj, &adapter);
+    (void)audioif_sample_reset(&source, single_channel_output, audio_channel);
 }
 
 audioio_get_buffer_result_t audiosample_get_buffer(mp_obj_t sample_obj,
     bool single_channel_output,
     uint8_t channel,
     uint8_t **buffer, uint32_t *buffer_length) {
-    const audiosample_p_t *proto = mp_proto_get_or_throw(MP_QSTR_protocol_audiosample, sample_obj);
-    return proto->get_buffer(MP_OBJ_TO_PTR(sample_obj), single_channel_output, channel, buffer, buffer_length);
+    micropython_sample_adapter_t adapter;
+    audioif_sample_source_t source = micropython_sample_source(sample_obj, &adapter);
+    const uint8_t *shared_buffer = NULL;
+    audioif_buffer_result_t result = AUDIOIF_BUFFER_ERROR;
+    audioif_status_t status = audioif_sample_get(&source, single_channel_output,
+        channel, &shared_buffer, buffer_length, &result);
+    if (status != AUDIOIF_STATUS_OK) {
+        *buffer = NULL;
+        *buffer_length = 0;
+        return GET_BUFFER_ERROR;
+    }
+    *buffer = (uint8_t *)shared_buffer;
+    return (audioio_get_buffer_result_t)result;
 }
 
 void audiosample_convert_u8m_s16s(int16_t *buffer_out, const uint8_t *buffer_in, size_t nframes) {

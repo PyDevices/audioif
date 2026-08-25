@@ -22,6 +22,7 @@
 #include "cp_compat/argcheck.h"
 #include "cp_compat/context_manager_helpers.h"
 #include "cp_compat/objproperty.h"
+#include "shared/audioif_pitchshift.h"
 
 #include "py/runtime.h"
 
@@ -218,6 +219,19 @@ audioio_get_buffer_result_t audiodelays_pitch_shift_get_buffer(audiodelays_pitch
                 recalculate_rate(self, semitones);
             }
 
+            if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
+                !single_channel_output) {
+                audioif_pitchshift_positions_t positions = {
+                    self->window_index, self->overlap_index, self->read_index};
+                audioif_pitchshift_process_s16(word_buffer, sample_src, n,
+                    window_buffer, window_size, overlap_buffer, overlap_size,
+                    self->base.channel_count, self->read_rate, mix, &positions);
+                self->window_index = positions.window_index;
+                self->overlap_index = positions.overlap_index;
+                self->read_index = positions.read_index;
+                goto pitchshift_samples_done;
+            }
+
             for (uint32_t i = 0; i < n; i++) {
                 bool buf_offset = (channel == 1 || i % self->base.channel_count == 1);
 
@@ -290,6 +304,7 @@ audioio_get_buffer_result_t audiodelays_pitch_shift_get_buffer(audiodelays_pitch
                 }
             }
 
+pitchshift_samples_done:
             length -= n;
             word_buffer += n;
             hword_buffer += n;

@@ -30,6 +30,7 @@
 #include "synthio/Note.h"
 #include "synthio/Synthesizer.h"
 #include "synthio/__init__.h"
+#include "shared/audioif_synth_dsp.h"
 
 #include "py/builtin.h"
 #include "py/mperrno.h"
@@ -50,17 +51,7 @@ static const uint16_t notes[] = {8372, 8870, 9397, 9956, 10548, 11175, 11840,
 
 // cleaner sat16 by http://www.moseleyinstruments.com/
 int16_t synthio_sat16(int32_t n, int rshift) {
-    if (n < 0) {
-        n = n + (~(0xFFFFFFFFUL << rshift));
-    }
-    n = n >> rshift;
-    if (n > 32767) {
-        return 32767;
-    }
-    if (n < -32768) {
-        return -32768;
-    }
-    return n;
+    return audioif_sat16(n, rshift);
 }
 
 static int64_t round_float_to_int64(mp_float_t f) {
@@ -75,23 +66,10 @@ mp_float_t common_hal_synthio_voct_to_hz_float(mp_float_t octave) {
     return notes[0] * MICROPY_FLOAT_C_FUN(pow)(2., octave - 7);
 }
 
-static int16_t convert_time_to_rate(uint32_t sample_rate, mp_obj_t time_in, int16_t difference) {
-    mp_float_t time = mp_obj_get_float(time_in);
-    int num_samples = (int)MICROPY_FLOAT_C_FUN(round)(time * sample_rate);
-    if (num_samples == 0) {
-        return 32767;
-    }
-    int16_t result = MIN(32767, MAX(1, abs(difference * SYNTHIO_MAX_DUR) / num_samples));
-    return (difference < 0) ? -result : result;
-}
-
 void synthio_envelope_definition_set(synthio_envelope_definition_t *envelope, mp_obj_t obj, uint32_t sample_rate) {
     if (obj == mp_const_none) {
-        envelope->attack_level = 32767;
-        envelope->sustain_level = 32767;
-        envelope->attack_step = 32767;
-        envelope->decay_step = -32767;
-        envelope->release_step = -32767;
+        audioif_envelope_definition_init(envelope, sample_rate, false,
+            0, 0, 0, 1, 1);
         return;
     }
     mp_arg_validate_type(obj, (mp_obj_type_t *)&synthio_envelope_type_obj, MP_QSTR_envelope);
@@ -100,57 +78,23 @@ void synthio_envelope_definition_set(synthio_envelope_definition_t *envelope, mp
     mp_obj_t *fields;
     mp_obj_tuple_get(obj, &len, &fields);
 
-    envelope->attack_level = (int)(32767 * mp_obj_get_float(fields[3]));
-    envelope->sustain_level = (int)(32767 * mp_obj_get_float(fields[4]) * mp_obj_get_float(fields[3]));
-
-    envelope->attack_step = convert_time_to_rate(
-        sample_rate, fields[0], envelope->attack_level);
-
-    envelope->decay_step = -convert_time_to_rate(
-        sample_rate, fields[1], envelope->attack_level - envelope->sustain_level);
-
-    envelope->release_step = -convert_time_to_rate(
-        sample_rate, fields[2],
-        envelope->sustain_level
-            ? envelope->sustain_level
-            : envelope->attack_level);
+    audioif_envelope_definition_init(envelope, sample_rate, true,
+        mp_obj_get_float(fields[0]), mp_obj_get_float(fields[1]),
+        mp_obj_get_float(fields[2]), mp_obj_get_float(fields[3]),
+        mp_obj_get_float(fields[4]));
 }
 
 static void synthio_envelope_state_step(synthio_envelope_state_t *state, synthio_envelope_definition_t *def, size_t n_steps) {
-    state->substep += n_steps;
-    while (state->substep >= SYNTHIO_MAX_DUR) {
-        state->substep -= SYNTHIO_MAX_DUR;
-        switch (state->state) {
-            case SYNTHIO_ENVELOPE_STATE_SUSTAIN:
-                break;
-            case SYNTHIO_ENVELOPE_STATE_ATTACK:
-                state->level = MIN(state->level + def->attack_step, def->attack_level);
-                if (state->level == def->attack_level) {
-                    state->state = SYNTHIO_ENVELOPE_STATE_DECAY;
-                }
-                break;
-            case SYNTHIO_ENVELOPE_STATE_DECAY:
-                state->level = MAX(state->level + def->decay_step, def->sustain_level);
-                if (state->level == def->sustain_level) {
-                    state->state = SYNTHIO_ENVELOPE_STATE_SUSTAIN;
-                }
-                break;
-            case SYNTHIO_ENVELOPE_STATE_RELEASE:
-                state->level = MAX(state->level + def->release_step, 0);
-        }
-    }
+    audioif_envelope_state_step(state, def, n_steps);
 }
 
 static void synthio_envelope_state_init(synthio_envelope_state_t *state, synthio_envelope_definition_t *def) {
-    state->level = 0;
-    state->substep = 0;
-    state->state = SYNTHIO_ENVELOPE_STATE_ATTACK;
-
-    synthio_envelope_state_step(state, def, SYNTHIO_MAX_DUR);
+    audioif_envelope_state_init(state, def);
 }
 
 static void synthio_envelope_state_release(synthio_envelope_state_t *state, synthio_envelope_definition_t *def) {
-    state->state = SYNTHIO_ENVELOPE_STATE_RELEASE;
+    (void)def;
+    audioif_envelope_state_release(state);
 }
 
 static synthio_envelope_definition_t *synthio_synth_get_note_envelope(synthio_synth_t *synth, mp_obj_t note_obj) {
@@ -168,12 +112,8 @@ static synthio_envelope_definition_t *synthio_synth_get_note_envelope(synthio_sy
 #define RANGE_SHIFT (16)
 
 int16_t synthio_mix_down_sample(int32_t sample, int32_t scale) {
-    if (sample < SYNTHIO_MIX_DOWN_RANGE_LOW) {
-        sample = (((sample - SYNTHIO_MIX_DOWN_RANGE_LOW) * scale) >> RANGE_SHIFT) + SYNTHIO_MIX_DOWN_RANGE_LOW;
-    } else if (sample > SYNTHIO_MIX_DOWN_RANGE_HIGH) {
-        sample = (((sample - SYNTHIO_MIX_DOWN_RANGE_HIGH) * scale) >> RANGE_SHIFT) + SYNTHIO_MIX_DOWN_RANGE_HIGH;
-    }
-    return sample;
+    return audioif_mix_down_sample(sample, scale,
+        SYNTHIO_MIX_DOWN_RANGE_LOW, SYNTHIO_MIX_DOWN_RANGE_HIGH);
 }
 
 static bool synth_note_into_buffer(synthio_synth_t *synth, int chan, int32_t *out_buffer32, int16_t dur, int16_t loudness[2]) {
@@ -220,29 +160,16 @@ static bool synth_note_into_buffer(synthio_synth_t *synth, int chan, int32_t *ou
         }
     }
 
-    uint32_t offset = waveform_start << SYNTHIO_FREQUENCY_SHIFT;
     uint32_t lim = waveform_length << SYNTHIO_FREQUENCY_SHIFT;
-    uint32_t accum = synth->accum[chan];
-
-    if (dds_rate > lim / 2) {
+    if (!audioif_oscillator_fill(out_buffer32, waveform, waveform_start,
+        waveform_length, dds_rate, &synth->accum[chan], dur,
+        SYNTHIO_FREQUENCY_SHIFT)) {
         return false;
     }
 
-    if (accum > lim) {
-        accum = accum % lim + offset;
-    }
-
-    for (uint16_t i = 0; i < dur; i++) {
-        accum += dds_rate;
-        if (accum > lim) {
-            accum = accum - lim + offset;
-        }
-        int16_t idx = accum >> SYNTHIO_FREQUENCY_SHIFT;
-        out_buffer32[i] = waveform[idx];
-    }
-    synth->accum[chan] = accum;
-
     if (ring_dds_rate) {
+        uint32_t offset;
+        uint32_t accum;
         if (ring_dds_rate > lim / 2) {
             return true;
         }
@@ -281,16 +208,8 @@ static mp_obj_t synthio_synth_get_note_filter(mp_obj_t note_obj) {
 }
 
 static void sum_with_loudness(int32_t *out_buffer32, int32_t *tmp_buffer32, int16_t loudness[2], size_t dur, int synth_chan) {
-    if (synth_chan == 1) {
-        for (size_t i = 0; i < dur; i++) {
-            *out_buffer32++ += synthio_sat16((*tmp_buffer32++ *loudness[0]), 16);
-        }
-    } else {
-        for (size_t i = 0; i < dur; i++) {
-            *out_buffer32++ += synthio_sat16((*tmp_buffer32 * loudness[0]), 16);
-            *out_buffer32++ += synthio_sat16((*tmp_buffer32++ *loudness[1]), 16);
-        }
-    }
+    audioif_sum_with_loudness(out_buffer32, tmp_buffer32, loudness, dur,
+        synth_chan);
 }
 
 void synthio_synth_synthesize(synthio_synth_t *synth, uint8_t **bufptr, uint32_t *buffer_length, uint8_t channel) {

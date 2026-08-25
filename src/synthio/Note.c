@@ -13,6 +13,7 @@
 #include "cp_compat/objproperty.h"
 #include "cp_compat/util.h"
 #include "synthio/Note.h"
+#include "shared/audioif_synth_dsp.h"
 #include "synthio/__init__.h"
 
 #include "py/runtime.h"
@@ -185,18 +186,8 @@ void synthio_note_start(synthio_note_obj_t *self, int32_t sample_rate) {
 #define BEND_SCALE (32768)
 #define BEND_OFFSET (BEND_SCALE)
 
-static uint16_t pitch_bend_table[] = { 0, 1948, 4013, 6200, 8517, 10972, 13573, 16329, 19248, 22341, 25618, 29090, 32768 };
-
 static uint32_t pitch_bend(uint32_t frequency_scaled, int32_t bend_value) {
-    int octave = bend_value >> 15;
-    bend_value &= 0x7fff;
-    uint32_t bend_value_semitone = (uint32_t)bend_value * 24; // 65536/semitone
-    uint32_t semitone = bend_value_semitone >> 16;
-    uint32_t fractone = bend_value_semitone & 0xffff;
-    uint32_t f_lo = pitch_bend_table[semitone];
-    uint32_t f_hi = pitch_bend_table[semitone + 1]; // table has 13 entries, indexing with semitone=12 is OK
-    uint32_t f = ((f_lo * (65535 - fractone) + f_hi * fractone) >> 16) + BEND_OFFSET;
-    return (frequency_scaled * (uint64_t)f) >> (15 - octave);
+    return audioif_pitch_bend(frequency_scaled, bend_value);
 }
 
 #define ZERO MICROPY_FLOAT_CONST(0.)

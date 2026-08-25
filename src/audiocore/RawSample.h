@@ -10,11 +10,12 @@
 #include "py/obj.h"
 
 #include "audiocore/__init__.h"
+#include "shared/audioif_rawsample.h"
 
 typedef struct {
     audiosample_base_t base;
-    uint8_t *buffer;
-    uint8_t buffer_index;
+    audioif_sample_info_t shared_info;
+    audioif_rawsample_state_t shared_state;
 } audioio_rawsample_obj_t;
 
 extern const mp_obj_type_t audioio_rawsample_type;

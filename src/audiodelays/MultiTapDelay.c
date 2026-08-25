@@ -18,6 +18,7 @@
 
 #include "py/objtuple.h"
 #include "py/runtime.h"
+#include "shared/audioif_multitap.h"
 
 // --- shared-module (DSP engine) -------------------------------------------
 
@@ -353,6 +354,18 @@ audioio_get_buffer_result_t audiodelays_multi_tap_delay_get_buffer(audiodelays_m
             sample_hsrc = (int8_t *)self->sample_remaining_buffer;
         }
 
+        if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
+            !single_channel_output) {
+            int16_t silence[SYNTHIO_MAX_DUR * 2] = {0};
+            const int16_t *input = self->sample != NULL ? sample_src : silence;
+            delay_buffer_pos = audioif_multitap_process_s16(
+                word_buffer, input, n, delay_buffer, delay_buffer_pos,
+                delay_buffer_len, self->base.channel_count,
+                self->tap_offsets, self->tap_levels, self->tap_len,
+                decay, mix);
+            goto multitap_samples_done;
+        }
+
         for (uint32_t i = 0; i < n; i++) {
             uint32_t delay_buffer_offset = delay_buffer_len * ((single_channel_output && channel == 1) || (!single_channel_output && (i % self->base.channel_count) == 1));
 
@@ -427,6 +440,8 @@ audioio_get_buffer_result_t audiodelays_multi_tap_delay_get_buffer(audiodelays_m
                 delay_buffer_pos = 0;
             }
         }
+
+        multitap_samples_done:
 
         length -= n;
         word_buffer += n;

@@ -17,6 +17,7 @@
 #include "cp_compat/argcheck.h"
 #include "cp_compat/context_manager_helpers.h"
 #include "cp_compat/objproperty.h"
+#include "shared/audioif_echo.h"
 
 #include "py/runtime.h"
 
@@ -329,6 +330,18 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
                     }
                 }
             } else {
+                if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
+                    !single_channel_output) {
+                    audioif_echo_positions_t positions = {
+                        self->echo_buffer_left_pos, self->echo_buffer_right_pos};
+                    audioif_echo_process_s16(word_buffer, sample_src, n,
+                        echo_buffer, echo_buf_len, max_echo_buf_len,
+                        self->echo_buffer_rate, decay, mix, self->freq_shift,
+                        self->base.channel_count, &positions);
+                    self->echo_buffer_left_pos = positions.left_position;
+                    self->echo_buffer_right_pos = positions.right_position;
+                    goto echo_samples_done;
+                }
                 for (uint32_t i = 0; i < n; i++) {
                     int32_t sample_word = 0;
                     if (MP_LIKELY(self->base.bits_per_sample == 16)) {
@@ -413,6 +426,7 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
                 }
             }
 
+echo_samples_done:
             length -= n;
             word_buffer += n;
             hword_buffer += n;

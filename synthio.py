@@ -1,0 +1,554 @@
+"""CircuitPython-compatible synthesizer API for CPython."""
+
+from array import array
+from collections import namedtuple
+from enum import Enum
+import math
+
+import _audioif
+from audiocore import GET_BUFFER_MORE_DATA, _AudioSample
+
+waveform_max_length = 16384
+_DEFAULT_WAVEFORM = array("h", (-32768, 32767))
+_MIDI_BASE_FREQUENCIES = (8372, 8870, 9397, 9956, 10548, 11175, 11840,
+                          12544, 13290, 14080, 14917, 15804)
+_DEFAULT_LFO_WAVEFORM = array("h", (0, 32767, 0, -32767))
+_BLOCK_TICK = 0
+_BLOCK_SECONDS = 0.0
+
+
+class _CircuitEnum(Enum):
+    def __repr__(self):
+        return "{}.{}.{}".format(
+            self.__class__.__module__, self.__class__.__name__, self.name)
+
+    __str__ = __repr__
+
+
+class FilterMode(_CircuitEnum):
+    LOW_PASS = 0
+    HIGH_PASS = 1
+    BAND_PASS = 2
+    NOTCH = 3
+    PEAKING_EQ = 4
+    LOW_SHELF = 5
+    HIGH_SHELF = 6
+
+
+class MathOperation(_CircuitEnum):
+    SUM = 0
+    ADD_SUB = 1
+    PRODUCT = 2
+    MUL_DIV = 3
+    SCALE_OFFSET = 4
+    OFFSET_SCALE = 5
+    LERP = 6
+    CONSTRAINED_LERP = 7
+    DIV_ADD = 8
+    ADD_DIV = 9
+    MID = 10
+    MIN = 11
+    MAX = 12
+    ABS = 13
+
+    def __call__(self, a, b=0, c=1):
+        return Math(self, a, b, c)
+
+
+class EnvelopeState(_CircuitEnum):
+    ATTACK = 0
+    DECAY = 1
+    SUSTAIN = 2
+    RELEASE = 3
+
+
+_Envelope = namedtuple("Envelope", "attack_time decay_time release_time attack_level sustain_level")
+
+
+class Envelope(_Envelope):
+    __slots__ = ()
+
+    def __new__(cls, *, attack_time=0.1, decay_time=0.05, release_time=0.2, attack_level=1.0, sustain_level=0.8):
+        values = (attack_time, decay_time, release_time, attack_level, sustain_level)
+        if any(float(v) < 0 for v in values[:3]):
+            raise ValueError("envelope times must be non-negative")
+        if any(not 0 <= float(v) <= 1 for v in values[3:]):
+            raise ValueError("envelope levels must be between 0 and 1")
+        return super().__new__(cls, *(float(v) for v in values))
+
+
+def _value(value):
+    evaluator = getattr(value, "_evaluate", None)
+    if evaluator is not None:
+        return float(evaluator(_BLOCK_TICK))
+    return float(value.value if hasattr(value, "value") else value)
+
+
+def _advance_blocks(sample_rate, sample_count=256):
+    global _BLOCK_TICK, _BLOCK_SECONDS
+    _BLOCK_TICK += 1
+    _BLOCK_SECONDS = sample_count / sample_rate
+
+
+class Math:
+    def __init__(self, operation, a, b=0, c=1):
+        if not isinstance(operation, MathOperation):
+            raise TypeError("operation must be a MathOperation")
+        self.operation = operation
+        self.a, self.b, self.c = a, b, c
+        self._last_tick = -1
+        self._cached_value = 0.0
+
+    @staticmethod
+    def _input(value):
+        return float(value) if isinstance(value, (int, float)) else value
+
+    @property
+    def a(self): return self._a
+    @a.setter
+    def a(self, value): self._a = self._input(value)
+    @property
+    def b(self): return self._b
+    @b.setter
+    def b(self, value): self._b = self._input(value)
+    @property
+    def c(self): return self._c
+    @c.setter
+    def c(self, value): self._c = self._input(value)
+
+    @property
+    def value(self):
+        return self._cached_value
+
+    def _evaluate(self, tick):
+        if self._last_tick == tick:
+            return self._cached_value
+        a, b, c = _value(self.a), _value(self.b), _value(self.c)
+        op = self.operation
+        if op is MathOperation.SUM: result = a + b + c
+        elif op is MathOperation.ADD_SUB: result = a + b - c
+        elif op is MathOperation.PRODUCT: result = a * b * c
+        elif op is MathOperation.MUL_DIV: result = a * b / c if c else 0.0
+        elif op is MathOperation.SCALE_OFFSET: result = a * b + c
+        elif op is MathOperation.OFFSET_SCALE: result = (a + b) * c
+        if op in (MathOperation.LERP, MathOperation.CONSTRAINED_LERP):
+            amount = min(1.0, max(0.0, c)) if op is MathOperation.CONSTRAINED_LERP else c
+            result = a * (1.0 - amount) + b * amount
+        elif op is MathOperation.DIV_ADD: result = a / b + c if b else 0.0
+        elif op is MathOperation.ADD_DIV: result = (a + b) / c if c else 0.0
+        elif op is MathOperation.MID: result = sorted((a, b, c))[1]
+        elif op is MathOperation.MIN: result = min(a, b, c)
+        elif op is MathOperation.MAX: result = max(a, b, c)
+        elif op is MathOperation.ABS: result = abs(a)
+        self._last_tick, self._cached_value = tick, result
+        return result
+
+
+class LFO:
+    def __init__(self, waveform=None, *, rate=1, scale=1, offset=0, phase_offset=0, once=False, interpolate=True):
+        global _BLOCK_SECONDS
+        self.waveform = waveform
+        self.rate, self.scale, self.offset = rate, scale, offset
+        self.phase_offset = phase_offset
+        self.once, self.interpolate = bool(once), bool(interpolate)
+        self._phase = 0.0
+        self._last_tick = -1
+        self._cached_value = 0.0
+        _BLOCK_SECONDS = 0.0
+        self._evaluate(_BLOCK_TICK)
+
+    @property
+    def value(self):
+        return self._cached_value
+
+    @property
+    def phase(self):
+        return self._phase
+
+    def _evaluate(self, tick):
+        if self._last_tick == tick:
+            return self._cached_value
+        rate = _value(self.rate) * _BLOCK_SECONDS
+        phase_offset = _value(self.phase_offset)
+        phase = self._phase + rate + phase_offset
+        if self.once:
+            phase = min(32767 / 32768, max(0.0, phase))
+        else:
+            phase -= math.floor(phase)
+        self._phase = phase - phase_offset
+        samples = _DEFAULT_LFO_WAVEFORM if self.waveform is None else self.waveform
+        position = phase * (len(samples) - int(self.once))
+        index = int(math.floor(position))
+        raw = float(samples[index])
+        if self.interpolate:
+            following_index = index + 1
+            if following_index == len(samples):
+                following_index = index if self.once else 0
+            fraction = position - index
+            raw = raw * (1.0 - fraction) + float(samples[following_index]) * fraction
+        result = math.ldexp(raw, -15) * _value(self.scale) + _value(self.offset)
+        self._last_tick, self._cached_value = tick, result
+        return result
+
+    def _tick(self, seconds=1 / 48000):
+        global _BLOCK_TICK, _BLOCK_SECONDS
+        _BLOCK_TICK += 1
+        _BLOCK_SECONDS = seconds
+        return self._evaluate(_BLOCK_TICK)
+
+    def retrigger(self):
+        self._phase = 0.0
+
+
+def lfo_tick(*blocks):
+    _advance_blocks(48000, 256)
+    return tuple(_value(block) for block in blocks)
+
+
+class Biquad:
+    def __init__(self, mode, frequency, Q=0.7071067811865475, A=None):
+        if not isinstance(mode, FilterMode):
+            raise TypeError("mode must be a FilterMode")
+        self.mode, self.frequency, self.Q, self.A = mode, frequency, Q, A
+
+
+class Note:
+    def __init__(self, frequency, *, panning=0, amplitude=1, bend=0, waveform=None,
+                 waveform_loop_start=0, waveform_loop_end=waveform_max_length,
+                 envelope=None, filter=None, ring_frequency=0, ring_bend=0,
+                 ring_waveform=None, ring_waveform_loop_start=0,
+                 ring_waveform_loop_end=waveform_max_length):
+        self.frequency = float(frequency)
+        self.panning, self.amplitude, self.bend = panning, amplitude, bend
+        self.waveform = waveform
+        self.waveform_loop_start, self.waveform_loop_end = waveform_loop_start, waveform_loop_end
+        self.envelope, self.filter = envelope, filter
+        self.ring_frequency, self.ring_bend = float(ring_frequency), ring_bend
+        self.ring_waveform = ring_waveform
+        self.ring_waveform_loop_start = ring_waveform_loop_start
+        self.ring_waveform_loop_end = ring_waveform_loop_end
+        self._accum = 0
+        self._midi_note = None
+        self._envelope_state = None
+        self._released = False
+        self._filter_state = _audioif.BiquadState()
+
+
+class Synthesizer(_AudioSample):
+    max_polyphony = 14
+
+    def __init__(self, *, sample_rate=11025, channel_count=1, waveform=None, envelope=None):
+        if channel_count not in (1, 2): raise ValueError("channel_count must be 1 or 2")
+        if sample_rate < 1: raise ValueError("sample_rate must be at least 1")
+        self.sample_rate, self.channel_count = int(sample_rate), int(channel_count)
+        self.bits_per_sample, self.samples_signed = 16, True
+        self.waveform, self.envelope = waveform, envelope
+        self.blocks = []
+        self._notes = []
+        self._deinited = False
+
+    @property
+    def pressed(self):
+        return tuple(note for note in self._notes if not note._released)
+
+    def _release(self):
+        self._notes.clear()
+        self.blocks.clear()
+        self.waveform = None
+        self.envelope = None
+
+    def _start_note(self, note):
+        envelope = note.envelope if note.envelope is not None else self.envelope
+        if envelope is None:
+            note._envelope_state = _audioif.EnvelopeState(
+                self.sample_rate, False
+            )
+        else:
+            note._envelope_state = _audioif.EnvelopeState(
+                self.sample_rate, True, *envelope
+            )
+        note._released = False
+        note._filter_state.reset()
+
+    def _coerce(self, note):
+        if not isinstance(note, int):
+            return note
+        # Integer notes retain their MIDI identity so the native-compatible
+        # frequency table and the synthesizer's global waveform/envelope are
+        # selected at render time.
+        result = Note(midi_to_hz(note))
+        result._midi_note = note
+        return result
+
+    def press(self, notes):
+        if isinstance(notes, (int, Note)): notes = (notes,)
+        for item in notes:
+            note = self._coerce(item)
+            if not isinstance(note, Note): raise TypeError("note must be int or Note")
+            if len(self._notes) >= self.max_polyphony: self._notes.pop(0)
+            self._start_note(note)
+            if note not in self._notes: self._notes.append(note)
+
+    def release(self, notes):
+        if isinstance(notes, (int, Note)): notes = (notes,)
+        for item in notes:
+            if isinstance(item, int):
+                frequency = midi_to_hz(item)
+                matches = [n for n in self._notes if abs(n.frequency - frequency) <= 1e-8]
+            else:
+                matches = [item] if item in self._notes else []
+            for note in matches:
+                note._released = True
+                if note._envelope_state is not None:
+                    note._envelope_state.release()
+
+    def release_all(self): self.release(tuple(self._notes))
+    def change(self, *, release=(), press=(), retrigger=()):
+        self.release(release); self.press(press)
+        for note in retrigger:
+            if isinstance(note, Note): note._accum = 0
+    release_then_press = change
+    def release_all_then_press(self, notes): self.release_all(); self.press(notes)
+
+    def note_info(self, note):
+        note = self._coerce(note)
+        if note not in self._notes or note._envelope_state is None:
+            return EnvelopeState.RELEASE, 0.0
+        return (EnvelopeState(note._envelope_state.state),
+                note._envelope_state.level / 32767.0)
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        self._check()
+        # CircuitPython preserves each oscillator accumulator here; reset only
+        # invalidates the paired-channel buffer cache.
+
+    def _render(self, sample_count, single_channel_output=False):
+        _advance_blocks(self.sample_rate, 256)
+        for block in self.blocks:
+            _value(block)
+        channels = 1 if single_channel_output else self.channel_count
+        mixed = array("i", (0 for _ in range(sample_count * channels)))
+        almost_one = 32767.0 / 32768.0
+
+        def scaled(value, low=-almost_one, high=almost_one):
+            value = min(high, max(low, _value(value))) * 32768.0
+            return int(value + 0.5) if value >= 0 else int(value - 0.5)
+
+        for note in self._notes:
+            if note._envelope_state is None:
+                self._start_note(note)
+            waveform = note.waveform if note.waveform is not None else self.waveform
+            waveform = _DEFAULT_WAVEFORM if waveform is None else waveform
+            length = len(waveform)
+            start = max(0, min(length - 1, int(_value(note.waveform_loop_start))))
+            end = max(start + 1, min(length, int(_value(note.waveform_loop_end))))
+
+            if note._midi_note is not None and note.waveform is None:
+                midi_note = note._midi_note
+                octave = midi_note // 12
+                dds_rate = (
+                    self.sample_rate // 2
+                    + (_MIDI_BASE_FREQUENCIES[midi_note % 12] * (end - start)
+                       << (6 + octave))
+                ) // self.sample_rate
+            else:
+                frequency_scaled = int(note.frequency * 65536.0 + 0.5)
+                bend_scaled = scaled(note.bend, -12, 12)
+                frequency_scaled = _audioif.pitch_bend(frequency_scaled, bend_scaled)
+                dds_rate = (
+                    self.sample_rate // 2 + frequency_scaled * (end - start)
+                ) // self.sample_rate
+
+            envelope_level = note._envelope_state.level
+            if note._midi_note is not None:
+                # Small-int MIDI notes in CircuitPython use the synthesizer's
+                # envelope directly and do not pass through Note amplitude or
+                # panning block inputs.
+                loudness_left = loudness_right = envelope_level
+            else:
+                panning = scaled(note.panning)
+                if panning >= 0:
+                    left_pan, right_pan = 32768, 32767 - panning
+                else:
+                    left_pan, right_pan = 32767 + panning, 32768
+                amplitude = scaled(note.amplitude)
+                left_pan = (left_pan * amplitude) >> 15
+                right_pan = (right_pan * amplitude) >> 15
+                loudness_left = (envelope_level * left_pan) >> 15
+                loudness_right = (envelope_level * right_pan) >> 15
+
+            voice_data, note._accum = _audioif.oscillator_raw_i32(
+                waveform, note._accum, dds_rate, start, end, sample_count,
+            )
+            if note.filter is not None:
+                amplitude = 1.0 if note.filter.A is None else _value(note.filter.A)
+                voice_data = note._filter_state.process_i32(
+                    voice_data, note.filter.mode.value,
+                    _value(note.filter.frequency), _value(note.filter.Q),
+                    amplitude, self.sample_rate,
+                )
+            contribution = _audioif.apply_loudness_i32(
+                voice_data, loudness_left, loudness_right, channels,
+            )
+            voice = memoryview(contribution).cast("i")
+            for index, value in enumerate(voice):
+                mixed[index] += value
+
+        for note in tuple(self._notes):
+            note._envelope_state.step(sample_count)
+            if note._released and note._envelope_state.level == 0:
+                self._notes.remove(note)
+
+        output = _audioif.mixdown_i32(mixed, self.max_polyphony)
+        return memoryview(output)
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self._check()
+        return GET_BUFFER_MORE_DATA, self._render(
+            256, single_channel_output=single_channel_output)
+
+
+class MidiTrack(Synthesizer):
+    def __init__(self, buffer, tempo, *, sample_rate=11025, waveform=None, envelope=None):
+        super().__init__(sample_rate=sample_rate, waveform=waveform, envelope=envelope)
+        self.buffer = bytes(buffer)
+        self._tempo = int(tempo)
+        self._position = 0
+        self._error_location = -1
+        self._duration = 0
+        self._start_parse()
+
+    @property
+    def error_location(self):
+        return None if self._error_location < 0 else self._error_location
+
+    @property
+    def tempo(self):
+        return self._tempo
+
+    @tempo.setter
+    def tempo(self, value):
+        value = int(value)
+        if value < 1:
+            raise ValueError("tempo must be at least 1")
+        self._duration = self._duration * self._tempo // value
+        self._tempo = value
+
+    def _record_error(self):
+        self._error_location = self._position
+        self._position = len(self.buffer)
+
+    def _parse_note(self):
+        if self._position + 1 >= len(self.buffer):
+            self._record_error()
+            return 0
+        note = self.buffer[self._position]
+        velocity = self.buffer[self._position + 1]
+        self._position += 2
+        if note > 127 or velocity > 127:
+            self._record_error()
+        return note
+
+    def _decode_duration(self):
+        delta = 0
+        continued = True
+        while continued and self._position < len(self.buffer):
+            byte = self.buffer[self._position]
+            self._position += 1
+            delta = (delta << 7) | (byte & 0x7f)
+            continued = bool(byte & 0x80)
+        if continued:
+            # The upstream decoder's do/while cursor reports one byte beyond
+            # the truncated variable-length quantity.
+            self._position += 1
+            self._record_error()
+        if self._tempo == 0:
+            self._record_error()
+            return 0
+        return delta * self.sample_rate // self._tempo
+
+    def _decode_until_pause(self):
+        while self._position < len(self.buffer):
+            kind = self.buffer[self._position] >> 4
+            self._position += 1
+            if kind == 8:
+                self.release(self._parse_note())
+            elif kind == 9:
+                self.press(self._parse_note())
+            elif kind in (10, 11, 14):
+                self._parse_note()
+            elif kind in (12, 13):
+                if (self._position >= len(self.buffer) or
+                        self.buffer[self._position] > 127):
+                    self._record_error()
+                else:
+                    self._position += 1
+            elif kind == 15:
+                self._position = len(self.buffer)
+            else:
+                self._record_error()
+            if self._position < len(self.buffer):
+                self._duration = self._decode_duration()
+            if self._duration:
+                break
+
+    def _start_parse(self):
+        self._position = 0
+        self._error_location = -1
+        self._duration = self._decode_duration()
+        if self._duration == 0 and self._position < len(self.buffer):
+            self._decode_until_pause()
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        super()._reset_buffer(single_channel_output, audio_channel)
+        self._start_parse()
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self._check()
+        duration = min(256, self._duration)
+        self._duration -= duration
+        output = self._render(
+            duration, single_channel_output=single_channel_output)
+        if self._duration == 0:
+            if self._position == len(self.buffer):
+                return 0, output
+            self._decode_until_pause()
+        return GET_BUFFER_MORE_DATA, output
+
+    def _release(self):
+        self.buffer = b""
+        self._notes.clear()
+
+
+def from_file(file, *, sample_rate=11025, waveform=None, envelope=None):
+    stream = open(file, "rb") if isinstance(file, (str, bytes)) else file
+    close = stream is not file
+    try:
+        header = stream.read(14)
+        if len(header) != 14 or header[:12] != b"MThd\0\0\0\x06\0\0\0\x01": raise ValueError("invalid file")
+        if header[12] & 0x80:
+            division = -int.from_bytes(header[12:13], "big", signed=True) * header[13]
+        else:
+            division = int.from_bytes(header[12:14], "big") * 2
+        chunk = stream.read(8)
+        if chunk[:4] != b"MTrk": raise ValueError("invalid file")
+        data = stream.read(int.from_bytes(chunk[4:], "big"))
+        return MidiTrack(data, division, sample_rate=sample_rate, waveform=waveform, envelope=envelope)
+    finally:
+        if close: stream.close()
+
+
+def midi_to_hz(note):
+    note = float(note)
+    # CircuitPython derives this from the first entry in its ninth-octave
+    # MIDI table, rather than using 440 * 2**((note-69)/12).
+    return 8372.0 * 2.0 ** (note / 12.0 - 10.0)
+
+
+def voct_to_hz(ctrl):
+    ctrl = float(ctrl)
+    if not -11 <= ctrl <= 11: raise ValueError("ctrl must be between -11 and 11")
+    return 8372.0 * 2.0 ** (ctrl - 7.0)
+
+
+__all__ = ("Biquad", "FilterMode", "Math", "MathOperation", "MidiTrack", "Note", "EnvelopeState", "LFO", "Synthesizer", "from_file", "Envelope", "midi_to_hz", "voct_to_hz", "waveform_max_length", "lfo_tick")

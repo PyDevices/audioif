@@ -22,6 +22,7 @@
 #include "cp_compat/argcheck.h"
 #include "cp_compat/context_manager_helpers.h"
 #include "cp_compat/objproperty.h"
+#include "shared/audioif_freeverb.h"
 
 #include "py/runtime.h"
 
@@ -245,66 +246,14 @@ audioio_get_buffer_result_t audiofreeverb_freeverb_get_buffer(audiofreeverb_free
 
         shared_bindings_synthio_lfo_tick(self->base.sample_rate, n / self->base.channel_count);
         mp_float_t damp = synthio_block_slot_get_limited(&self->damp, MICROPY_FLOAT_CONST(0.0), MICROPY_FLOAT_CONST(1.0));
-        int16_t damp1, damp2;
-        audiofreeverb_freeverb_get_damp_fixedpoint(damp, &damp1, &damp2);
-
         mp_float_t mix = synthio_block_slot_get_limited(&self->mix, MICROPY_FLOAT_CONST(0.0), MICROPY_FLOAT_CONST(1.0));
-        int16_t mix_sample, mix_effect;
-        audiofreeverb_freeverb_get_mix_fixedpoint(mix, &mix_sample, &mix_effect);
-
         mp_float_t roomsize = synthio_block_slot_get_limited(&self->roomsize, MICROPY_FLOAT_CONST(0.0), MICROPY_FLOAT_CONST(1.0));
-        int16_t feedback = audiofreeverb_freeverb_get_roomsize_fixedpoint(roomsize);
-
         int16_t *sample_src = (int16_t *)self->sample_remaining_buffer;
-
-        for (uint32_t i = 0; i < n; i++) {
-            int32_t sample_word = 0;
-            if (self->sample != NULL) {
-                sample_word = sample_src[i];
-            }
-
-            int32_t word, sum;
-            int16_t input, bufout, output;
-            uint32_t channel_comb_offset = 0, channel_allpass_offset = 0;
-
-            input = synthio_sat16(sample_word * 8738, 17); // scaled down so we can add reverb
-            sum = 0;
-
-            for (uint32_t j = 0 + channel_comb_offset; j < 8 + channel_comb_offset; j++) {
-                bufout = self->combbuffers[j][self->combbufferindex[j]];
-                sum += bufout;
-                self->combfitlers[j] = synthio_sat16(bufout * damp2 + self->combfitlers[j] * damp1, 15);
-                self->combbuffers[j][self->combbufferindex[j]] = synthio_sat16(input + synthio_sat16(self->combfitlers[j] * feedback, 15), 0);
-                if (++self->combbufferindex[j] >= self->combbuffersizes[j]) {
-                    self->combbufferindex[j] = 0;
-                }
-            }
-
-            output = synthio_sat16(sum * 31457, 17); // 0.24f with shift of 17
-
-            for (uint32_t j = 0 + channel_allpass_offset; j < 4 + channel_allpass_offset; j++) {
-                bufout = self->allpassbuffers[j][self->allpassbufferindex[j]];
-                self->allpassbuffers[j][self->allpassbufferindex[j]] = output + (bufout >> 1);
-                output = synthio_sat16(bufout - output, 1);
-                if (++self->allpassbufferindex[j] >= self->allpassbuffersizes[j]) {
-                    self->allpassbufferindex[j] = 0;
-                }
-            }
-
-            word = output * 30; // volume back up, no saturation needed before the next step
-
-            word = synthio_sat16(sample_word * mix_sample, 15) + synthio_sat16(word * mix_effect, 15);
-            word = synthio_mix_down_sample(word, SYNTHIO_MIX_DOWN_SCALE(2));
-            word_buffer[i] = (int16_t)word;
-
-            if ((self->base.channel_count == 2) && (channel_comb_offset == 0)) {
-                channel_comb_offset = 8;
-                channel_allpass_offset = 4;
-            } else {
-                channel_comb_offset = 0;
-                channel_allpass_offset = 0;
-            }
-        }
+        audioif_freeverb_process_s16_banks(word_buffer,
+            self->sample == NULL ? NULL : sample_src, n, self->combbuffers,
+            self->combbuffersizes, self->combbufferindex, self->combfitlers,
+            self->allpassbuffers, self->allpassbuffersizes,
+            self->allpassbufferindex, roomsize, damp, mix);
 
         length -= n;
         word_buffer += n;

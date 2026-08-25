@@ -1,0 +1,11 @@
+{
+  "oracle": "CircuitPython 10.2.1 unix coverage",
+  "circuitpython_stdout_sha256": "36d47204e6eea9b07c44c63ecd2f81c6b7e032402a4aedac8e435b325c3597aa",
+  "circuitpython_modules": [
+    "audiofilters",
+    "audiodelays",
+    "audiofreeverb"
+  ],
+  "cpython_stdout_sha256": "fe1e6b8c997ee7c5dfacb7eb8193a98c74c0896189e4afffd88c98ca0acdd2cd",
+  "audiospeed_oracle": "CircuitPython 10.2.1 source plus MicroPython executable regression"
+}

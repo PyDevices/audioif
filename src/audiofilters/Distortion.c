@@ -38,6 +38,7 @@
 #include "cp_compat/context_manager_helpers.h"
 #include "cp_compat/enum.h"
 #include "cp_compat/objproperty.h"
+#include "shared/audioif_distortion.h"
 
 #include "py/runtime.h"
 
@@ -258,62 +259,18 @@ audioio_get_buffer_result_t audiofilters_distortion_get_buffer(audiofilters_dist
                         }
                     }
 
-                    int32_t word = (int32_t)(sample_word * pre_gain);
-
-                    if (self->mode == DISTORTION_MODE_LOFI) {
-                        word = word & word_mask;
-                    }
-
-                    if (self->mode != DISTORTION_MODE_LOFI || self->soft_clip) {
-                        mp_float_t wordf = word / MICROPY_FLOAT_CONST(32768.0);
-
-                        switch (self->mode) {
-                            case DISTORTION_MODE_CLIP: {
-                                wordf = MICROPY_FLOAT_C_FUN(pow)(MICROPY_FLOAT_C_FUN(fabs)(wordf), drive);
-                                if (word < 0) {
-                                    wordf *= MICROPY_FLOAT_CONST(-1.0);
-                                }
-                            } break;
-                            case DISTORTION_MODE_LOFI:
-                                break;
-                            case DISTORTION_MODE_OVERDRIVE: {
-                                wordf *= MICROPY_FLOAT_CONST(0.686306);
-                                mp_float_t z = MICROPY_FLOAT_CONST(1.0) + MICROPY_FLOAT_C_FUN(exp)(MICROPY_FLOAT_C_FUN(sqrt)(MICROPY_FLOAT_C_FUN(fabs)(wordf)) * MICROPY_FLOAT_CONST(-0.75));
-                                mp_float_t word_exp = MICROPY_FLOAT_C_FUN(exp)(wordf);
-                                wordf *= MICROPY_FLOAT_CONST(-1.0);
-                                wordf = (word_exp - MICROPY_FLOAT_C_FUN(exp)(wordf * z)) / (word_exp + MICROPY_FLOAT_C_FUN(exp)(wordf));
-                            } break;
-                            case DISTORTION_MODE_WAVESHAPE: {
-                                wordf = (MICROPY_FLOAT_CONST(1.0) + drive) * wordf / (MICROPY_FLOAT_CONST(1.0) + drive * MICROPY_FLOAT_C_FUN(fabs)(wordf));
-                            } break;
-                        }
-
-                        wordf = wordf * post_gain;
-
-                        if (self->soft_clip) {
-                            if (wordf > 0) {
-                                wordf = MICROPY_FLOAT_CONST(1.0) - MICROPY_FLOAT_C_FUN(exp)(-wordf);
-                            } else {
-                                wordf = MICROPY_FLOAT_CONST(-1.0) + MICROPY_FLOAT_C_FUN(exp)(wordf);
-                            }
-                        }
-
-                        word = (int32_t)(wordf * MICROPY_FLOAT_CONST(32767.0));
-                    } else {
-                        word = (int32_t)(word * post_gain);
-                    }
-
-                    if (!self->soft_clip) {
-                        word = MIN(MAX(word, -32767), 32768);
-                    }
+                    int32_t word = audioif_distortion_sample(sample_word,
+                        drive, pre_gain, post_gain,
+                        (audioif_distortion_mode_t)self->mode,
+                        self->soft_clip, mix, word_mask);
 
                     if (MP_LIKELY(self->base.bits_per_sample == 16)) {
-                        word_buffer[i] = (int16_t)((sample_word * (MICROPY_FLOAT_CONST(1.0) - mix)) + (word * mix));
+                        word_buffer[i] = (int16_t)word;
                         if (!self->base.samples_signed) {
                             word_buffer[i] ^= 0x8000;
                         }
                     } else {
-                        int8_t mixed = (int8_t)((sample_word * (MICROPY_FLOAT_CONST(1.0) - mix)) + (word * mix));
+                        int8_t mixed = (int8_t)word;
                         if (self->base.samples_signed) {
                             hword_buffer[i] = mixed;
                         } else {

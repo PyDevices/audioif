@@ -22,6 +22,21 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/cp_compat/objproperty.c \
     $(MPAUDIO_SRC_DIR)/cp_compat/namedtuple.c
 
+# --- runtime-neutral sample protocol/state shared with the CPython wheel
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/shared/audioif_sample.c \
+    $(MPAUDIO_SRC_DIR)/shared/audioif_rawsample.c \
+    $(MPAUDIO_SRC_DIR)/shared/audioif_synth_dsp.c \
+    $(MPAUDIO_SRC_DIR)/shared/audioif_envelope.c \
+    $(MPAUDIO_SRC_DIR)/shared/audioif_distortion.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_biquad.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_echo.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_phaser.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_chorus.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multitap.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_pitchshift.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_freeverb.c
+
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
 #     code/micropython.mk expects USERMOD_DIR to point at ulab/code; the

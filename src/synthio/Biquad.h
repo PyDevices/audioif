@@ -9,6 +9,7 @@
 #include "py/obj.h"
 
 #include "synthio/block.h"
+#include "shared/audioif_biquad.h"
 
 extern const mp_obj_type_t synthio_biquad_type_obj;
 extern const mp_obj_type_t synthio_filter_mode_type;
@@ -30,9 +31,7 @@ struct synthio_biquad {
     int32_t a1, a2, b0, b1, b2;
 };
 
-typedef struct {
-    int32_t x[2], y[2];
-} biquad_filter_state;
+typedef audioif_biquad_state_t biquad_filter_state;
 
 mp_obj_t common_hal_synthio_biquad_get_A(synthio_biquad_t *self);
 void common_hal_synthio_biquad_set_A(synthio_biquad_t *self, mp_obj_t A);

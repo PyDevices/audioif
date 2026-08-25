@@ -1,20 +1,37 @@
 # audioif
 
-CircuitPython's audio system, ported to MicroPython — `audiocore`,
+CircuitPython's audio system for MicroPython and CPython — `audiocore`,
 `audiomixer`, `synthio` (including `MidiTrack`), the effects modules
 (`audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`), `audiomp3`,
-and CircuitPython `play()`/`stop()`/`pause()`/`resume()` output semantics,
-as `USER_C_MODULES` MicroPython usermods for the mcu, unix, and windows
-ports. Import names stay `audiocore`/`synthio`/etc., matching CircuitPython,
-for source compatibility.
+and CircuitPython `play()`/`stop()`/`pause()`/`resume()` output semantics.
+Import names stay `audiocore`/`synthio`/etc., matching CircuitPython for
+source compatibility.
 
-**Status:** all module tiers ported and oracle-diffed byte-for-byte against
+MicroPython consumes this repository as `USER_C_MODULES`. CPython 3.10+
+installs the separately versioned native distribution from TestPyPI:
+
+```sh
+python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioif
+```
+
+The initial CPython distribution is `pydevices-audioif==0.0.1` and contains
+`audiocore`, `synthio`, `audiomixer`, `audiofilters`, `audiodelays`,
+`audiofreeverb`, and `audiospeed`. `audiomp3` remains firmware-only for this
+release. The distribution has no runtime dependencies and does not publish an
+`audioif` import.
+
+**MicroPython status:** all module tiers ported and oracle-diffed byte-for-byte against
 `bin/circuitpython` on unix; DSP parity re-verified on windows and wasm;
 built and measured on two real mcu targets, ESP32-P4 (hardware-confirmed
 by ear) and RP2040 (build-only). See
 [docs/porting-plan.md](docs/porting-plan.md) for the full phased history
 and [docs/upstream-diff.md](docs/upstream-diff.md) for every deliberate
 deviation from upstream CircuitPython.
+
+**CPython status:** the public surface and wheel plumbing are present, and the
+committed synthesis, mixer, MIDI, streaming, and effects fixtures match
+CircuitPython 10.2.1 PCM byte-for-byte. Import/API smoke success is not used as
+a substitute for those oracle comparisons.
 
 `ulab` and `cmods/mp3` (the vendored Adafruit_MP3/Helix decoder `audiomp3`
 depends on, RPSL/RCSL-licensed — not MIT, carried unmodified per upstream's

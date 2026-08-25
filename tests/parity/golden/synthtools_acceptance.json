@@ -1,0 +1,16 @@
+{
+  "circuitpython": "10.2.1",
+  "fixture": "synthtools_acceptance.py stdout",
+  "microcontroller_port": "workspace cmods/bin/micropython",
+  "sha256": "adc66c885cd07aeeb7245505c33faf34ea8ef4449f43ba7b1694691a30cc1305",
+  "stdout": [
+    "lead nbytes 20480 checksum 2477316",
+    "bend nbytes 9216 checksum 1156063",
+    "json roundtrip filt_f 800.0 wave ASAW detune 1.004",
+    "bass nbytes 16384 checksum 1938672",
+    "echo delay_ms 230.76923076923077",
+    "tail nbytes 2048 checksum 0",
+    "mixer playing False",
+    "done"
+  ]
+}

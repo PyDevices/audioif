@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pydevices-audioif"
+dynamic = ["version"]
+description = "CircuitPython-compatible audio synthesis and effects for PyDevices"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "PyDevices contributors"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: C",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/PyDevices/audioif"
+Issues = "https://github.com/PyDevices/audioif/issues"
+
+[tool.setuptools]
+py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed"]
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
+skip = "*musllinux* *-macosx_* *-win32"
+test-command = "python -c \"from array import array; import audiocore, synthio; s=synthio.Synthesizer(sample_rate=8000); s.press(69); r,b=audiocore.get_buffer(s); assert r == 1 and b.format == 'B' and len(b) == 512\""
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+
+[tool.cibuildwheel.android]
+archs = ["arm64_v8a", "x86_64"]
+environment = { ANDROID_API_LEVEL = "21" }
+test-skip = "*"
+
+[[tool.cibuildwheel.overrides]]
+select = "*-android_*"
+build-frontend = "build"

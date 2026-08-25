@@ -20,6 +20,7 @@
 #include "cp_compat/objproperty.h"
 
 #include "py/runtime.h"
+#include "shared/audioif_chorus.h"
 
 // --- shared-module (DSP engine) -------------------------------------------
 
@@ -231,6 +232,15 @@ audioio_get_buffer_result_t audiodelays_chorus_get_buffer(audiodelays_chorus_obj
             int16_t *sample_src = (int16_t *)self->sample_remaining_buffer;
             int8_t *sample_hsrc = (int8_t *)self->sample_remaining_buffer;
 
+            if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
+                !single_channel_output) {
+                self->chorus_buffer_pos = audioif_chorus_process_s16(
+                    word_buffer, sample_src, n, chorus_buffer,
+                    self->chorus_buffer_pos, chorus_buf_len,
+                    max_chorus_buf_len, voices, mix);
+                goto chorus_samples_done;
+            }
+
             for (uint32_t i = 0; i < n; i++) {
                 int32_t sample_word = 0;
                 if (MP_LIKELY(self->base.bits_per_sample == 16)) {
@@ -286,6 +296,7 @@ audioio_get_buffer_result_t audiodelays_chorus_get_buffer(audiodelays_chorus_obj
                     self->chorus_buffer_pos = 0;
                 }
             }
+            chorus_samples_done:
             self->sample_remaining_buffer += (n * (self->base.bits_per_sample / 8));
             self->sample_buffer_length -= n;
         }

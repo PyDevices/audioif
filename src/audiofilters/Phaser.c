@@ -15,6 +15,7 @@
 #include "cp_compat/objproperty.h"
 
 #include "py/runtime.h"
+#include "shared/audioif_phaser.h"
 
 // --- shared-module (DSP engine) -------------------------------------------
 
@@ -221,6 +222,16 @@ audioio_get_buffer_result_t audiofilters_phaser_get_buffer(audiofilters_phaser_o
                 frequency /= self->nyquist; // scale relative to frequency range
                 int16_t allpasscoef = (int16_t)((MICROPY_FLOAT_CONST(1.0) - frequency) / (MICROPY_FLOAT_CONST(1.0) + frequency) * 32767);
 
+                if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
+                    !single_channel_output) {
+                    memcpy(word_buffer, sample_src, n * sizeof(int16_t));
+                    audioif_phaser_process_s16_fixed(word_buffer, n,
+                        self->word_buffer, self->allpass_buffer,
+                        self->base.channel_count, self->stages, allpasscoef,
+                        feedback, mix);
+                    goto phaser_samples_done;
+                }
+
                 for (uint32_t i = 0; i < n; i++) {
                     bool right_channel = (single_channel_output && channel == 1) || (!single_channel_output && (i % self->base.channel_count) == 1);
                     uint32_t allpass_buffer_offset = self->stages * right_channel;
@@ -265,6 +276,8 @@ audioio_get_buffer_result_t audiofilters_phaser_get_buffer(audiofilters_phaser_o
                     }
                 }
             }
+
+            phaser_samples_done:
 
             length -= n;
             word_buffer += n;
