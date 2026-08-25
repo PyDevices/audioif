@@ -101,12 +101,13 @@ macOS, musllinux, win32, Linux ARM, and MIP publication are excluded.
 
 ## Remaining release work
 
-1. Merge the `.github` workflow changes and publish a stable reusable-workflow
-   ref. The existing `publishing-v3` tag points to an older commit that does
-   not accept `expected-wheel-count`; either deliberately move that shared tag
-   or create `publishing-v4` and update the audioif caller. Creating a new tag
-   preserves reproducibility for earlier release retries.
-2. Merge the `audioif` branch after its CI is green.
+1. Done. The `.github` changes are merged to `main` and tagged
+   `publishing-v4` (`7bd6919`); the audioif caller is pinned to that tag.
+   `publishing-v3` was left in place so earlier release retries stay
+   reproducible. The other six callers remain on v3, which is safe because
+   `expected-wheel-count` defaults to `0`.
+2. Done. The `audioif` branch merged to `main` after CI went green on all ten
+   Linux and Windows jobs.
 3. Confirm the organization `TESTPYPI_API_TOKEN` is visible to `audioif`.
    The release workflow contains a credentials preflight; the current local
    GitHub token cannot inspect organization Actions secrets.
@@ -119,6 +120,15 @@ macOS, musllinux, win32, Linux ARM, and MIP publication are excluded.
    unused before implementation.
 7. Merge the examples, Android, workspace, and generated portal branches, then
    refresh example package floors after TestPyPI contains 0.0.1 and 0.3.7.
+
+## Parity hashing note
+
+The oracle hashes above are taken over LF-terminated probe output. Windows
+CPython writes CRLF from the probe subprocesses, so `verify_effects.py` and
+`verify_streaming.py` normalize line endings before hashing. Without that
+normalization every Windows job fails with
+`97000851a8e33b0911ee0494dcbb94f09fe911490a0c78183b2ff861c6ae3383` even
+though the PCM is byte-identical.
 
 Published TestPyPI artifacts are immutable. Any correction after 0.0.1 must
 use a new patch version.
