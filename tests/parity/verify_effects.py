@@ -22,7 +22,7 @@ if result.returncode:
     sys.stderr.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     raise SystemExit(result.returncode)
-actual = hashlib.sha256(result.stdout).hexdigest()
+actual = hashlib.sha256(result.stdout.replace(b"\r\n", b"\n")).hexdigest()
 expected = fixture["cpython_stdout_sha256"]
 if actual != expected:
     raise SystemExit(
