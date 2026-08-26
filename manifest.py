@@ -19,6 +19,10 @@ VFS-staged one, and what is running stops being what was published - the same
 trap ``pydevices``' own manifest already refuses to walk into. Worth revisiting
 once the library settles and a board build actually wants the RAM back.
 
+``audiorender`` is deliberately absent. It renders a whole composition
+offline with numpy and holds the finished song in memory, which is a
+desktop's job, not a board's - it ships in the wheel and stops there.
+
 The native modules are not affected either way. ``audiocore``, ``synthio``,
 ``audiodynamics``, ``audioroute`` and the rest are compiled into the firmware
 by ``micropython.mk`` / ``micropython.cmake`` (or, for CircuitPython, by

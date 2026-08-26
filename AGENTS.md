@@ -18,7 +18,9 @@ for source compatibility; only this repo's own name differs.
   the CPython extension both compile)
 - `lib/` — the pure-Python tiers, published to boards by MIP from
   `<repo>/lib/<package>` and to PyPI in the same wheel:
-  `lib/audioinstruments/` (53 `synthio` instruments)
+  `lib/audioinstruments/` (53 `synthio` instruments), `lib/audioeffects/`
+  (39 effect classes) and `lib/audiorender/` (whole-composition offline
+  rendering — numpy, desktop-only, never frozen)
 - `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics` and
   `audioroute` to a CircuitPython tree. Those two are not CircuitPython ports:
   they come from micropython-vst3's `vstaudio` engine, so CircuitPython gains

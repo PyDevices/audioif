@@ -27,7 +27,7 @@ Issues = "https://github.com/PyDevices/audioif/issues"
 
 [tool.setuptools]
 py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute"]
-packages = ["audioinstruments", "audioeffects"]
+packages = ["audioinstruments", "audioeffects", "audiorender"]
 
 # The CircuitPython-compatible modules sit at the repository root; the pure
 # Python library tiers live under lib/ so the MIP publisher, which expects
@@ -35,6 +35,7 @@ packages = ["audioinstruments", "audioeffects"]
 [tool.setuptools.package-dir]
 audioinstruments = "lib/audioinstruments"
 audioeffects = "lib/audioeffects"
+audiorender = "lib/audiorender"
 
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}

@@ -83,7 +83,7 @@ tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
 tier 7  audiodynamics, audioroute: native, but NOT CircuitPython ports
 tier 8  lib/: pure-Python libraries built on the tiers above
-        (audioinstruments, audioeffects)
+        (audioinstruments, audioeffects, audiorender)
 dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
 ```
 
@@ -108,6 +108,15 @@ and their source is micropython-vst3 rather than CircuitPython:
   machines written entirely in `synthio` — no samples — and
   `lib/audioeffects/` is 39 effect classes built on the tiers above, both
   moved out of micropython-vst3 so they are not tied to a VST host.
+  `lib/audiorender/` is the tier above those two: a composition — tracks, a
+  tempo map, notes, automation, sections — rendered offline to a mixed
+  master and the level report a render is judged by. It is the one part of
+  this repository written for a desktop rather than a board (numpy
+  throughout, the whole song in memory), so it ships in the wheel and
+  `manifest.py` never freezes it. Loading a track's sound stays the
+  caller's job: `render()` asks for a `voice_for(track, clock)` and only
+  requires `deliver()` and `pull_frames()` back, which is what lets
+  micropython-vst3 keep driving its own script loader through it.
 
 Both have their own oracle, and it is the micropython-vst3 checkout rather
 than `bin/circuitpython`: `tests/parity/verify_dsp.py` and

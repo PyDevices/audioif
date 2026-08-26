@@ -23,6 +23,16 @@ inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
 audio_out.play(inst.output)
 ```
 
+Two more pure-Python tiers sit on top of it. `lib/audioeffects/` is 39 effect
+classes — compressors, delays, reverbs, EQ, modulation, pitch — each taking a
+source and exposing its chain tail as `.output`. `lib/audiorender/` renders a
+whole composition offline: tracks, tempo map, notes and automation in, a mixed
+stereo master and a level report out. Each has its own README.
+
+`audiorender` is the one part of this repository written for a desktop rather
+than a board — numpy throughout, a whole song in memory — so it ships in the
+wheel and is never frozen into firmware.
+
 MicroPython consumes this repository as `USER_C_MODULES`. CPython 3.10+
 installs the separately versioned native distribution from TestPyPI:
 
@@ -32,7 +42,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 The CPython distribution contains `audiocore`, `synthio`, `audiomixer`,
 `audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`,
-`audioroute`, and the `audioinstruments` package. `audiomp3` remains
+`audioroute`, and the `audioinstruments`, `audioeffects` and `audiorender`
+packages. `audiomp3` remains
 firmware-only. The distribution has no runtime dependencies and does not
 publish an `audioif` import; its version is the `VERSION` file, which is also
 what `_audioif.__version__` reports.
