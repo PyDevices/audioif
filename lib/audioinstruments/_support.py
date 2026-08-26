@@ -16,6 +16,8 @@ not have to quantize its sweeps.
 import array
 import math
 
+import synthio
+
 try:
     from ulab import numpy as np
 except ImportError:
@@ -45,14 +47,39 @@ def static_transport():
     return (False, 0.0, 120.0, 4, 4)
 
 
-def make_table(parts, length=2048, gain=32000, asym=0.0, fast=True):
+# Instruments share far more wavetables than they differ on - a plain sine is
+# the same table in thirty-two of them - and building one costs thousands of
+# sin() calls, which is money on a microcontroller. Identical arguments give an
+# identical table, so the first module to ask for one pays and the rest borrow
+# it. The tables handed out here are shared: treat them as read-only.
+_WAVE_TABLES = {}
+_NOISE_TABLES = {}
+
+
+def make_table(parts, length=2048, gain=32000, asym=0.0, fast=True,
+               cache=True):
     """Build an additive wavetable from ``((harmonic, amplitude), ...)``.
 
     ``asym`` adds an asymmetric soft-clip stage (a transistor overdrive, not an
     EQ swap). ``fast`` allows the `ulab` vectorized path; instruments whose
     tables were derived with pure-Python arithmetic pass ``fast=False`` so their
     samples stay bit-identical on interpreters that ship `ulab`.
+
+    Results are cached against the arguments that produced them. A caller whose
+    arguments vary while the instrument plays - a pulse table following a width
+    macro - passes ``cache=False`` rather than growing that cache without bound.
     """
+    parts = tuple(parts)
+    if not cache:
+        return _build_table(parts, length, gain, asym, fast)
+    key = (parts, length, gain, asym, fast)
+    table = _WAVE_TABLES.get(key)
+    if table is None:
+        table = _WAVE_TABLES[key] = _build_table(parts, length, gain, asym, fast)
+    return table
+
+
+def _build_table(parts, length, gain, asym, fast):
     if fast and np is not None:
         idx = np.arange(length)
         acc = np.zeros(length)
@@ -88,13 +115,53 @@ def make_table(parts, length=2048, gain=32000, asym=0.0, fast=True):
     return out
 
 
-def noise_table(length=8192, seed=1234567):
-    """White noise from a linear congruential generator, one table period."""
+def noise_table(length=8192, seed=1234567, cache=True):
+    """White noise from a linear congruential generator, one table period.
+
+    Cached like :func:`make_table`, and shared read-only. Instruments do not
+    agree on the seed, so it is always named at the call site."""
+    key = (length, seed)
+    if cache:
+        out = _NOISE_TABLES.get(key)
+        if out is not None:
+            return out
     out = array.array("h", bytearray(length * 2))
     state = seed
     for i in range(length):
         state = (state * 1103515245 + 12345) & 0x7FFFFFFF
         out[i] = ((state >> 15) & 0xFFFF) - 32768
+    if cache:
+        _NOISE_TABLES[key] = out
+    return out
+
+
+def ring_depth_table(depth, length=256):
+    """A ring-modulation waveform biased between unity (``depth`` 0, no audible
+    effect) and a full bipolar sine (``depth`` 1, true ring modulation). Below
+    about 20Hz the same table reads as tremolo.
+
+    Not cached: instruments build this from a live macro value."""
+    out = array.array("h", bytearray(length * 2))
+    for i in range(length):
+        s = math.sin(TAU * i / length)
+        v = (1.0 - depth) + depth * s
+        out[i] = int(32767 * v)
+    return out
+
+
+def pulse_table(width, length=2048, gain=30000):
+    """A variable-duty pulse wave for PWM, as a direct duty-cycle lookup rather
+    than a sum of sines - the edges stay square at every width.
+
+    Not cached: ``width`` is what the PWM macro sweeps."""
+    n_hi = int(length * width)
+    if n_hi < 1:
+        n_hi = 1
+    if n_hi > length - 1:
+        n_hi = length - 1
+    out = array.array("h", bytearray(length * 2))
+    for i in range(length):
+        out[i] = gain if i < n_hi else -gain
     return out
 
 
@@ -128,21 +195,64 @@ def key_of(channel, note_id, pitch):
     return (channel, note_id if note_id >= 0 else pitch)
 
 
-def steal_oldest(voices, release_voice):
-    """Release the longest-held voice. ``voices`` maps key -> (notes, serial)."""
+def release_voice(voices, synth, k):
+    """Release the notes of the voice held under ``k``, and return that voice -
+    or ``None`` when nothing was held there.
+
+    A voice is ``(notes, serial)`` followed by whatever else its instrument
+    needs to remember about it. Every instrument releases through this
+    function; the few that do more at key-off - sweeping a filter through the
+    release tail, striking a key-off noise - read what they need from the
+    tuple it hands back, which is also how they tell a real release from a
+    note-on retriggering a key that was never down.
+    """
+    voice = voices.pop(k, None)
+    if voice is not None:
+        for note in voice[0]:
+            synth.release(note)
+    return voice
+
+
+def release_filter(spec):
+    """The low-pass filter a voice sweeps through while it releases, built from
+    ``(base_cutoff, sustain_delta, release_time, q)``.
+
+    A one-shot LFO carries the cutoff from ``base_cutoff + sustain_delta`` down
+    to ``base_cutoff`` over ``release_time``. This is the release stage of a
+    filter envelope, and it has to be built at note-off rather than at
+    note-on: the attack/decay LFO a voice is pressed with cannot express an
+    indefinite sustain hold ending at a time nobody knows in advance. ``Note``
+    accepts a new filter after it has been pressed, so the voice is retargeted
+    on the way out.
+    """
+    base_cutoff, sustain_delta, release_time, q = spec
+    rel_lfo = synthio.LFO(waveform=FALL, once=True,
+                          rate=1.0 / max(0.01, release_time), interpolate=True)
+    rel_cutoff = synthio.Math(synthio.MathOperation.SCALE_OFFSET, rel_lfo,
+                              sustain_delta, base_cutoff)
+    return synthio.Biquad(synthio.FilterMode.LOW_PASS, rel_cutoff, Q=q)
+
+
+def steal_oldest(voices, release):
+    """Release the longest-held voice. ``voices`` maps key -> (notes, serial).
+
+    ``release`` is the instrument's own release function, not this module's:
+    an instrument that sounds a key-off noise sounds one when a voice is
+    stolen too.
+    """
     oldest = None
     for k in voices:
         if oldest is None or voices[k][1] < voices[oldest][1]:
             oldest = k
     if oldest is not None:
-        release_voice(oldest)
+        release(oldest)
 
 
-def trigger_voice(voices, synth, serial, max_voices, release_voice, k, notes):
+def trigger_voice(voices, synth, serial, max_voices, release, k, notes):
     """Press ``notes`` as one voice, stealing as needed. Returns the new serial."""
-    release_voice(k)
+    release(k)
     while len(voices) + len(notes) >= max_voices:
-        steal_oldest(voices, release_voice)
+        steal_oldest(voices, release)
     serial += 1
     voices[k] = (tuple(notes), serial)
     for note in notes:

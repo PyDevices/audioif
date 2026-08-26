@@ -22,20 +22,38 @@ from pathlib import Path
 # deliberately absent: they keep their definitions so their call sites stay
 # untouched, and get rewritten in place to delegate.
 HOISTED = {"make_table", "noise_table", "logmap", "key_of", "env_shape_table",
-           "_apply_patch", "_dispatch"}
+           "ring_depth_table", "pulse_table", "_apply_patch", "_dispatch"}
 # Names that _support provides and a converted module may need to import.
 SUPPORT_NAMES = ["EVENT_NOTE_ON", "EVENT_NOTE_OFF", "EVENT_PARAMETER",
                  "EVENT_POLY_PRESSURE", "EVENT_CHANNEL_PRESSURE",
                  "EVENT_PITCH_BEND", "EVENT_CONTROL_CHANGE",
                  "FALL", "env_shape_table", "key_of", "logmap", "make_table",
-                 "noise_table"]
+                 "noise_table", "pulse_table", "ring_depth_table"]
 
 
 def quantize(value):
     return int(value * 127.0 + 0.5)
 
 
-def convert(path, note_map=None, docstring=None, fast=None):
+RELEASE_PLAIN = """def release_voice(k):
+    _support.release_voice(voices, synth, k)
+"""
+
+# The three instruments whose filter envelope has a real release stage store
+# it as voice[2] and the notes it applies to as voice[3].
+RELEASE_FILTERED = """def release_voice(k):
+    voice = _support.release_voice(voices, synth, k)
+    if voice is not None and voice[2] is not None:
+        rel_filter = _support.release_filter(voice[2])
+        for note in voice[3]:
+            note.filter = rel_filter
+"""
+
+RELEASE = {"plain": RELEASE_PLAIN, "filtered": RELEASE_FILTERED}
+
+
+def convert(path, note_map=None, docstring=None, fast=None, release=None,
+            replacements=()):
     src = Path(path).read_text()
     lines = src.split("\n")
     tree = ast.parse(src)
@@ -141,7 +159,14 @@ def convert(path, note_map=None, docstring=None, fast=None):
     body = re.sub(r"\bglobal\b", "nonlocal", body)
     body = re.sub(r"\bvstaudio\.(EVENT_[A-Z_]+)", r"\1", body)
 
-    # steal_oldest / trigger_voice keep their call sites but delegate.
+    # release_voice / steal_oldest / trigger_voice keep their call sites but
+    # delegate. Every instrument releases through _support.release_voice; the
+    # handful that do more at key-off act on the voice it hands back, so their
+    # release still reads the same way as everyone else's.
+    body = re.sub(
+        r"def release_voice\(k\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
+        (RELEASE.get(release, release) if release else RELEASE_PLAIN),
+        body)
     body = re.sub(
         r"def steal_oldest\(\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
         "def steal_oldest():\n"
@@ -247,7 +272,17 @@ def convert(path, note_map=None, docstring=None, fast=None):
                % (", note_map=NOTE_MAP" if note_map else ""))
     out.append("    instrument.program_change(0)")
     out.append("    return instrument")
-    return "\n".join(out) + "\n"
+    text = "\n".join(out) + "\n"
+
+    # The escape hatch for what no rule can infer: dead code to drop, a table
+    # builder that has to opt out of the cache because its argument follows a
+    # macro. Each one has to match, so a stale spec fails loudly.
+    for old, new in replacements:
+        if old not in text:
+            raise SystemExit("%s: replacement did not match: %r"
+                             % (Path(path).stem, old))
+        text = text.replace(old, new)
+    return text
 
 
 if __name__ == "__main__":

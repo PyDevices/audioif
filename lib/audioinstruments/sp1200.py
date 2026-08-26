@@ -27,6 +27,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 SINE = make_table(((1, 1.0),), fast=False)
 PULSE = make_table([(n, 1.0/n if n%2!=0 else 0) for n in range(1, 40)], fast=False)
@@ -53,10 +54,7 @@ def create(sample_rate, transport=None):
 
 
     def release_voice(k):
-        voice = voices.pop(k, None)
-        if voice is not None:
-            for note in voice[0]:
-                synth.release(note)
+        _support.release_voice(voices, synth, k)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal volume, kick_p, kick_ring, snare_p, snare_snap, hh_p, crunch, master_tune

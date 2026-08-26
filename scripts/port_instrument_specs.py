@@ -19,6 +19,12 @@ MACHINES = {
                   (39, "Clap"), (41, "Low Tom"), (45, "Mid Tom"),
                   (48, "Hi Tom"), (42, "Closed Hat"), (46, "Open Hat"),
                   (49, "Crash"), (51, "Ride")]),
+    "tr808": dict(
+        docstring="Roland TR-808 Rhythm Composer.",
+        note_map=[(36, "Bass Drum"), (38, "Snare"), (37, "Rimshot"),
+                  (39, "Clap"), (41, "Low Tom"), (45, "Mid Tom"),
+                  (48, "Hi Tom"), (42, "Closed Hat"), (46, "Open Hat"),
+                  (49, "Cymbal"), (56, "Cowbell"), (75, "Claves")]),
     "tr606": dict(
         docstring="Roland TR-606 Drumatix.",
         note_map=[(36, "Bass Drum"), (38, "Snare"), (41, "Low Tom"),

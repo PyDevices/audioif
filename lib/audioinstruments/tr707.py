@@ -31,6 +31,7 @@ from audioinstruments._support import (
     make_table, noise_table,
 )
 from audioinstruments._support import Instrument
+from audioinstruments import _support
 
 SINE = make_table(((1, 1.0),), fast=False)
 # TR-707 used early PCM, so drums sound a bit metallic/FM-like compared to analog
@@ -58,10 +59,7 @@ def create(sample_rate, transport=None):
 
 
     def release_voice(k):
-        voice = voices.pop(k, None)
-        if voice is not None:
-            for note in voice[0]:
-                synth.release(note)
+        _support.release_voice(voices, synth, k)
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal volume, lvl_kick, lvl_snare, lvl_tom, lvl_hh, lvl_crash, decay_scale, master_tune

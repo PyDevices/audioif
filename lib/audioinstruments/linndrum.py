@@ -97,10 +97,7 @@ def create(sample_rate, transport=None):
 
 
     def release_voice(k):
-        voice = voices.pop(k, None)
-        if voice is not None:
-            for note in voice[0]:
-                synth.release(note)
+        _support.release_voice(voices, synth, k)
 
 
     def steal_oldest():

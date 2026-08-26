@@ -7,10 +7,11 @@ MACRO_LABELS = (
 )
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
-# instance and patch 0 are the same thing - create() applies it. A macro a
-# caller does not set resolves here rather than to the middle of its range.
+# instance and patch 0 are the same thing - create() applies it. A macro
+# a caller does not set resolves here rather than to the middle of its
+# range.
 PATCHES = {
-    0: ("Init", (102, 64, 51, 59, 67, 56, 64, 64, 74, 71, 71, 67, 68, 76,
+    0: ('Init', (102, 64, 51, 59, 67, 56, 64, 64, 74, 71, 71, 67, 68, 76,
                  58, 85)),
 }
 
@@ -32,9 +33,10 @@ NOTE_MAP = (
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER,
-    FALL, Instrument, key_of, logmap, make_table, noise_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of, logmap,
+    make_table, noise_table,
 )
+from audioinstruments._support import Instrument
 from audioinstruments import _support
 
 SINE = make_table(((1, 1.0),))
@@ -55,7 +57,6 @@ METAL_HZ = 90.0
 def create(sample_rate, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-
     synth = synthio.Synthesizer(sample_rate=SR, channel_count=2)
 
     # Master params
@@ -89,19 +90,22 @@ def create(sample_rate, transport=None):
     open_hat_keys = []
     MAX_VOICES = 16
 
+
+
+
     def release_voice(k):
-        voice = voices.pop(k, None)
-        if voice is not None:
-            for note in voice[0]:
-                synth.release(note)
+        _support.release_voice(voices, synth, k)
+
 
     def steal_oldest():
         _support.steal_oldest(voices, release_voice)
+
 
     def trigger_voice(k, notes):
         nonlocal serial
         serial = _support.trigger_voice(voices, synth, serial, MAX_VOICES,
                                         release_voice, k, notes)
+
 
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal master_level, accent_level, bd_tune, bd_decay, bd_tone
