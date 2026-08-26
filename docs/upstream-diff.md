@@ -628,3 +628,71 @@ build still has this bug, so CircuitPython's own renders of boundary-hitting
 material remain sensitive to its heap layout. Instrument parity runs treat
 CircuitPython as advisory for that reason; CPython and MicroPython (both of
 which take the fix) are the enforced targets.
+
+## `audiodynamics` and `audioroute`: not CircuitPython ports at all (dsp-nodes tier)
+
+Every other module here is CircuitPython's, moved. These two are not: they come
+from micropython-vst3's `vstaudio` usermod (`usermods/vstaudio/vstaudio_dsp.c`),
+where its effects library's compressors, limiters, gates, de-essers and
+parallel branches were built. CircuitPython has no equivalent and never had
+one, so there is no oracle in `cmods/circuitpython` to diff against and nothing
+in this section is an upstream deviation. What it records instead is where the
+port differs from *its* original.
+
+The DSP itself is unchanged, `float` working precision included -- doubles
+would be a better filter and a different one. It lives in
+`src/shared/audioif_dynamics.c` and `src/shared/audioif_splitter.c`, so the
+MicroPython usermod, the CPython extension and the CircuitPython spike all run
+the same arithmetic; the per-runtime code is only the loop that pulls the
+source. `tests/parity/verify_dsp.py` holds all three to what the original
+rendered, byte for byte, by compiling `vstaudio_dsp.c` itself -- unmodified,
+straight out of the sibling checkout -- into a throwaway interpreter
+(`tests/parity/build_vstaudio_oracle.sh`). The usermod that publishes those
+types cannot be imported directly: it is the plugin sidecar, and it wants a
+shared memory mapping that a VST host created.
+
+Two deliberate changes:
+
+- **`Splitter(source, taps=n)` accepts the tap count as a keyword.** The
+  original was positional-only, which reads badly at the effects library's call
+  sites.
+- **A tap holds a real object reference to its Splitter**, not the raw C
+  pointer the original stored. Handing a tap to a `Mixer` and dropping every
+  other name for the Splitter is the ordinary case, not an unusual one, and the
+  collector has to be able to see that the 32 KB ring is still in use.
+
+Quirks kept on purpose, because the effects library is written around them:
+
+- Neither node ever reports `GET_BUFFER_DONE`. A starved chain gets silence.
+  Both sit in the middle of a live graph, which is still running.
+- `Dynamics` hands out at most 256 frames per call, and carries leftover source
+  frames across output blocks.
+- `Dynamics.reset_buffer` drops the detector envelopes but keeps the sidechain
+  filter's memory and the last reported gain reduction.
+- An `attack_ms` so long that its coefficient rounds to zero silently gets the
+  10 ms default instead. This is why `audioif_dynamics_config_finish()` is a
+  separate call rather than part of the initial state.
+- Writing past a laggard tap's cursor drags that cursor forward and drops what
+  it never collected; the branch skips ahead rather than stalling the graph.
+- `SplitterTap.reset_buffer` does nothing. The cursors belong to the Splitter,
+  and the other branches are still reading against them.
+
+Neither node has `deinit`/`__enter__`/`__exit__`, unlike the ported
+CircuitPython effects around them. The originals had no lifecycle, and giving
+one to three implementations to keep in step buys nothing the collector does
+not already do.
+
+## `audiocore.get_buffer` returns a byte view (CircuitPython patch)
+
+The one place `apply_cp_patches.sh` changes code CircuitPython already had,
+rather than adding to it. Upstream returns a `memoryview` typed by the sample's
+width, so `len()` counts samples while the C protocol's `buffer_length` counts
+bytes -- every byte calculation downstream is then wrong by the sample width, a
+silent 2x for ordinary 16-bit audio. This port's own `audiocore.get_buffer`
+returns a byte view (audioif 413d87a), and the parity probes compare `len()`
+and slices across all three interpreters, so the oracle has to agree.
+
+The rewrite lives in `src/circuitpython_spike/apply_replacements.py` with the
+upstream text it replaces. It is idempotent, and it fails loudly rather than
+quietly if neither its marker nor the original text is present -- that means
+the file moved upstream and a person should re-read it.

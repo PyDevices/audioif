@@ -7,6 +7,22 @@ and CircuitPython `play()`/`stop()`/`pause()`/`resume()` output semantics.
 Import names stay `audiocore`/`synthio`/etc., matching CircuitPython for
 source compatibility.
 
+Two things here are not CircuitPython's. `audiodynamics` (compression,
+limiting, expansion, gating, transient shaping) and `audioroute` (fan one
+stream out to parallel branches) come from micropython-vst3's audio engine,
+which had them and CircuitPython does not; `apply_cp_patches.sh` adds them to a
+CircuitPython tree too. And `lib/audioinstruments/` is a pure-Python library of
+53 classic synthesizers, keyboards and drum machines built entirely out of
+`synthio` — no samples — with a MIDI-shaped API:
+
+```python
+import audioinstruments
+inst = audioinstruments.create("tr808", 48000)
+inst.note_on(36)                 # bass drum, full velocity
+inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
+audio_out.play(inst.output)
+```
+
 MicroPython consumes this repository as `USER_C_MODULES`. CPython 3.10+
 installs the separately versioned native distribution from TestPyPI:
 

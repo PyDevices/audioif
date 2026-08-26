@@ -1,0 +1,32 @@
+# Files apply_cp_patches.sh copies into a CircuitPython tree.
+#
+#   <path in this repo><TAB><path in the CircuitPython tree>
+#
+# The runtime-neutral DSP is copied straight out of src/shared/ rather than
+# duplicated here, so a change to the MicroPython/CPython builds cannot leave
+# CircuitPython behind. It lands under CircuitPython's own top-level shared/,
+# where `-I$(TOP)` makes `#include "shared/audioif_dynamics.h"` resolve exactly
+# as it does in this repo.
+
+src/shared/audioif_dynamics.h	shared/audioif_dynamics.h
+src/shared/audioif_dynamics.c	shared/audioif_dynamics.c
+src/shared/audioif_splitter.h	shared/audioif_splitter.h
+src/shared/audioif_splitter.c	shared/audioif_splitter.c
+
+src/circuitpython_spike/shared-bindings/audiodynamics/__init__.h	shared-bindings/audiodynamics/__init__.h
+src/circuitpython_spike/shared-bindings/audiodynamics/__init__.c	shared-bindings/audiodynamics/__init__.c
+src/circuitpython_spike/shared-bindings/audiodynamics/Dynamics.h	shared-bindings/audiodynamics/Dynamics.h
+src/circuitpython_spike/shared-bindings/audiodynamics/Dynamics.c	shared-bindings/audiodynamics/Dynamics.c
+src/circuitpython_spike/shared-module/audiodynamics/Dynamics.h	shared-module/audiodynamics/Dynamics.h
+src/circuitpython_spike/shared-module/audiodynamics/Dynamics.c	shared-module/audiodynamics/Dynamics.c
+
+src/circuitpython_spike/shared-bindings/audioroute/__init__.h	shared-bindings/audioroute/__init__.h
+src/circuitpython_spike/shared-bindings/audioroute/__init__.c	shared-bindings/audioroute/__init__.c
+src/circuitpython_spike/shared-bindings/audioroute/Splitter.h	shared-bindings/audioroute/Splitter.h
+src/circuitpython_spike/shared-bindings/audioroute/Splitter.c	shared-bindings/audioroute/Splitter.c
+src/circuitpython_spike/shared-bindings/audioroute/SplitterTap.h	shared-bindings/audioroute/SplitterTap.h
+src/circuitpython_spike/shared-bindings/audioroute/SplitterTap.c	shared-bindings/audioroute/SplitterTap.c
+src/circuitpython_spike/shared-module/audioroute/Splitter.h	shared-module/audioroute/Splitter.h
+src/circuitpython_spike/shared-module/audioroute/Splitter.c	shared-module/audioroute/Splitter.c
+src/circuitpython_spike/shared-module/audioroute/SplitterTap.h	shared-module/audioroute/SplitterTap.h
+src/circuitpython_spike/shared-module/audioroute/SplitterTap.c	shared-module/audioroute/SplitterTap.c

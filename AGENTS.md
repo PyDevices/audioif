@@ -11,9 +11,18 @@ for source compatibility; only this repo's own name differs.
   (esp32/rp2, CMake-based ports) — build glue for `USER_C_MODULES` discovery
 - `src/` — one directory per module (`audiocore/`, `synthio/`, `audiomixer/`,
   `audiospeed/`, `audiofreeverb/`, `audiofilters/`, `audiodelays/`,
-  `audiomp3/`), plus `src/cp_compat/` (CircuitPython-only core primitives
-  ported as standalone compat shims, each individually verified against
-  mainline MicroPython before use — not assumed missing)
+  `audiomp3/`, `audiodynamics/`, `audioroute/`), plus `src/cp_compat/`
+  (CircuitPython-only core primitives ported as standalone compat shims, each
+  individually verified against mainline MicroPython before use — not assumed
+  missing) and `src/shared/` (runtime-neutral DSP the MicroPython usermod and
+  the CPython extension both compile)
+- `lib/` — the pure-Python tiers, published to boards by MIP from
+  `<repo>/lib/<package>` and to PyPI in the same wheel:
+  `lib/audioinstruments/` (53 `synthio` instruments)
+- `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics` and
+  `audioroute` to a CircuitPython tree. Those two are not CircuitPython ports:
+  they come from micropython-vst3's `vstaudio` engine, so CircuitPython gains
+  them here rather than the other way round.
 - `docs/porting-plan.md` — the full phased porting history, architecture,
   and target layout
 - `docs/upstream-diff.md` — every deliberate deviation from upstream
@@ -42,6 +51,18 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   `tests/parity/` runs unchanged against this port and `bin/circuitpython`,
   rendering PCM and diffing byte-for-byte (or documenting the exact,
   bounded exception in `docs/upstream-diff.md`).
+- Two tiers have a different oracle, because CircuitPython is not where they
+  came from. Both are the micropython-vst3 sibling checkout, and neither
+  touches it:
+  - `python3 tests/parity/run_instruments_parity.py --verify --batch all`
+    renders each original `vstaudio` instrument script and holds the ported
+    module to it. Comparison is always within one interpreter — `ulab`'s
+    vectorized sine and libm's are different functions.
+  - `python3 tests/parity/verify_dsp.py` does the same for `audiodynamics` and
+    `audioroute` against `vstaudio_dsp.c` compiled unmodified by
+    `tests/parity/build_vstaudio_oracle.sh`. One hash covers every
+    interpreter here: the arithmetic is all in `src/shared/`, so two
+    interpreters disagreeing would itself be the finding.
 - Full regression after any change: rebuild interpreters
   (`build_interpreters.sh` in the parent workspace), run the tier 0-5
   parity suite plus `tests/parity/synthtools_acceptance.py`, and the LVGL

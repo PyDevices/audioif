@@ -7,18 +7,16 @@ Only the positional `Splitter(source, taps)` form is used: the port also
 accepts `taps` as a keyword, which the original never did, so that belongs in
 the unit tests rather than in a comparison against it.
 
-Sources here are SpeedChanger over a RawSample rather than the RawSample
-itself. A RawSample hands out its whole buffer on every pull and never runs
-dry, which would leave both the ring's wrap and the dry-source path
-unexercised; SpeedChanger delivers 128 frames at a time and then stops, which
-walks the ring and finishes empty.
+The source is a double-buffered RawSample, which hands out 300 frames at a
+time - enough to walk the ring past its 8192-frame wrap, and short enough that
+the 256-frame chunk cap shows up in the block lengths. A source that runs *out*
+needs something RawSample cannot do; see route_dry_probe.py.
 """
 
 import sys
 from array import array
 
 import audiocore
-import audiospeed
 
 MODULE = sys.argv[1] if len(sys.argv) > 1 else "audioroute"
 # Both spellings are built-in modules under MicroPython, which does not record
@@ -35,16 +33,15 @@ def checksum(data):
     return value
 
 
-def source(frames):
+def source(frames=600):
     """A stream whose content keeps changing, so a skipped span is visible."""
     values = array("h")
     for frame in range(frames):
         for channel in range(2):
             values.append(((frame * (37 + channel * 11) + channel * 500)
                            % 24001) - 12000)
-    return audiospeed.SpeedChanger(
-        audiocore.RawSample(values, sample_rate=SAMPLE_RATE, channel_count=2),
-        1.0)
+    return audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                               channel_count=2, single_buffer=False)
 
 
 def emit(tag, tap, blocks, index=0):
@@ -57,14 +54,14 @@ def emit(tag, tap, blocks, index=0):
 # Every tap count, each tap read in turn: the first one to ask refills the
 # ring, the rest read what it wrote.
 for taps in (1, 2, 3, 4):
-    splitter = route.Splitter(source(2000), taps)
+    splitter = route.Splitter(source(), taps)
     for index in range(taps):
-        emit("taps%d" % taps, splitter.tap(index), 4, index)
+        emit("taps%d" % taps, splitter.tap(index), 5, index)
 
 # Interleaved, which is how a Mixer actually pulls them.
-splitter = route.Splitter(source(2000), 3)
+splitter = route.Splitter(source(), 3)
 handles = [splitter.tap(index) for index in range(3)]
-for block in range(5):
+for block in range(6):
     for index, tap in enumerate(handles):
         data = bytes(audiocore.get_buffer(tap)[1])
         print("route interleaved", index, block, len(data), sum(data),
@@ -72,36 +69,30 @@ for block in range(5):
 
 # tap(i) is the same object every time - the taps are built with the Splitter,
 # not on demand, because the ring drops what an unclaimed tap never collects.
-splitter = route.Splitter(source(500), 2)
+splitter = route.Splitter(source(), 2)
 print("route identity", splitter.tap(1) is splitter.tap(1))
 
 # A laggard tap: read one branch past the ring's depth (8192 frames) while the
 # other sits idle, then read the idle one. Its cursor has been dragged forward
 # and the span it never collected is gone.
-splitter = route.Splitter(source(20000), 2)
+splitter = route.Splitter(source(), 2)
 lead = splitter.tap(0)
-for _ in range(70):          # 70 x 128 frames, comfortably past 8192
+for _ in range(40):          # 40 reads of up to 256 frames, past 8192
     bytes(audiocore.get_buffer(lead)[1])
 emit("laggard", splitter.tap(1), 4, 1)
-emit("laggard-lead", lead, 2, 0)
+emit("laggard-lead", lead, 3, 0)
 
 # reset_buffer on a tap does nothing on purpose: the cursors belong to the
 # Splitter and the other branches are still reading against them.
-splitter = route.Splitter(source(2000), 2)
+splitter = route.Splitter(source(), 2)
 first = splitter.tap(0)
-emit("before-reset", first, 2)
+emit("before-reset", first, 3)
 audiocore.reset_buffer(first)
-emit("after-reset", first, 2)
-
-# A source that runs out. The taps keep answering with silence rather than
-# reporting themselves finished - the graph around them is still running.
-splitter = route.Splitter(source(400), 2)
-emit("dry", splitter.tap(0), 6)
-emit("dry-other", splitter.tap(1), 6, 1)
+emit("after-reset", first, 3)
 
 # Out-of-range tap indices, including the negative one that used to arrive
 # here as a very large unsigned number.
-splitter = route.Splitter(source(500), 2)
+splitter = route.Splitter(source(), 2)
 for index in (2, 4, -1):
     try:
         splitter.tap(index)
@@ -111,7 +102,7 @@ for index in (2, 4, -1):
 
 for count in (0, 5):
     try:
-        route.Splitter(source(500), count)
+        route.Splitter(source(), count)
         print("route taps", count, "no error")
     except ValueError as error:
         print("route taps", count, error)

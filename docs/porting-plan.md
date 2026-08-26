@@ -81,8 +81,36 @@ tier 3  audiomixer: Mixer, MixerVoice
 tier 4  effects: audiofilters, audiodelays, audiofreeverb, audiospeed
 tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
+tier 7  audiodynamics, audioroute: native, but NOT CircuitPython ports
+tier 8  lib/: pure-Python libraries built on the tiers above
+        (audioinstruments; audioeffects next)
 dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
 ```
+
+### Tiers 7 and 8 run the other way round
+
+Everything through tier 6 answers "what does CircuitPython have that
+MicroPython and CPython do not". Tiers 7 and 8 answer the opposite question,
+and their source is micropython-vst3 rather than CircuitPython:
+
+- **tier 7** is `audiodynamics` (compressor, limiter, downward expander, gate,
+  transient shaper, with a high-passed detector for de-essing) and `audioroute`
+  (fan one stream out to parallel branches over a shared ring). These lived in
+  micropython-vst3's `vstaudio` usermod, which meant no application outside
+  that plugin could use them and half of its own effects library could not be
+  exercised offline at all. CircuitPython has no equivalent, so
+  `apply_cp_patches.sh` adds them to a CircuitPython tree — the only direction
+  in this repo where CircuitPython is the recipient. See
+  `docs/upstream-diff.md` for what changed in the move and what was kept.
+- **tier 8** is pure Python under `lib/`, published to boards by MIP from
+  `<repo>/lib/<package>` and into the same wheel for CPython.
+  `lib/audioinstruments/` is 53 classic synthesizers, keyboards and drum
+  machines written entirely in `synthio` — no samples — moved out of
+  micropython-vst3 so they are not tied to a VST host.
+
+Both have their own oracle, and it is the micropython-vst3 checkout rather
+than `bin/circuitpython`: `tests/parity/verify_dsp.py` and
+`tests/parity/run_instruments_parity.py`. Neither writes to that tree.
 
 ### Output devices (the only new design work)
 

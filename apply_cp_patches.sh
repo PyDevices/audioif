@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+# Add audioif's audiodynamics and audioroute modules to a CircuitPython tree.
+#
+#   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
+#   ./apply_cp_patches.sh --apply   [--port PORT] [--variant VARIANT]
+#   ./apply_cp_patches.sh --status  [--port PORT] [--variant VARIANT]
+#
+# CircuitPython already has everything else audioif ports - audiocore, synthio,
+# audiomixer, the effects - so this script only *adds*: two modules that
+# CircuitPython never had, whose DSP is the same src/shared/ C the MicroPython
+# usermod and the CPython extension compile. The one exception is a rewrite of
+# audiocore.get_buffer's return type; see src/circuitpython_spike/
+# apply_replacements.py for what and why.
+#
+# Out-of-tree substitute for Adafruit's Extending CircuitPython (no upstream
+# PR), same shape as displayif/apply_cp_patches.sh:
+#   Learn / design-guide step        This script
+#   shared-bindings/<mod>/           copy spike -> CP shared-bindings/
+#   shared-module/<mod>/             copy spike -> CP shared-module/
+#   enable CIRCUITPY_*               variant .mk + py/circuitpy_mpconfig.mk
+#   list sources in the port build   SRC_PATTERNS + the variant's own list
+#
+# Environment:
+#   CP_DIR          CircuitPython tree (default: sibling circuitpython/)
+#   WORKSPACE_DIR   Parent of audioif (default: parent of this repo)
+#   PORT            Must be unix (default: unix); other ports skip with exit 0
+#   VARIANT         Unix variant (default: coverage)
+#
+# The unix `coverage` variant is the workspace's parity oracle, and it hand-
+# lists every source it builds (SRC_BITMAP) rather than going through
+# SRC_PATTERNS - so both have to be written, and the hand-list is the one that
+# actually decides whether the module compiles here.
+
+set -euo pipefail
+
+AUDIOIF_DIR=$(cd "$(dirname "$0")" && pwd)
+WORKSPACE_DIR="${WORKSPACE_DIR:-$(cd "$AUDIOIF_DIR/.." && pwd)}"
+SPIKE_DIR="$AUDIOIF_DIR/src/circuitpython_spike"
+MANIFEST="$SPIKE_DIR/copy_manifest.txt"
+REPLACEMENTS="$SPIKE_DIR/apply_replacements.py"
+
+PORT="${PORT:-unix}"
+VARIANT="${VARIANT:-coverage}"
+MODE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dry-run|--apply|--status) MODE="$1"; shift ;;
+        --port)    PORT="$2"; shift 2 ;;
+        --variant) VARIANT="$2"; shift 2 ;;
+        -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
+        *) echo "Unknown argument: $1 (try --help)" >&2; exit 1 ;;
+    esac
+done
+MODE="${MODE:---dry-run}"
+
+if [[ "$PORT" != unix ]]; then
+    echo "audioif apply_cp_patches: port=$PORT is not unix; skipping"
+    exit 0
+fi
+
+if [[ -n "${CP_DIR:-}" && -d "${CP_DIR}/ports" ]]; then
+    CP_DIR=$(cd "$CP_DIR" && pwd)
+elif [[ -d "$WORKSPACE_DIR/circuitpython/ports" ]]; then
+    CP_DIR=$(cd "$WORKSPACE_DIR/circuitpython" && pwd)
+elif [[ -d "$WORKSPACE_DIR/cmods/circuitpython/ports" ]]; then
+    CP_DIR=$(cd "$WORKSPACE_DIR/cmods/circuitpython" && pwd)
+else
+    echo "CircuitPython tree not found (set CP_DIR)." >&2
+    exit 1
+fi
+
+PORT_DIR="$CP_DIR/ports/$PORT"
+VARIANT_MK="$PORT_DIR/variants/$VARIANT/mpconfigvariant.mk"
+VARIANT_H="$PORT_DIR/variants/$VARIANT/mpconfigvariant.h"
+DEFNS_MK="$CP_DIR/py/circuitpy_defns.mk"
+MPCONFIG_MK="$CP_DIR/py/circuitpy_mpconfig.mk"
+
+MARKER_TAG="audioif-cp begin (apply_cp_patches.sh)"
+
+DRY_RUN=0
+[[ "$MODE" == "--dry-run" ]] && DRY_RUN=1
+
+markers_for_file() {
+    case "$1" in
+        *.h) echo "/* >>> $MARKER_TAG */"; echo "/* >>> audioif-cp end */" ;;
+        *)   echo "# >>> $MARKER_TAG";     echo "# >>> audioif-cp end" ;;
+    esac
+}
+
+block_present() {
+    [ -f "$1" ] && grep -qF "${2:-audioif-cp begin}" "$1"
+}
+
+# Insert a marked block after the first line containing `anchor`.
+insert_block_after() {
+    local file="$1" anchor="$2" block="$3" needle="${4:-audioif-cp begin}"
+    if block_present "$file" "$needle"; then
+        echo "  skip (already patched): ${file#"$CP_DIR"/}"
+        return 0
+    fi
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "  [dry-run] insert into ${file#"$CP_DIR"/} after: $anchor"
+        return 0
+    fi
+    local begin end
+    begin=$(markers_for_file "$file" | sed -n '1p')
+    end=$(markers_for_file "$file" | sed -n '2p')
+    python3 - "$file" "$anchor" "$begin" "$end" "$block" <<'PY'
+import sys
+from pathlib import Path
+
+path, anchor, begin, end, block = sys.argv[1:6]
+text = Path(path).read_text()
+if begin in text:
+    raise SystemExit(0)
+if anchor not in text:
+    raise SystemExit("anchor not found in %s: %r" % (path, anchor))
+Path(path).write_text(
+    text.replace(anchor, anchor + "\n%s\n%s\n%s" % (begin, block, end), 1))
+PY
+    echo "  patched: ${file#"$CP_DIR"/}"
+}
+
+# Insert one plain line after `anchor` - for the build lists, where a marker
+# comment inside a backslash-continued variable would break the continuation.
+insert_line_after() {
+    local file="$1" anchor="$2" line="$3"
+    if grep -qF "$line" "$file" 2>/dev/null; then
+        echo "  skip (already present): ${file#"$CP_DIR"/}"
+        return 0
+    fi
+    if [ "$DRY_RUN" = 1 ]; then
+        echo "  [dry-run] insert into ${file#"$CP_DIR"/}: ${line//$'\t'/}"
+        return 0
+    fi
+    python3 - "$file" "$anchor" "$line" <<'PY'
+import sys
+from pathlib import Path
+
+path, anchor, line = sys.argv[1:4]
+text = Path(path).read_text()
+if line in text:
+    raise SystemExit(0)
+if anchor not in text:
+    raise SystemExit("anchor not found in %s: %r" % (path, anchor))
+Path(path).write_text(text.replace(anchor, anchor + "\n" + line, 1))
+PY
+    echo "  added:   ${line//$'\t'/} -> ${file#"$CP_DIR"/}"
+}
+
+copy_files() {
+    python3 - "$AUDIOIF_DIR" "$CP_DIR" "$MANIFEST" "$DRY_RUN" <<'PY'
+import filecmp
+import shutil
+import sys
+from pathlib import Path
+
+source_root, cp_dir, manifest, dry = sys.argv[1:5]
+dry_run = dry == "1"
+for raw in Path(manifest).read_text().splitlines():
+    line = raw.split("#", 1)[0].strip()
+    if not line:
+        continue
+    source_rel, destination_rel = (part.strip() for part in line.split("\t", 1))
+    source = Path(source_root) / source_rel
+    destination = Path(cp_dir) / destination_rel
+    if not source.is_file():
+        raise SystemExit("missing source file: %s" % source)
+    if destination.is_file() and filecmp.cmp(source, destination, shallow=False):
+        print("  unchanged: %s" % destination_rel)
+        continue
+    if dry_run:
+        print("  [dry-run] %s %s"
+              % ("update" if destination.is_file() else "create",
+                 destination_rel))
+        continue
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    print("  copied:    %s" % destination_rel)
+PY
+}
+
+# Anchors chain off whatever sibling patch sets are already in the file, so
+# repeated runs of several repos' scripts stack instead of fighting.
+last_marker_or() {
+    local file="$1"; shift
+    local candidate
+    for candidate in "$@"; do
+        if grep -qF "$candidate" "$file"; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    echo "no usable anchor in $file (tried: $*)" >&2
+    exit 1
+}
+
+echo "CircuitPython: $CP_DIR"
+echo "audioif:       $AUDIOIF_DIR"
+echo "variant:       $VARIANT"
+echo "mode:          $MODE"
+echo
+
+if [[ "$MODE" == "--status" ]]; then
+    for file in "$VARIANT_MK" "$VARIANT_H" "$DEFNS_MK" "$MPCONFIG_MK"; do
+        if [ ! -e "$file" ]; then
+            echo "missing  ${file#"$CP_DIR"/}"
+        elif block_present "$file"; then
+            echo "patched  ${file#"$CP_DIR"/}"
+        else
+            echo "pending  ${file#"$CP_DIR"/}"
+        fi
+    done
+    for file in shared-bindings/audiodynamics/__init__.c \
+                shared-bindings/audioroute/__init__.c \
+                shared/audioif_dynamics.c shared/audioif_splitter.c; do
+        [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
+    done
+    python3 "$REPLACEMENTS" "$CP_DIR" status
+    exit 0
+fi
+
+echo "==> Copy modules and shared DSP"
+copy_files
+echo
+
+echo "==> Rewrite audiocore.get_buffer's return type"
+python3 "$REPLACEMENTS" "$CP_DIR" "${MODE#--}"
+echo
+
+echo "==> py/circuitpy_mpconfig.mk (off by default)"
+MPCONFIG_ANCHOR=$(last_marker_or "$MPCONFIG_MK" \
+    '# >>> lv-circuitpython-mod end' \
+    'CFLAGS += -DCIRCUITPY_LOCALE=$(CIRCUITPY_LOCALE)')
+insert_block_after "$MPCONFIG_MK" "$MPCONFIG_ANCHOR" \
+"CIRCUITPY_AUDIODYNAMICS ?= 0
+CFLAGS += -DCIRCUITPY_AUDIODYNAMICS=\$(CIRCUITPY_AUDIODYNAMICS)
+CIRCUITPY_AUDIOROUTE ?= 0
+CFLAGS += -DCIRCUITPY_AUDIOROUTE=\$(CIRCUITPY_AUDIOROUTE)"
+echo
+
+echo "==> py/circuitpy_defns.mk (source patterns)"
+DEFNS_ANCHOR=$(last_marker_or "$DEFNS_MK" \
+    '# >>> lv-circuitpython-mod end' \
+    'ifeq ($(CIRCUITPY_MATH),1)')
+insert_block_after "$DEFNS_MK" "$DEFNS_ANCHOR" \
+"ifeq (\$(CIRCUITPY_AUDIODYNAMICS),1)
+SRC_PATTERNS += audiodynamics/%
+endif
+ifeq (\$(CIRCUITPY_AUDIOROUTE),1)
+SRC_PATTERNS += audioroute/%
+endif" "SRC_PATTERNS += audiodynamics/%"
+echo
+
+echo "==> Unix variant: enable the modules"
+[ -f "$VARIANT_MK" ] || { echo "Variant makefile not found: $VARIANT_MK" >&2; exit 1; }
+VARIANT_ANCHOR=$(last_marker_or "$VARIANT_MK" \
+    '# >>> displayif-usdl2 end' \
+    '# >>> lv-circuitpython-mod end' \
+    'CIRCUITPY_MESSAGE_COMPRESSION_LEVEL = 1')
+insert_block_after "$VARIANT_MK" "$VARIANT_ANCHOR" \
+"CIRCUITPY_AUDIODYNAMICS = 1
+CFLAGS += -DCIRCUITPY_AUDIODYNAMICS=1
+CIRCUITPY_AUDIOROUTE = 1
+CFLAGS += -DCIRCUITPY_AUDIOROUTE=1"
+echo
+
+echo "==> Unix variant: source list"
+# The coverage variant hand-lists its sources and never consults SRC_PATTERNS,
+# so these five lines are what actually gets the modules compiled here.
+BINDING_ANCHOR=$'\tshared-bindings/audiofilters/__init__.c \\'
+MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/Splitter.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/SplitterTap.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiodynamics/Dynamics.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/Splitter.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/SplitterTap.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_dynamics.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_splitter.c \\'
+echo
+
+echo "==> Unix variant: mpconfigvariant.h guards"
+if [ -f "$VARIANT_H" ]; then
+    VARIANT_H_ANCHOR=$(last_marker_or "$VARIANT_H" \
+        '/* >>> displayif-usdl2 end */' \
+        '/* >>> lv-circuitpython-mod end */' \
+        '#include "../mpconfigvariant_common.h"')
+    insert_block_after "$VARIANT_H" "$VARIANT_H_ANCHOR" \
+"#ifndef CIRCUITPY_AUDIODYNAMICS
+#define CIRCUITPY_AUDIODYNAMICS (0)
+#endif
+#ifndef CIRCUITPY_AUDIOROUTE
+#define CIRCUITPY_AUDIOROUTE (0)
+#endif"
+fi
+echo
+
+if [ "$DRY_RUN" = 1 ]; then
+    echo "Dry run complete. Re-run with --apply to write changes."
+else
+    echo "Patches applied."
+    echo
+    echo "Next:"
+    echo "  cd $PORT_DIR && make -j VARIANT=$VARIANT"
+    echo "  or, in this workspace: cmods/build_interpreters.sh --only cp-unix"
+fi

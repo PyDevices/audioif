@@ -29,11 +29,14 @@ ROOT = HERE.parents[1]
 WORKSPACE = ROOT.parent
 GOLDEN = HERE / "golden" / "dsp_nodes.json"
 
-#: probe -> (module the port provides it as, module the oracle provides it as)
-PROBES = {
-    "dynamics_probe.py": ("audiodynamics", "vstaudio_oracle"),
-    "route_probe.py": ("audioroute", "vstaudio_oracle"),
-}
+#: (probe, module the port provides it as, module the oracle provides it as,
+#:  {interpreter: why it is skipped there})
+PROBES = (
+    ("dynamics_probe.py", "audiodynamics", "vstaudio_oracle", {}),
+    ("route_probe.py", "audioroute", "vstaudio_oracle", {}),
+    ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
+     {"circuitpython": "its coverage variant does not compile audiospeed"}),
+)
 
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
 DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
@@ -82,7 +85,7 @@ def capture(args):
                   "compiled unmodified (see build_vstaudio_oracle.sh)",
         "probes": {},
     }
-    for probe, (_, old_module) in sorted(PROBES.items()):
+    for probe, _, old_module, _skips in PROBES:
         digest = run_probe([str(oracle)], probe, old_module)
         fixture["probes"][probe] = digest
         print("captured %-20s %s" % (probe, digest[:16]))
@@ -101,12 +104,16 @@ def verify(args):
     print("interpreters: %s\n" % ", ".join(sorted(interpreters)))
     failures = []
     checked = 0
-    for probe, (module, _) in sorted(PROBES.items()):
+    for probe, module, _old, skips in PROBES:
         expected = fixture["probes"].get(probe)
         if expected is None:
             failures.append("%s: nothing captured for it" % probe)
             continue
         for name, prefix in sorted(interpreters.items()):
+            if name in skips:
+                print("skipping %-20s %-14s (%s)"
+                      % (probe, name, skips[name]))
+                continue
             actual = run_probe(prefix, probe, module)
             checked += 1
             if actual == expected:
