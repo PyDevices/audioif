@@ -19,6 +19,12 @@
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
 
+// setup.py defines this from the VERSION file; the fallback is only for
+// someone compiling this source by hand.
+#ifndef AUDIOIF_VERSION
+#define AUDIOIF_VERSION "0.0.0+unknown"
+#endif
+
 typedef struct {
     PyObject *error;
     PyObject *buffer_owner_type;
@@ -1236,7 +1242,8 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_SPLITTER_CHUNK_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "DYNAMICS_FRAMES",
         AUDIOIF_DYNAMICS_FRAMES) < 0) return -1;
-    if (PyModule_AddStringConstant(module, "__version__", "0.0.1") < 0) return -1;
+    if (PyModule_AddStringConstant(module, "__version__",
+    AUDIOIF_VERSION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
     return 0;
 }

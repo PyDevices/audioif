@@ -1,4 +1,10 @@
+from pathlib import Path
+
 from setuptools import Extension, setup
+
+# _audioif.__version__ used to be a literal in the C, and drifted from VERSION
+# the first time VERSION moved. There is one version here, and it is this file.
+VERSION = Path(__file__).parent.joinpath("VERSION").read_text().strip()
 
 setup(
     ext_modules=[
@@ -22,6 +28,7 @@ setup(
                 "src/shared/audioif_splitter.c",
             ],
             include_dirs=["src"],
+            define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION)],
         )
     ]
 )

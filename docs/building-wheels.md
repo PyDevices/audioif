@@ -7,8 +7,10 @@ archive and wheel with:
 python -m build
 ```
 
-GitHub Release `v0.0.1` invokes the organization `publishing-v3` workflow
-with `build-kind: native-and-wasm`. It builds and validates exactly 16 wheels:
+A GitHub Release `vX.Y.Z` — matching the `VERSION` file, which is also where
+`_audioif.__version__` comes from — invokes the organization `publishing-v4`
+workflow with `build-kind: native-and-wasm`. It builds and validates exactly
+16 wheels:
 
 - CPython 3.10–3.14, manylinux_2_28 x86_64 and Windows AMD64.
 - CPython 3.13–3.14, Android API 21 arm64_v8a/x86_64 and Pyodide wasm32.

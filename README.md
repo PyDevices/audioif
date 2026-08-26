@@ -30,11 +30,12 @@ installs the separately versioned native distribution from TestPyPI:
 python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioif
 ```
 
-The initial CPython distribution is `pydevices-audioif==0.0.1` and contains
-`audiocore`, `synthio`, `audiomixer`, `audiofilters`, `audiodelays`,
-`audiofreeverb`, and `audiospeed`. `audiomp3` remains firmware-only for this
-release. The distribution has no runtime dependencies and does not publish an
-`audioif` import.
+The CPython distribution contains `audiocore`, `synthio`, `audiomixer`,
+`audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`,
+`audioroute`, and the `audioinstruments` package. `audiomp3` remains
+firmware-only. The distribution has no runtime dependencies and does not
+publish an `audioif` import; its version is the `VERSION` file, which is also
+what `_audioif.__version__` reports.
 
 **MicroPython status:** all module tiers ported and oracle-diffed byte-for-byte against
 `bin/circuitpython` on unix; DSP parity re-verified on windows and wasm;
