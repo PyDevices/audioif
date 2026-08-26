@@ -1,0 +1,7 @@
+{
+  "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, compiled unmodified (see build_vstaudio_oracle.sh)",
+  "probes": {
+    "dynamics_probe.py": "3e5462291e2a38ed8e3061c43c22d312ff0d967b803e7e2a39d08a45595efc7d",
+    "route_probe.py": "6b080d03833d9ba04de1cf607d2d06f247b07123d16f59df421c55475bbd23fb"
+  }
+}

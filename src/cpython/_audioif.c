@@ -16,6 +16,8 @@
 #include "shared/audioif_multitap.h"
 #include "shared/audioif_pitchshift.h"
 #include "shared/audioif_freeverb.h"
+#include "shared/audioif_dynamics.h"
+#include "shared/audioif_splitter.h"
 
 typedef struct {
     PyObject *error;
@@ -23,6 +25,8 @@ typedef struct {
     PyObject *rawsample_type;
     PyObject *envelope_state_type;
     PyObject *biquad_state_type;
+    PyObject *dynamics_state_type;
+    PyObject *splitter_ring_type;
 } audioif_state_t;
 
 typedef struct {
@@ -568,6 +572,212 @@ static PyType_Spec biquad_state_spec = {
     .slots = biquad_state_slots,
 };
 
+// --- audiodynamics / audioroute ---------------------------------------
+//
+// Unlike the CircuitPython-derived effects above, these two nodes come from
+// micropython-vst3's `vstaudio` usermod. The wrappers that drive them live in
+// audiodynamics.py and audioroute.py; what is exposed here is the state each
+// keeps between blocks, so the arithmetic stays in the same C the MicroPython
+// build compiles.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_dynamics_config_t config;
+    audioif_dynamics_state_t state;
+} audioif_dynamics_object_t;
+
+static int dynamics_state_init(audioif_dynamics_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    int mode = AUDIOIF_DYNAMICS_COMPRESS;
+    unsigned int sample_rate = 48000;
+    static char *keywords[] = {"mode", "sample_rate", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|iI:DynamicsState",
+        keywords, &mode, &sample_rate)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    audioif_dynamics_config_init(&self->config, mode, sample_rate);
+    audioif_dynamics_state_init(&self->state);
+    return 0;
+}
+
+static PyObject *dynamics_state_set_sample_rate(
+    audioif_dynamics_object_t *self, PyObject *argument) {
+    unsigned long rate = PyLong_AsUnsignedLong(argument);
+    if (PyErr_Occurred()) return NULL;
+    if (rate < 1 || rate > UINT32_MAX) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return NULL;
+    }
+    self->config.sample_rate = (uint32_t)rate;
+    Py_RETURN_NONE;
+}
+
+static PyObject *dynamics_state_configure(audioif_dynamics_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_DYNAMICS_OPT_THRESHOLD_DB ||
+        option > AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ) {
+        PyErr_SetString(PyExc_ValueError, "unknown dynamics option");
+        return NULL;
+    }
+    audioif_dynamics_configure(&self->config,
+        (audioif_dynamics_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *dynamics_state_finish(audioif_dynamics_object_t *self,
+    PyObject *unused) {
+    audioif_dynamics_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *dynamics_state_reset(audioif_dynamics_object_t *self,
+    PyObject *unused) {
+    audioif_dynamics_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+static PyObject *dynamics_state_process(audioif_dynamics_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    if (input.len % 4) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole stereo 16-bit frames");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_dynamics_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / 4));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyObject *dynamics_state_gain_reduction_db(
+    audioif_dynamics_object_t *self, void *closure) {
+    return PyFloat_FromDouble((double)self->state.gain_reduction_db);
+}
+
+static PyObject *dynamics_state_get_sample_rate(
+    audioif_dynamics_object_t *self, void *closure) {
+    return PyLong_FromUnsignedLong(self->config.sample_rate);
+}
+
+static PyMethodDef dynamics_state_methods[] = {
+    {"set_sample_rate", (PyCFunction)dynamics_state_set_sample_rate, METH_O, NULL},
+    {"configure", (PyCFunction)dynamics_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)dynamics_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)dynamics_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)dynamics_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyGetSetDef dynamics_state_getset[] = {
+    {"gain_reduction_db", (getter)dynamics_state_gain_reduction_db, NULL, NULL, NULL},
+    {"sample_rate", (getter)dynamics_state_get_sample_rate, NULL, NULL, NULL},
+    {NULL, NULL, NULL, NULL, NULL},
+};
+
+static PyType_Slot dynamics_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, dynamics_state_init},
+    {Py_tp_methods, dynamics_state_methods},
+    {Py_tp_getset, dynamics_state_getset},
+    {0, NULL},
+};
+
+static PyType_Spec dynamics_state_spec = {
+    .name = "_audioif.DynamicsState",
+    .basicsize = sizeof(audioif_dynamics_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = dynamics_state_slots,
+};
+
+typedef struct {
+    PyObject_HEAD
+    audioif_splitter_state_t state;
+} audioif_splitter_object_t;
+
+static int splitter_ring_init(audioif_splitter_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    int taps = 2;
+    static char *keywords[] = {"taps", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i:SplitterRing",
+        keywords, &taps)) return -1;
+    if (taps < 1 || taps > (int)AUDIOIF_SPLITTER_MAX_TAPS) {
+        PyErr_SetString(PyExc_ValueError, "taps must be 1..4");
+        return -1;
+    }
+    audioif_splitter_init(&self->state, (uint32_t)taps);
+    return 0;
+}
+
+static int splitter_ring_check_tap(audioif_splitter_object_t *self, int tap) {
+    if (tap < 0 || (uint32_t)tap >= self->state.tap_count) {
+        PyErr_SetString(PyExc_ValueError, "tap index out of range");
+        return -1;
+    }
+    return 0;
+}
+
+static PyObject *splitter_ring_write(audioif_splitter_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    audioif_splitter_write(&self->state, (const int16_t *)input.buf,
+        (uint32_t)(input.len / 4));
+    PyBuffer_Release(&input);
+    Py_RETURN_NONE;
+}
+
+static PyObject *splitter_ring_starved(audioif_splitter_object_t *self,
+    PyObject *argument) {
+    int tap = (int)PyLong_AsLong(argument);
+    if (PyErr_Occurred() || splitter_ring_check_tap(self, tap) < 0) return NULL;
+    return PyBool_FromLong(audioif_splitter_starved(&self->state,
+        (uint32_t)tap));
+}
+
+static PyObject *splitter_ring_take(audioif_splitter_object_t *self,
+    PyObject *argument) {
+    int tap = (int)PyLong_AsLong(argument);
+    if (PyErr_Occurred() || splitter_ring_check_tap(self, tap) < 0) return NULL;
+    uint32_t start = 0;
+    const uint32_t run = audioif_splitter_take(&self->state, (uint32_t)tap,
+        &start);
+    return PyBytes_FromStringAndSize(
+        (const char *)&self->state.ring[start * 2u], (Py_ssize_t)run * 4);
+}
+
+static PyMethodDef splitter_ring_methods[] = {
+    {"write", (PyCFunction)splitter_ring_write, METH_O, NULL},
+    {"starved", (PyCFunction)splitter_ring_starved, METH_O, NULL},
+    {"take", (PyCFunction)splitter_ring_take, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot splitter_ring_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, splitter_ring_init},
+    {Py_tp_methods, splitter_ring_methods},
+    {0, NULL},
+};
+
+static PyType_Spec splitter_ring_spec = {
+    .name = "_audioif.SplitterRing",
+    .basicsize = sizeof(audioif_splitter_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = splitter_ring_slots,
+};
+
 static PyObject *audioif_mix_s16(PyObject *module, PyObject *args) {
     Py_buffer left = {0};
     Py_buffer right = {0};
@@ -1012,6 +1222,20 @@ static int audioif_exec(PyObject *module) {
     if (state->biquad_state_type == NULL) return -1;
     if (PyModule_AddObjectRef(module, "BiquadState",
         state->biquad_state_type) < 0) return -1;
+    state->dynamics_state_type = PyType_FromModuleAndSpec(module,
+        &dynamics_state_spec, NULL);
+    if (state->dynamics_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "DynamicsState",
+        state->dynamics_state_type) < 0) return -1;
+    state->splitter_ring_type = PyType_FromModuleAndSpec(module,
+        &splitter_ring_spec, NULL);
+    if (state->splitter_ring_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "SplitterRing",
+        state->splitter_ring_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "SPLITTER_CHUNK_FRAMES",
+        AUDIOIF_SPLITTER_CHUNK_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "DYNAMICS_FRAMES",
+        AUDIOIF_DYNAMICS_FRAMES) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__", "0.0.1") < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
     return 0;
@@ -1024,6 +1248,8 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->rawsample_type);
     Py_VISIT(state->envelope_state_type);
     Py_VISIT(state->biquad_state_type);
+    Py_VISIT(state->dynamics_state_type);
+    Py_VISIT(state->splitter_ring_type);
     return 0;
 }
 
@@ -1034,6 +1260,8 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->rawsample_type);
     Py_CLEAR(state->envelope_state_type);
     Py_CLEAR(state->biquad_state_type);
+    Py_CLEAR(state->dynamics_state_type);
+    Py_CLEAR(state->splitter_ring_type);
     return 0;
 }
 

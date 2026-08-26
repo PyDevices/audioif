@@ -18,6 +18,8 @@ setup(
                 "src/shared/audioif_multitap.c",
                 "src/shared/audioif_pitchshift.c",
                 "src/shared/audioif_freeverb.c",
+                "src/shared/audioif_dynamics.c",
+                "src/shared/audioif_splitter.c",
             ],
             include_dirs=["src"],
         )

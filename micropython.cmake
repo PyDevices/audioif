@@ -34,6 +34,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_multitap.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_pitchshift.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_freeverb.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_dynamics.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
     ${MPAUDIO_SRC_DIR}/mpaudio_modules.c
     ${MPAUDIO_SRC_DIR}/audiocore/__init__.c
     ${MPAUDIO_SRC_DIR}/audiocore/RawSample.c
@@ -62,6 +64,11 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiodelays/MultiTapDelay.c
     ${MPAUDIO_SRC_DIR}/audiodelays/PitchShift.c
     ${MPAUDIO_SRC_DIR}/audiodelays/module.c
+    ${MPAUDIO_SRC_DIR}/audiodynamics/Dynamics.c
+    ${MPAUDIO_SRC_DIR}/audiodynamics/module.c
+    ${MPAUDIO_SRC_DIR}/audioroute/Splitter.c
+    ${MPAUDIO_SRC_DIR}/audioroute/SplitterTap.c
+    ${MPAUDIO_SRC_DIR}/audioroute/module.c
 )
 
 target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})
