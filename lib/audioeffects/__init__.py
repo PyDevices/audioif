@@ -27,3 +27,26 @@ from .modulation import (Chorus, Flanger, Phaser, Tremolo, AutoPan,
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
                     Exciter)
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
+
+#: The package's whole surface, grouped as the modules above are. Every
+#: name here is re-exported; nothing else in a submodule is public.
+__all__ = [
+    "configure", "sample_rate",
+    # dynamics
+    "Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
+    "TransientShaper", "MultibandCompressor",
+    # eq and filters
+    "ParametricEQ", "GraphicEQ", "LowPass", "HighPass", "BandPass",
+    "Notch", "LadderFilter", "CombFilter", "DynamicEQ",
+    # reverb
+    "Reverb",
+    # delay
+    "DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
+    "MultiTapDelay",
+    # modulation
+    "Chorus", "Flanger", "Phaser", "Tremolo", "AutoPan", "Vibrato", "Rotary",
+    # drive
+    "Overdrive", "Distortion", "Fuzz", "Saturation", "Bitcrusher", "Exciter",
+    # pitch and stereo
+    "PitchShifter", "Harmonizer", "Octaver", "StereoWidener",
+]

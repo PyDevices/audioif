@@ -53,13 +53,39 @@ RELEASE = {"plain": RELEASE_PLAIN, "filtered": RELEASE_FILTERED}
 
 
 def convert(path, note_map=None, docstring=None, fast=None, release=None,
-            replacements=(), into_create=()):
+            replacements=(), into_create=(), labels_comment=False, tail=None,
+            steal=None):
+    """Draft a ported module. ``labels_comment`` keeps the original's
+    ``# mpvst-macro-labels:`` line, and ``tail`` is appended verbatim -
+    both for the soundtrack's piece-private instruments, which stay whole
+    scripts loaded by the plug-in rather than becoming package modules."""
     src = Path(path).read_text()
     lines = src.split("\n")
     tree = ast.parse(src)
 
     labels = [s.strip() for s in
               lines[0].split(":", 1)[1].split("|")]
+
+    # Whatever the script imported, minus the host module it is being freed
+    # from. The soundtrack's instruments reach for audiofreeverb, audiodelays
+    # and audiofilters; the library's only ever wanted array/math/synthio.
+    imports = sorted({alias.name for node in tree.body
+                      if isinstance(node, ast.Import)
+                      for alias in node.names} - {"vstaudio"})
+
+    # `vstaudio.output(x)` names the chain tail. When it is not the
+    # synthesizer itself, the Instrument has to be told.
+    chain_tail = None
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "output"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "vstaudio"
+                and node.args and isinstance(node.args[0], ast.Name)):
+            chain_tail = node.args[0].id
+    if chain_tail == "synth":
+        chain_tail = None
 
     patches_node = None
     synth_index = None
@@ -89,12 +115,34 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     def drop_node(node, with_comments=True):
         drop.update(span(node, with_comments))
 
+    # The block of comments under the macro-labels line describes the
+    # instrument. It becomes the module docstring, so drop it here rather
+    # than let it survive as a floating comment below the imports.
+    header = []
+    for number in range(2, len(lines) + 1):
+        text = lines[number - 1].strip()
+        if text and not text.startswith("#"):
+            break
+        drop.add(number)
+        header.append(text[1:].lstrip() if text.startswith("#") else "")
+
+    # Anything a handler declares `global` is per-instance state, whatever
+    # scope it was assigned in. `global` becomes `nonlocal` below, so its
+    # assignment has to be inside create() for that binding to exist.
+    mutated = {name for node in ast.walk(tree)
+               if isinstance(node, ast.Global) for name in node.names}
+
     for index, node in enumerate(tree.body):
         if isinstance(node, ast.FunctionDef) and node.name in HOISTED:
             drop_node(node)
         elif isinstance(node, ast.FunctionDef) and node.name in into_create:
             # A builder that reads the sample rate when it is called, not when
             # the module is imported, has to be built per instance too.
+            sr_lines.update(span(node))
+        elif (isinstance(node, ast.FunctionDef)
+              and "vstaudio.transport(" in ast.unparse(node)):
+            # The host's playback position is a per-instance callable now,
+            # so anything reading it has to live where that callable is.
             sr_lines.update(span(node))
         elif isinstance(node, ast.Try):
             # the ulab import guard
@@ -105,9 +153,12 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
             names = [t.id for t in node.targets if isinstance(t, ast.Name)]
             if any(n in ("SR", "TAU", "FALL", "PATCHES") for n in names):
                 drop_node(node, with_comments=("PATCHES" in names))
-            elif re.search(r"\bSR\b", ast.unparse(node.value)):
-                # Anything derived from the sample rate has to be built per
-                # instance, not once at import.
+            elif (re.search(r"\bSR\b", ast.unparse(node.value))
+                  or (index < synth_index and any(n in mutated for n in names))):
+                # Anything derived from the sample rate, or that a handler
+                # reassigns from above the synthesizer, has to be built per
+                # instance rather than once at import. (Below the
+                # synthesizer everything already moves into create().)
                 for n in range(node.lineno, node.end_lineno + 1):
                     sr_lines.add(n)
         elif isinstance(node, ast.Expr):
@@ -164,23 +215,33 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     body = "\n".join(create_lines)
     body = re.sub(r"\bglobal\b", "nonlocal", body)
     body = re.sub(r"\bvstaudio\.(EVENT_[A-Z_]+)", r"\1", body)
+    # The host's playback position arrives as a callable now, not a module
+    # function, so a tempo-syncing instrument reads whatever its caller
+    # gave it. Same reading, same shape, one indirection.
+    uses_transport = "vstaudio.transport(" in body
+    body = body.replace("vstaudio.transport(", "transport(")
 
     # release_voice / steal_oldest / trigger_voice keep their call sites but
     # delegate. Every instrument releases through _support.release_voice; the
     # handful that do more at key-off act on the voice it hands back, so their
     # release still reads the same way as everyone else's.
-    replacement = RELEASE.get(release, release) if release else RELEASE_PLAIN
-    body, count = re.subn(
-        r"def release_voice\(k\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
-        lambda _: replacement, body)
-    if count != 1:
-        raise SystemExit("%s: rewrote %d release_voice definitions, wanted 1"
-                         % (Path(path).stem, count))
-    body = re.sub(
-        r"def steal_oldest\(\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
-        "def steal_oldest():\n"
-        "    _support.steal_oldest(voices, release_voice)\n",
-        body)
+    # "keep" leaves a definition alone: an instrument that holds one note
+    # per voice rather than a tuple of them, or one whose voice stealing
+    # inlines the release because it has no release_voice at all.
+    if release != "keep":
+        replacement = RELEASE.get(release, release) if release else RELEASE_PLAIN
+        body, count = re.subn(
+            r"def release_voice\(k\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
+            lambda _: replacement, body)
+        if count != 1:
+            raise SystemExit("%s: rewrote %d release_voice definitions, wanted 1"
+                             % (Path(path).stem, count))
+    if steal != "keep":
+        body = re.sub(
+            r"def steal_oldest\(\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
+            "def steal_oldest():\n"
+            "    _support.steal_oldest(voices, release_voice)\n",
+            body)
     body = re.sub(
         r"def trigger_voice\(k, notes\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
         "def trigger_voice(k, notes):\n"
@@ -202,7 +263,14 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     needed = [n for n in SUPPORT_NAMES if re.search(r"\b%s\b" % n, whole)]
 
     out = []
-    out.append('"""%s"""' % (docstring or Path(path).stem))
+    if labels_comment:
+        # The plug-in reads its macro names straight out of the embedded
+        # script source, so a script it loads directly has to keep this
+        # line. Generated from the same labels as MACRO_LABELS below.
+        out.append("# mpvst-macro-labels: " + " | ".join(labels))
+    description = docstring or "\n".join(header).strip() or Path(path).stem
+    out.append('"""%s"""' % description if "\n" not in description
+               else '"""%s\n"""' % description)
     out.append("")
     out.append("MACRO_LABELS = (")
     line = "   "
@@ -235,7 +303,10 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
             else:
                 chunk += piece
             first = False
-        out.append(chunk.rstrip(",") + ")),")
+        # A one-macro instrument keeps its trailing comma, or ("Init", (56))
+        # is a bare int rather than a tuple of one.
+        out.append(chunk if len(ints) == 1 else chunk.rstrip(","))
+        out[-1] += ")),"
     out.append("}")
     out.append("")
     if note_map:
@@ -244,11 +315,16 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
             out.append('    (%d, "%s"),' % (note, label))
         out.append(")")
         out.append("")
-    # Per-file helpers that survived the move may still need these.
-    if re.search(r"\barray\.", whole):
-        out.append("import array")
-    if re.search(r"\bmath\.", whole) or re.search(r"\bTAU\b", whole):
-        out.append("import math")
+    # Whatever the original imported and the converted module still uses.
+    # `math` also survives a script that only wanted it for TAU, which is
+    # provided here instead.
+    for name in imports:
+        if name == "synthio":
+            continue
+        if name == "math" and re.search(r"\bTAU\b", whole):
+            out.append("import math")
+        elif re.search(r"\b%s\." % name, whole):
+            out.append("import %s" % name)
     out.append("import synthio")
     out.append("")
     if needed:
@@ -263,6 +339,8 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
         out.append(line)
         out.append(")")
     out.append("from audioinstruments._support import Instrument")
+    if uses_transport:
+        out.append("from audioinstruments._support import static_transport")
     if "_support." in body:
         out.append("from audioinstruments import _support")
     out.append("")
@@ -274,13 +352,24 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     out.append("")
     out.append("def create(sample_rate, transport=None):")
     out.append("    SR = sample_rate")
+    if uses_transport:
+        out.append("    if transport is None:")
+        out.append("        transport = static_transport")
     out.append(body)
     out.append("")
+    extras = ""
+    if chain_tail:
+        extras += ", output=%s" % chain_tail
+    if note_map:
+        extras += ", note_map=NOTE_MAP"
     out.append("    instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,")
-    out.append("                            transport=transport%s)"
-               % (", note_map=NOTE_MAP" if note_map else ""))
+    out.append("                            transport=transport%s)" % extras)
     out.append("    instrument.program_change(0)")
     out.append("    return instrument")
+    if tail:
+        out.append("")
+        out.append("")
+        out.append(tail.rstrip("\n"))
     text = "\n".join(out) + "\n"
 
     # The escape hatch for what no rule can infer: dead code to drop, a table

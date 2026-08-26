@@ -1,0 +1,24 @@
+[flake8]
+# Defect checks only, not formatting opinions.
+#
+# F   pyflakes: undefined names, unused imports, shadowed definitions,
+#     nonlocal declarations for a name nothing assigns - the class of
+#     thing that is a bug wherever it appears.
+# E9  syntax and IO errors.
+# W6  deprecated or removed language features.
+#
+# Deliberately not pycodestyle's layout rules. The instrument modules are
+# ported synthesizer scripts whose compact conditionals are the point, the
+# CPython twins of the native modules mirror a C API line for line, and a
+# generated module puts MACRO_LABELS and PATCHES above its imports on
+# purpose - so E501, E701 and E402 here would be thousands of complaints
+# about code that reads the way it is meant to.
+select = F,E9,W6
+
+# tests/vendor is third-party code kept as it was published.
+extend-exclude =
+    .venv,
+    build,
+    dist,
+    tests/vendor,
+    *.egg-info

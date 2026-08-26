@@ -17,8 +17,6 @@ The underlying audioif nodes are kept as attributes so applications can
 bind parameters straight to them.
 """
 
-import math
-
 #: Every node this library builds is created at this rate. It is module state
 #: rather than a constructor argument because a process only ever has one
 #: sample rate, and threading it through 39 classes would be noise. Call

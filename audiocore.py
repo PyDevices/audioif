@@ -1,6 +1,5 @@
 """CircuitPython-compatible audio sample sources for CPython."""
 
-import io
 import wave
 
 import _audioif  # noqa: F401 - verifies that the native runtime is present

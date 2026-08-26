@@ -1,6 +1,6 @@
 """CircuitPython-compatible PCM mixer."""
 
-from audiocore import GET_BUFFER_DONE, GET_BUFFER_MORE_DATA, _AudioSample, get_buffer, reset_buffer
+from audiocore import GET_BUFFER_MORE_DATA, _AudioSample, get_buffer, reset_buffer
 import _audioif
 
 

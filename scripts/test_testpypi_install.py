@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Smoke a fresh pydevices-audioif install from TestPyPI."""
 
-from array import array
 import subprocess
 import sys
 import tempfile
@@ -23,7 +22,6 @@ with tempfile.TemporaryDirectory(prefix="audioif-testpypi-") as directory:
         "pydevices-audioif==0.0.1",
     ], check=True, cwd=root)
     code = """
-from array import array
 import audiocore, synthio
 s = synthio.Synthesizer(sample_rate=8000)
 s.press(69)

@@ -55,7 +55,6 @@ def create(sample_rate, transport=None):
     voices = {}
     serial = 0
     MAX_VOICES = 1
-    last_pitch = None
 
 
     def release_voice(k):
@@ -71,7 +70,7 @@ def create(sample_rate, transport=None):
     def handle_event(event_type, channel, note_id, data0, value0, value1, sample_position):
         nonlocal volume, hpf_cutoff, hpf_peak, lpf_cutoff, lpf_peak, osc2_pitch, eg2_sweep
         nonlocal eg2_a, eg2_d, eg2_s, eg2_r, ring_mod, noise_lvl, vca_a, vca_r, master_tune
-        nonlocal serial, last_pitch
+        nonlocal serial
 
         k = key_of(channel, note_id, data0)
 
