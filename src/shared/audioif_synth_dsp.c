@@ -32,13 +32,22 @@ bool audioif_oscillator_fill(int32_t *output, const int16_t *waveform,
     uint32_t *accumulator, uint16_t duration, uint8_t frequency_shift) {
     uint32_t offset = waveform_start << frequency_shift;
     uint32_t limit = waveform_end << frequency_shift;
+    uint32_t span = limit - offset;
     uint32_t accum = *accumulator;
     if (dds_rate > limit / 2) return false;
-    if (accum > limit) accum = accum % limit + offset;
+    // Deviation from CircuitPython: it wraps on `accum > limit`, which lets an
+    // accumulator landing exactly on the loop end index waveform[waveform_end]
+    // - one past the samples it may read, and off the end of the buffer
+    // entirely for a note looping the whole waveform. Any table advancing an
+    // exact number of samples per frame hits it, so a render's output depended
+    // on whatever the allocator had left after the array. The playable index
+    // range is [waveform_start, waveform_end), so wrap on `>=`.
+    // See docs/upstream-diff.md.
+    if (accum >= limit) accum = offset + (accum - offset) % span;
 
     for (uint16_t i = 0; i < duration; i++) {
         accum += dds_rate;
-        if (accum > limit) accum = accum - limit + offset;
+        if (accum >= limit) accum -= span;
         output[i] = waveform[accum >> frequency_shift];
     }
     *accumulator = accum;

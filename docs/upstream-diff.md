@@ -578,3 +578,53 @@ the deinit guard, the context-manager protocol, and rendered PCM via
 `get_buffer`/`reset_buffer`. This is the calibration case: when a tier's
 oracle diff matches this cleanly, the port is source-faithful, not just
 "looks right."
+
+## The oscillator wraps its accumulator one sample late, and reads off the end of the waveform (instruments tier)
+
+Upstream's DDS loop (`shared-module/synthio/__init__.c`, and the ring
+modulator beside it) advances a fixed-point accumulator and wraps it with
+
+```c
+if (accum > lim) { accum = accum - lim + offset; }
+int16_t idx = accum >> SYNTHIO_FREQUENCY_SHIFT;
+out_buffer32[i] = waveform[idx];
+```
+
+`lim` is `waveform_end << SHIFT`, and `waveform_end` is an exclusive bound --
+the samples a note may read are `[waveform_start, waveform_end)`. Wrapping on
+`>` rather than `>=` lets the accumulator sit *exactly* on `lim`, so that
+iteration indexes `waveform[waveform_end]`: one past the loop, and for the
+common case of a note looping an entire table, one past the end of the buffer
+itself. The read is out of bounds, and what it returns is whatever the
+allocator happened to leave after the array.
+
+This is not a rare edge. Any note whose `dds_rate` is an exact multiple of the
+sample step lands on the boundary on a schedule -- the noise tables the drum
+machines play at `sample_rate / 8192` advance exactly one sample per frame and
+hit it every 8192 frames, and each voice hits it at its own offset. The
+practical consequence is that a render is not reproducible: the same script,
+same events, same interpreter produced different PCM depending on how the heap
+happened to be laid out. Confirmed directly on CPython -- rendering one TR-909
+sequence gave different output under `PYTHONMALLOC=default`, `malloc`, and
+`debug`, and changed again if unrelated objects were allocated beforehand.
+
+Fixed here (`audioif_oscillator_fill()` in `src/shared/audioif_synth_dsp.c`,
+shared by the MicroPython usermod and the CPython extension, plus the
+MicroPython ring-modulator loop in `src/synthio/__init__.c`) by wrapping on
+`>=` and subtracting the loop span, and by reducing an out-of-range incoming
+accumulator into `[offset, limit)` rather than into `[0, limit) + offset`.
+
+Kept upstream's structure otherwise; this is a correctness fix, not a
+behavioral redesign. It is a deliberate divergence from the oracle only where
+the oracle's behavior is undefined: every committed parity fixture
+(`verify_effects`, `verify_streaming`, `verify_acceptance`, and the CPython API
+tests) still matches its recorded hash after the change, because those
+fixtures' waveforms and rates never land on the boundary. Where the boundary
+*is* hit, there is no oracle value to be faithful to -- upstream is reading
+memory it does not own.
+
+Note for anyone diffing instruments against `bin/circuitpython`: the oracle
+build still has this bug, so CircuitPython's own renders of boundary-hitting
+material remain sensitive to its heap layout. Instrument parity runs treat
+CircuitPython as advisory for that reason; CPython and MicroPython (both of
+which take the fix) are the enforced targets.

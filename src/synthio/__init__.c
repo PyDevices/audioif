@@ -178,14 +178,17 @@ static bool synth_note_into_buffer(synthio_synth_t *synth, int chan, int32_t *ou
         offset = ring_waveform_start << SYNTHIO_FREQUENCY_SHIFT;
         lim = ring_waveform_length << SYNTHIO_FREQUENCY_SHIFT;
 
-        if (accum > lim) {
-            accum = accum % lim + offset;
+        // Wrap on `>=`, not CircuitPython's `>`; see the note in
+        // audioif_oscillator_fill() and docs/upstream-diff.md.
+        uint32_t ring_span = lim - offset;
+        if (accum >= lim) {
+            accum = offset + (accum - offset) % ring_span;
         }
 
         for (uint16_t i = 0; i < dur; i++) {
             accum += ring_dds_rate;
-            if (accum > lim) {
-                accum = accum - lim + offset;
+            if (accum >= lim) {
+                accum -= ring_span;
             }
             int16_t idx = accum >> SYNTHIO_FREQUENCY_SHIFT;
             int16_t wi = (ring_waveform[idx] * out_buffer32[i]) / 32768;
