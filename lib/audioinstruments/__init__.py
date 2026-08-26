@@ -30,8 +30,20 @@ DRUM_MACHINES = (
     "tr606", "tr707", "tr808", "tr909",
 )
 
+#: Everything else: synthesizers, organs, and electromechanical keyboards,
+#: played by pitch rather than by voice.
+MELODIC = (
+    "andromeda", "arp2600", "b3", "clavinet", "cp70", "cs80", "cz101", "d50",
+    "dx7", "emulator2", "fairlight", "farfisa", "fs1r", "jp8000", "juno106",
+    "jupiter8", "k2600", "karplus", "mellotron", "microwave", "minimoog",
+    "ms20", "ms2000", "music_easel", "nord_lead", "obxa", "odyssey", "pianet",
+    "polysix", "ppg_wave", "prophet5", "prophet_vs", "rhodes", "sh101",
+    "solina", "taurus", "tb303", "virus", "vl1", "vox_continental", "vp330",
+    "wasp", "wurlitzer",
+)
+
 #: Every instrument module in this package.
-ALL = DRUM_MACHINES
+ALL = DRUM_MACHINES + MELODIC
 
 
 def load(name):

@@ -66,10 +66,17 @@ PRESSURE = {
     "odyssey": "channel",
 }
 
-#: Instruments carrying more than the single "Init" patch.
-PROGRAMS = {
-    "minimoog": (1, 2, 0),
-}
+def _program_ops(patches):
+    """Visit every patch the instrument declares, then return to patch 0.
+
+    Read off the module rather than listed here, so an instrument that gains
+    patches gets them exercised without anyone remembering to say so. An
+    instrument carrying only the default patch is left alone: create() has
+    already applied it, and a redundant program change would only churn every
+    golden the day the first one is added.
+    """
+    extra = tuple(index for index in sorted(patches) if index != 0)
+    return (extra + (0,)) if extra else ()
 
 
 def _drum_ops(name, macro_count):
@@ -103,7 +110,7 @@ def _drum_ops(name, macro_count):
     return ops
 
 
-def _melodic_ops(name, macro_count):
+def _melodic_ops(name, macro_count, patches=(0,)):
     ops = []
     for pitch in MELODIC_CHORD:
         ops.append(("on", pitch, 100))
@@ -142,7 +149,7 @@ def _melodic_ops(name, macro_count):
         ops.append(("off", 62))
         ops.append(("pull", 2))
 
-    for index in PROGRAMS.get(name, ()):
+    for index in _program_ops(patches):
         ops.append(("pc", index))
         for pitch in MELODIC_CHORD:
             ops.append(("on", pitch, 100))
@@ -161,12 +168,15 @@ def _melodic_ops(name, macro_count):
     return ops
 
 
-def build(name, macro_count):
-    """Return the operation list for ``name``. ``macro_count`` comes from each
-    side's own source of truth, so a mismatch shows up as a PCM difference."""
+def build(name, macro_count, patches=(0,)):
+    """Return the operation list for ``name``.
+
+    ``macro_count`` and ``patches`` come from each side's own source of truth,
+    so a mismatch between the two shows up as a PCM difference rather than
+    being papered over here."""
     if name in DRUMS:
         return tuple(_drum_ops(name, macro_count))
-    return tuple(_melodic_ops(name, macro_count))
+    return tuple(_melodic_ops(name, macro_count, patches))
 
 
 #: Transport readings served to instruments that tempo-sync, one per pull.

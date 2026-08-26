@@ -143,8 +143,8 @@
     "minimoog": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "9dbe11d5b2be5ace5e4bc7e53126c39563da8a4eb032f30dc95d7eef52cd36aa",
-        "micropython": "79f72929e6d3468499ea13e6a62a48cb44d9897194515630f6c656534120eb6a"
+        "cpython": "add759487824226663b584d5f5958ec0482f973c968be7eeaa283a1ba7b13224",
+        "micropython": "055ff5e06dd05c23ded4dd9922ca917cf19f432c2ee95152af63e373f59b0384"
       }
     },
     "ms20": {

@@ -66,6 +66,15 @@ class InstrumentLibraryTest(unittest.TestCase):
                                    "%s %s (note %d) is silent"
                                    % (name, label, note))
 
+    def test_every_melodic_instrument_sounds_a_chord(self):
+        # Enough blocks for the slow string and pad attacks to get going.
+        for name in audioinstruments.MELODIC:
+            instrument = audioinstruments.create(name, SAMPLE_RATE)
+            for pitch in (48, 60, 64, 67):
+                instrument.note_on(pitch, 100)
+            level = peak(instrument.output, 24)
+            self.assertGreater(level, 0.001, "%s is silent" % name)
+
     def test_patch_zero_is_what_a_fresh_instrument_plays(self):
         for name in audioinstruments.DRUM_MACHINES:
             module = audioinstruments.load(name)

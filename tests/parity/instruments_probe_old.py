@@ -46,17 +46,28 @@ def main():
     if handler is None or output is None:
         raise SystemExit("%s registered no handler/output" % name)
 
-    patch = module.PATCHES[0][1]
-    macro_count = len(patch)
+    macro_count = len(module.PATCHES[0][1])
 
-    # Patch 0 on the 7-bit grid. The ported module stores these same integers
-    # and applies them from create(), so both sides start identically.
-    for index, value in enumerate(patch):
-        handler(shim.EVENT_PARAMETER, 0, -1, index,
-                int(value * 127.0 + 0.5) / 127.0, 0.0, 0)
+    def select_patch(index):
+        """Apply a patch on the 7-bit grid, as parameter events.
+
+        The ported module stores its patches as MIDI integers, so this is the
+        comparison that answers the question the gate is asking: did moving
+        the script change what it sounds like? Rounding the patch tables to
+        7 bits is a separate decision, taken deliberately, and it moves a
+        macro by at most half a step - not something to rediscover here as a
+        hash mismatch. This is also why the old side never sends a real
+        program change: the script would answer one from its own unrounded
+        float tables.
+        """
+        for macro, value in enumerate(module.PATCHES[index][1]):
+            handler(shim.EVENT_PARAMETER, 0, -1, macro,
+                    int(value * 127.0 + 0.5) / 127.0, 0.0, 0)
+
+    select_patch(0)
 
     pulls = 0
-    for op in sequences.build(name, macro_count):
+    for op in sequences.build(name, macro_count, module.PATCHES):
         shim._transport = sequences.transport_at(pulls)
         kind = op[0]
         if kind == "on":
@@ -67,7 +78,7 @@ def main():
         elif kind == "macro":
             handler(shim.EVENT_PARAMETER, 0, -1, op[1], op[2] / 127.0, 0.0, 0)
         elif kind == "pc":
-            handler(shim.EVENT_PROGRAM_CHANGE, 0, -1, op[1], 0.0, 0.0, 0)
+            select_patch(op[1])
         elif kind == "cpress":
             handler(shim.EVENT_CHANNEL_PRESSURE, 0, -1, 0, op[1] / 127.0, 0.0, 0)
         elif kind == "ppress":

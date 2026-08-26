@@ -53,7 +53,7 @@ RELEASE = {"plain": RELEASE_PLAIN, "filtered": RELEASE_FILTERED}
 
 
 def convert(path, note_map=None, docstring=None, fast=None, release=None,
-            replacements=()):
+            replacements=(), into_create=()):
     src = Path(path).read_text()
     lines = src.split("\n")
     tree = ast.parse(src)
@@ -79,17 +79,23 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     body_start = None     # first line that belongs inside create()
     sr_lines = set()      # module assignments that derive from the sample rate
 
-    def drop_node(node, with_comments=True):
+    def span(node, with_comments=True):
         start = node.lineno
         if with_comments:
             while start > 1 and lines[start - 2].lstrip().startswith("#"):
                 start -= 1
-        for n in range(start, node.end_lineno + 1):
-            drop.add(n)
+        return range(start, node.end_lineno + 1)
+
+    def drop_node(node, with_comments=True):
+        drop.update(span(node, with_comments))
 
     for index, node in enumerate(tree.body):
         if isinstance(node, ast.FunctionDef) and node.name in HOISTED:
             drop_node(node)
+        elif isinstance(node, ast.FunctionDef) and node.name in into_create:
+            # A builder that reads the sample rate when it is called, not when
+            # the module is imported, has to be built per instance too.
+            sr_lines.update(span(node))
         elif isinstance(node, ast.Try):
             # the ulab import guard
             drop_node(node, with_comments=False)
@@ -163,10 +169,13 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
     # delegate. Every instrument releases through _support.release_voice; the
     # handful that do more at key-off act on the voice it hands back, so their
     # release still reads the same way as everyone else's.
-    body = re.sub(
+    replacement = RELEASE.get(release, release) if release else RELEASE_PLAIN
+    body, count = re.subn(
         r"def release_voice\(k\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
-        (RELEASE.get(release, release) if release else RELEASE_PLAIN),
-        body)
+        lambda _: replacement, body)
+    if count != 1:
+        raise SystemExit("%s: rewrote %d release_voice definitions, wanted 1"
+                         % (Path(path).stem, count))
     body = re.sub(
         r"def steal_oldest\(\):\n(?:[ \t]+.*\n)+?(?=\n|def |\S)",
         "def steal_oldest():\n"
@@ -276,7 +285,9 @@ def convert(path, note_map=None, docstring=None, fast=None, release=None,
 
     # The escape hatch for what no rule can infer: dead code to drop, a table
     # builder that has to opt out of the cache because its argument follows a
-    # macro. Each one has to match, so a stale spec fails loudly.
+    # macro. Matched against the finished module - indentation included, so a
+    # body-level replacement is written as it will appear inside create().
+    # Each one has to match, so a stale spec fails loudly.
     for old, new in replacements:
         if old not in text:
             raise SystemExit("%s: replacement did not match: %r"

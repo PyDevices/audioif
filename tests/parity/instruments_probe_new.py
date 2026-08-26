@@ -60,7 +60,7 @@ def main():
                     % (name, note))
 
     pulls = 0
-    for op in sequences.build(name, macro_count):
+    for op in sequences.build(name, macro_count, module.PATCHES):
         reading[0] = sequences.transport_at(pulls)
         kind = op[0]
         if kind == "on":
