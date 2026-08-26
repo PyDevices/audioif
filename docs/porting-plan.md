@@ -83,7 +83,7 @@ tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
 tier 7  audiodynamics, audioroute: native, but NOT CircuitPython ports
 tier 8  lib/: pure-Python libraries built on the tiers above
-        (audioinstruments; audioeffects next)
+        (audioinstruments, audioeffects)
 dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
 ```
 
@@ -105,12 +105,21 @@ and their source is micropython-vst3 rather than CircuitPython:
 - **tier 8** is pure Python under `lib/`, published to boards by MIP from
   `<repo>/lib/<package>` and into the same wheel for CPython.
   `lib/audioinstruments/` is 53 classic synthesizers, keyboards and drum
-  machines written entirely in `synthio` — no samples — moved out of
-  micropython-vst3 so they are not tied to a VST host.
+  machines written entirely in `synthio` — no samples — and
+  `lib/audioeffects/` is 39 effect classes built on the tiers above, both
+  moved out of micropython-vst3 so they are not tied to a VST host.
 
 Both have their own oracle, and it is the micropython-vst3 checkout rather
 than `bin/circuitpython`: `tests/parity/verify_dsp.py` and
 `tests/parity/run_instruments_parity.py`. Neither writes to that tree.
+
+micropython-vst3 has since been cut over to import these packages instead
+of carrying its own copies, so that checkout is no longer an independent
+oracle for them: it *is* them. What still holds it honest is
+`tests/parity/golden/vst3_render_reference.json`, captured from the
+plug-in's six soundtrack pieces before the cutover and compared with
+`tests/parity/capture_render_reference.py --verify`. Re-capture it after
+any DSP change here, or it stops meaning anything.
 
 ### Output devices (the only new design work)
 

@@ -63,6 +63,17 @@ Both are expected as siblings in the parent workspace (`cmods/` in
     `tests/parity/build_vstaudio_oracle.sh`. One hash covers every
     interpreter here: the arithmetic is all in `src/shared/`, so two
     interpreters disagreeing would itself be the finding.
+- Those two oracles are the *original* scripts and `vstaudio_dsp.c`, which
+  micropython-vst3 no longer carries — it imports these packages now. Both
+  are read out of its git history, so they stay fixed no matter what that
+  checkout does next. What covers the cutover itself is
+  `python3 tests/parity/capture_render_reference.py --verify`: it renders
+  the plug-in's six soundtrack pieces and compares them with what they
+  sounded like beforehand. Slow (~15 min) and not part of the default gate,
+  but **re-capture it after any DSP change here** or it stops meaning
+  anything.
+- `python3 -m flake8` is the lint gate (`.flake8`, defect checks only —
+  layout is deliberately not gated). It runs in CI on every push.
 - Full regression after any change: rebuild interpreters
   (`build_interpreters.sh` in the parent workspace), run the tier 0-5
   parity suite plus `tests/parity/synthtools_acceptance.py`, and the LVGL

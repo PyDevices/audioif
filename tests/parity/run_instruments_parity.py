@@ -6,8 +6,11 @@ the ported modules to it.
     run_instruments_parity.py --verify --batch drums
 
 Capture renders each original vstaudio script under every interpreter it can
-find and records a hash per interpreter. Verify renders the ported module the
-same way and compares it against that interpreter's own recorded hash.
+find and records a hash per interpreter. The originals are read out of
+micropython-vst3's git history rather than its working tree: it imports
+`audioinstruments` now, so its tree is no longer independent of what these
+goldens check. Verify renders the ported module the same way and compares it
+against that interpreter's own recorded hash.
 
 Comparison is always within one interpreter. Two interpreters rendering the
 same instrument are *expected* to agree and usually do, but nothing guarantees
@@ -25,8 +28,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -50,6 +55,12 @@ BATCHES = {
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
 DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
 DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
+
+#: The last micropython-vst3 revision whose instruments were still whole
+#: scripts of their own. It imports `audioinstruments` now, so its working
+#: tree is no longer independent of what these goldens are meant to check -
+#: the originals come out of its history instead, where they cannot drift.
+DEFAULT_OLD_REV = "ac87f13"
 
 
 def interpreter_table(args):
@@ -106,12 +117,32 @@ def save_golden(key, fixture):
     return path
 
 
+def checkout(root, rev, relative, destination):
+    """Write the original scripts at `rev` into `destination`."""
+    listing = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "--name-only", rev,
+         relative.rstrip("/") + "/"],
+        capture_output=True, text=True, check=False)
+    paths = [line for line in listing.stdout.split("\n")
+             if line.endswith(".py")]
+    if listing.returncode or not paths:
+        raise SystemExit(
+            "no instrument scripts in %s at %s under %s\n"
+            "Pass --old-rev with a revision that still has them."
+            % (root, rev, relative))
+    for path in paths:
+        content = subprocess.run(
+            ["git", "-C", str(root), "show", "%s:%s" % (rev, path)],
+            capture_output=True, check=True).stdout
+        (destination / path.rsplit("/", 1)[-1]).write_bytes(content)
+    return destination
+
+
 def capture(args, interpreters):
     for batch in args.batch:
         key, names, old_rel, _ = BATCHES[batch]
-        old_dir = Path(args.old_root) / old_rel
-        if not old_dir.exists():
-            raise SystemExit("original scripts not found: %s" % old_dir)
+        old_dir = Path(tempfile.mkdtemp(prefix="parity-old-"))
+        checkout(args.old_root, args.old_rev, old_rel, old_dir)
         fixture = load_golden(key)
         for name in select(names, args.modules):
             record = fixture["modules"].setdefault(name, {})
@@ -123,6 +154,7 @@ def capture(args, interpreters):
                 print("captured %-14s %-14s %s"
                       % (name, interpreter, hashes[interpreter][:16]))
             record["cross_interpreter_equal"] = len(set(hashes.values())) == 1
+        shutil.rmtree(old_dir, ignore_errors=True)
         path = save_golden(key, fixture)
         print("wrote %s" % path)
 
@@ -186,6 +218,9 @@ def main():
     parser.add_argument("--micropython", default=str(DEFAULT_MICROPYTHON))
     parser.add_argument("--circuitpython", default=str(DEFAULT_CIRCUITPYTHON))
     parser.add_argument("--old-root", default=str(DEFAULT_OLD_ROOT))
+    parser.add_argument("--old-rev", default=DEFAULT_OLD_REV,
+                        help="the revision --capture-old reads the original "
+                             "scripts from (default %s)" % DEFAULT_OLD_REV)
     parser.add_argument("--require-interpreters", action="store_true",
                         help="fail if a requested interpreter is missing")
     parser.add_argument("--capture-old", action="store_true")
