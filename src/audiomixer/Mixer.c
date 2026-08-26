@@ -198,11 +198,15 @@ static MP_DEFINE_CONST_DICT(audiomixer_mixer_locals_dict, audiomixer_mixer_local
 
 // --- mixdown engine (shared-module) -------------------------------------
 
+// Deviation from upstream, which stops every voice here instead of rewinding
+// them -- see docs/upstream-diff.md, "Resetting a Mixer silenced it". Anything
+// that pulls from a Mixer resets it first (every effect's play() does), so
+// upstream's version makes a Mixer feeding an effect render silence forever.
 void audiomixer_mixer_reset_buffer(audiomixer_mixer_obj_t *self,
     bool single_channel_output,
     uint8_t channel) {
     for (uint8_t i = 0; i < self->voice_count; i++) {
-        common_hal_audiomixer_mixervoice_stop(self->voice[i]);
+        common_hal_audiomixer_mixervoice_reset(self->voice[i]);
     }
 }
 

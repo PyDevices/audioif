@@ -696,3 +696,55 @@ The rewrite lives in `src/circuitpython_spike/apply_replacements.py` with the
 upstream text it replaces. It is idempotent, and it fails loudly rather than
 quietly if neither its marker nor the original text is present -- that means
 the file moved upstream and a person should re-read it.
+
+## Resetting a Mixer silenced it, permanently (audioeffects tier)
+
+`audiomixer.Mixer`'s `reset_buffer` stops every voice upstream:
+
+```c
+for (uint8_t i = 0; i < self->voice_count; i++) {
+    common_hal_audiomixer_mixervoice_stop(self->voice[i]);   // sample = NULL
+}
+```
+
+Every other source in the stack treats `reset_buffer` as "rewind to the
+beginning". This one drops what was playing and never picks it up again, so a
+Mixer that has been reset renders zeros for the rest of its life.
+
+That is not a corner case, because *pulling from a source resets it first*.
+`Filter.play(sample)`, `Echo.play(sample)`, every effect's `play()` and every
+output's, all call `reset_buffer` on what they were handed. So
+
+```python
+mixer.voice[0].play(source)
+effect.play(mixer)          # <- silences the mixer here
+```
+
+renders silence, and always has. It went unnoticed because a Mixer is normally
+the last node before the output, and because `MixerVoice.play()` re-primes the
+voice, so a voice started *after* the reset works fine — which is how every
+example is written.
+
+Found while moving micropython-vst3's effects library into `audioeffects`:
+`ParametricEQ` sums its boost branches in a Mixer and then chains the cut
+sections after it, so any curve with both a boost and a cut was silent.
+Confirmed against `bin/circuitpython` directly — the oracle does the same
+thing.
+
+Fixed here by rewinding instead of stopping: a new
+`common_hal_audiomixer_mixervoice_reset()` (`src/audiomixer/MixerVoice.c`,
+and `MixerVoice.reset()` in `audiomixer.py`) does exactly what
+`MixerVoice.play()` already does — reset the sample, re-prime the voice's
+buffer — for each voice that is still playing. A stopped voice stays stopped.
+Every committed parity fixture still matches its recorded hash, because none
+of them reset a Mixer with voices playing.
+
+**Not applied to the CircuitPython target.** `apply_cp_patches.sh` only adds
+modules; the one CircuitPython source it rewrites is `audiocore.get_buffer`'s
+return type, which the parity harness needs to compare like with like. Fixing
+DSP inside the oracle would erase the divergence this file exists to record.
+The consequence is real and worth stating: on CircuitPython, an effect chained
+directly after a Mixer is still silent. Anything in `audioeffects` that ends in
+a Mixer — `ParametricEQ` with boosts, `MultibandCompressor`, `Harmonizer`,
+`Octaver`, `StereoWidener`, `DynamicEQ`, `PingPongDelay`, `Exciter` — can be
+the last node in a chain there, but not the middle of one.

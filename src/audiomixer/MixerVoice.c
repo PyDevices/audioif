@@ -85,6 +85,20 @@ void common_hal_audiomixer_mixervoice_stop(audiomixer_mixervoice_obj_t *self) {
     self->sample = NULL;
 }
 
+// Rewind to the start of whatever is playing, keeping it playing. New here:
+// upstream has no equivalent, because its Mixer.reset_buffer stops the voices
+// instead. See docs/upstream-diff.md.
+void common_hal_audiomixer_mixervoice_reset(audiomixer_mixervoice_obj_t *self) {
+    if (self->sample == NULL) {
+        return;
+    }
+    audiosample_reset_buffer(self->sample, false, 0);
+    audioio_get_buffer_result_t result = audiosample_get_buffer(self->sample, false, 0, (uint8_t **)&self->remaining_buffer, &self->buffer_length);
+    // Track length in terms of words.
+    self->buffer_length /= sizeof(uint32_t);
+    self->more_data = result == GET_BUFFER_MORE_DATA;
+}
+
 void common_hal_audiomixer_mixervoice_end(audiomixer_mixervoice_obj_t *self) {
     if (self->sample != NULL) {
         self->loop = false;

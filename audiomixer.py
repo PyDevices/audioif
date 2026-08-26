@@ -34,6 +34,14 @@ class MixerVoice:
 
     def stop(self): self._sample = None
 
+    def reset(self):
+        """Rewind to the start of whatever is playing, keeping it playing."""
+        if self._sample is None:
+            return
+        reset_buffer(self._sample)
+        result, self._remaining = _source_chunk(self._sample)
+        self._source_more = result == GET_BUFFER_MORE_DATA
+
 
 class Mixer(_AudioSample):
     def __init__(self, *, voice_count=2, buffer_size=1024, channel_count=2,
@@ -67,9 +75,12 @@ class Mixer(_AudioSample):
     def stop_voice(self, voice=0): self.voice[voice].stop()
 
     def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        # Deviation from upstream, which stops every voice here instead of
+        # rewinding them -- see docs/upstream-diff.md, "Resetting a Mixer
+        # silenced it".
         self._check()
         for voice in self.voice:
-            voice.stop()
+            voice.reset()
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         self._check()
