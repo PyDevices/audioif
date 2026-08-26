@@ -13,6 +13,11 @@ Comparison is always within one interpreter. Two interpreters rendering the
 same instrument are *expected* to agree and usually do, but nothing guarantees
 it - `ulab`'s vectorized sine and libm's are different functions - so
 cross-interpreter equality is recorded as an observation, never enforced.
+
+CircuitPython is not in the default set. Its stock `synthio` still has the
+out-of-bounds oscillator read described in docs/upstream-diff.md, so its
+renders of boundary-hitting material depend on its heap layout and cannot be
+held to a byte-exact gate. Pass it explicitly to collect advisory numbers.
 """
 
 import argparse
@@ -175,7 +180,9 @@ def main():
                         choices=sorted(BATCHES) + ["all"])
     parser.add_argument("--modules", default=None,
                         help="comma-separated subset of the batch")
-    parser.add_argument("--interpreters", default="cpython,micropython,circuitpython")
+    parser.add_argument("--interpreters", default="cpython,micropython",
+                        help="comma-separated; add circuitpython for advisory "
+                             "numbers (see the module docstring)")
     parser.add_argument("--micropython", default=str(DEFAULT_MICROPYTHON))
     parser.add_argument("--circuitpython", default=str(DEFAULT_CIRCUITPYTHON))
     parser.add_argument("--old-root", default=str(DEFAULT_OLD_ROOT))

@@ -24,11 +24,14 @@ import sys
 
 _PKG = __name__
 
-#: Every instrument module in this package.
-ALL = ()
-
 #: The subset of :data:`ALL` that maps drum voices and exports ``NOTE_MAP``.
-DRUM_MACHINES = ()
+DRUM_MACHINES = (
+    "cr78", "dmx", "drumtraks", "linndrum", "simmons_sdsv", "sp1200",
+    "tr606", "tr707", "tr808", "tr909",
+)
+
+#: Every instrument module in this package.
+ALL = DRUM_MACHINES
 
 
 def load(name):
