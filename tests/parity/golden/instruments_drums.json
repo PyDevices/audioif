@@ -1,0 +1,85 @@
+{
+  "modules": {
+    "cr78": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "39101ae33ef26ae07f31292bbf5680d1655e0176063229923d4b6dd1995d6e7f",
+        "cpython": "39101ae33ef26ae07f31292bbf5680d1655e0176063229923d4b6dd1995d6e7f",
+        "micropython": "39101ae33ef26ae07f31292bbf5680d1655e0176063229923d4b6dd1995d6e7f"
+      }
+    },
+    "dmx": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "b98161ca932fc7ee294981d93af0a86f867c9668bd67fc07219bcd80c1d13fa7",
+        "cpython": "b98161ca932fc7ee294981d93af0a86f867c9668bd67fc07219bcd80c1d13fa7",
+        "micropython": "b98161ca932fc7ee294981d93af0a86f867c9668bd67fc07219bcd80c1d13fa7"
+      }
+    },
+    "drumtraks": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "5427a5c05f049258b40516cab451111078bd8261b817f0cbd39a1ba26352f70f",
+        "cpython": "c9a7929eba9e61367c1ac44f98252a11416749c6a709267ee8143f0ac6366bdb",
+        "micropython": "5427a5c05f049258b40516cab451111078bd8261b817f0cbd39a1ba26352f70f"
+      }
+    },
+    "linndrum": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "95e7a0a3800c95077bc596682e2ab3a95acc4dadbde87a67e9190f0b602ba65f",
+        "cpython": "d273aec6b5258b6742dbb357b536240897e2143b9b84feb9a53045c677bf8862",
+        "micropython": "7e041f0f0e9e9a95aaf3cf5a30951c3cd66500cb33eae8b4edc6df76ad8d6eb5"
+      }
+    },
+    "simmons_sdsv": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "c1cf3b6859353b46f6b300fdf43393d94245c4fff9bdd20f592c625393fdaa82",
+        "cpython": "c1cf3b6859353b46f6b300fdf43393d94245c4fff9bdd20f592c625393fdaa82",
+        "micropython": "c1cf3b6859353b46f6b300fdf43393d94245c4fff9bdd20f592c625393fdaa82"
+      }
+    },
+    "sp1200": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "3fa997e5542a9d6ce08ac3a19ee622202bb2ceabe972a30ae34d47a12eb98a48",
+        "cpython": "08a302775a091f6354c99cee24538ab89e3112704b3adf91e858da9aed25ca6e",
+        "micropython": "3fa997e5542a9d6ce08ac3a19ee622202bb2ceabe972a30ae34d47a12eb98a48"
+      }
+    },
+    "tr606": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "18bda66881d8ad65f84860fc0954908066a5dfecc04bd2ad309e6468a26be798",
+        "cpython": "740ad4a2556e042ee1744c03cde99df03096103fafe62b6a0bd6850cf84de295",
+        "micropython": "e31d7c1355210ecc7687e70e09a93d2f9d69ed12277346af9fdf13cde8f0c7a8"
+      }
+    },
+    "tr707": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "ae7acfaad64f351e234203e22b89d40b92fce29d4a346ec8b0842e3953e180e2",
+        "cpython": "ae7acfaad64f351e234203e22b89d40b92fce29d4a346ec8b0842e3953e180e2",
+        "micropython": "ae7acfaad64f351e234203e22b89d40b92fce29d4a346ec8b0842e3953e180e2"
+      }
+    },
+    "tr808": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "c064bc128fdd1b96cc260a4970b9da02ea6b7c989a250a9fef3c1ea402ea8035",
+        "cpython": "c064bc128fdd1b96cc260a4970b9da02ea6b7c989a250a9fef3c1ea402ea8035",
+        "micropython": "c064bc128fdd1b96cc260a4970b9da02ea6b7c989a250a9fef3c1ea402ea8035"
+      }
+    },
+    "tr909": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "8614e24a819a1d7a410d5d0f161aba8eef93ab9c0be7151eba8da40151d75b16",
+        "cpython": "088ee3845ff55d0c99cdefa3eb9c109d644d62620c0460c8a8e77145a6c594fd",
+        "micropython": "80d0b6e07bbd78199e0ead7b9d88ac02f19e23a18b38333b6ae42ad70c2b8ace"
+      }
+    }
+  },
+  "oracle": "micropython-vst3 instrument scripts via vstaudio"
+}

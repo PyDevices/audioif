@@ -1,0 +1,133 @@
+{
+  "modules": {
+    "arp": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "9c5c04dd7244ad5eb1996e368e11fff7230f2fbb80a0d8225cabc51978db6052",
+        "cpython": "014dbea0dd7fdacdc568db2310ddcc02fdcfb92658314b9c5efdf06b51b553d2",
+        "micropython": "9c5c04dd7244ad5eb1996e368e11fff7230f2fbb80a0d8225cabc51978db6052"
+      }
+    },
+    "bells": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "1f3d3722e5a249d76343ea1fcd5328e445998c36de0b89dda59b029279a14b99",
+        "cpython": "de3417ca8d627141dffa14877dc0f30dccf98f35cd55280575bb9a0d02f3247f",
+        "micropython": "1f3d3722e5a249d76343ea1fcd5328e445998c36de0b89dda59b029279a14b99"
+      }
+    },
+    "brass_high": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "e37586177f2a097651b158191fcf9ae13b197405b1c194b58d06c8826c2f9629",
+        "cpython": "13a4359eed01da06429ab350e1b9e2c6c1fc53acaa9469cfaba7c723f7013ec5",
+        "micropython": "e37586177f2a097651b158191fcf9ae13b197405b1c194b58d06c8826c2f9629"
+      }
+    },
+    "choir": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "1424d7f2215ac806251c6c75f6f19264cef477b27d764102e3c7ced3cd67fca0",
+        "cpython": "1424d7f2215ac806251c6c75f6f19264cef477b27d764102e3c7ced3cd67fca0",
+        "micropython": "1424d7f2215ac806251c6c75f6f19264cef477b27d764102e3c7ced3cd67fca0"
+      }
+    },
+    "hits": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "baaf139a462ae7979d9426db8348adb24bad9a1066442845cc2978e2fae093e3",
+        "cpython": "fb3af70a95517f4a8f8afced98d4eeaded7f5ad06ebc794c3a23a183a88441a2",
+        "micropython": "baaf139a462ae7979d9426db8348adb24bad9a1066442845cc2978e2fae093e3"
+      }
+    },
+    "horns": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "2bdd1292ca2c35e89c47537c4b0a4c3a8441b7647bbc7ba5d79deb66b08ad55f",
+        "cpython": "af2cf9d57200e8a957aedc83d5fb9f76979b160dbd3aa16261d9b7bb380be4ed",
+        "micropython": "2bdd1292ca2c35e89c47537c4b0a4c3a8441b7647bbc7ba5d79deb66b08ad55f"
+      }
+    },
+    "lead": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "fe110461e153bb94484032d387beb1e1af2386a5a9040a5fb0f6beb594144a9d",
+        "cpython": "dbd7a880e5d97e08782762f17beccf7b1cf5a97d674ab0ef3016e83ff4e8fafe",
+        "micropython": "fe110461e153bb94484032d387beb1e1af2386a5a9040a5fb0f6beb594144a9d"
+      }
+    },
+    "moog_bass": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "569e425aa99707243410b9923dbf80ae0ff45b3a9ab546695455734f601fc3a7",
+        "cpython": "569e425aa99707243410b9923dbf80ae0ff45b3a9ab546695455734f601fc3a7",
+        "micropython": "569e425aa99707243410b9923dbf80ae0ff45b3a9ab546695455734f601fc3a7"
+      }
+    },
+    "pad_glass": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "ccf6bd9d1fbc64e280da3ff4e985e39a240d51e6623e1e02b09e7e66255162a3",
+        "cpython": "3c13379fccdc547300de1e3f4135296e76bd436f43b889aa94d0e92dda275e0d",
+        "micropython": "ccf6bd9d1fbc64e280da3ff4e985e39a240d51e6623e1e02b09e7e66255162a3"
+      }
+    },
+    "pad_warm": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "252ff3310d4b5c4e44b747535a124dd86c76959f55d8ff82f30476242b62e313",
+        "cpython": "252ff3310d4b5c4e44b747535a124dd86c76959f55d8ff82f30476242b62e313",
+        "micropython": "252ff3310d4b5c4e44b747535a124dd86c76959f55d8ff82f30476242b62e313"
+      }
+    },
+    "riser": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "7949e55b65f50ee91cf7fd2a4641a11ccc3dc3ab585719cf679aab127d556c6f",
+        "cpython": "7949e55b65f50ee91cf7fd2a4641a11ccc3dc3ab585719cf679aab127d556c6f",
+        "micropython": "7949e55b65f50ee91cf7fd2a4641a11ccc3dc3ab585719cf679aab127d556c6f"
+      }
+    },
+    "shimmer": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "5c569c732c3f505bde5b360fda03473d55ed12ba68c1fde10d5826e55ac8b68d",
+        "cpython": "5c569c732c3f505bde5b360fda03473d55ed12ba68c1fde10d5826e55ac8b68d",
+        "micropython": "5c569c732c3f505bde5b360fda03473d55ed12ba68c1fde10d5826e55ac8b68d"
+      }
+    },
+    "strings_high": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "917732b3885c9c2a086a10211a57105efdc9b74430728021ab7e92dd980798d7",
+        "cpython": "53e4f6a30eb4ecf6b8e2591d229122bdba9d0c413ab08702fae1e945c89bc8f7",
+        "micropython": "917732b3885c9c2a086a10211a57105efdc9b74430728021ab7e92dd980798d7"
+      }
+    },
+    "strings_low": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "4bd33571f54fc7f72a6af7d9079e4207006f91dcec8f7c08aa53aaeffb681bc2",
+        "cpython": "b568ecf2d243a3215f161a687dc6444701e4b3af4e745ffa194303a2d0028906",
+        "micropython": "4bd33571f54fc7f72a6af7d9079e4207006f91dcec8f7c08aa53aaeffb681bc2"
+      }
+    },
+    "sub_drone": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "99d3282649fc74d598b33aa4b9e49e87248d2b8dfb9fa836dd3a4180cd1d6623",
+        "cpython": "99d3282649fc74d598b33aa4b9e49e87248d2b8dfb9fa836dd3a4180cd1d6623",
+        "micropython": "99d3282649fc74d598b33aa4b9e49e87248d2b8dfb9fa836dd3a4180cd1d6623"
+      }
+    },
+    "timpani": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "57fdfcf6951ec7cca501c2ea8bb36b62d3ca5ae9b4f917c3eba54097c4cb6e33",
+        "cpython": "1d111d615f0fe3d1f4de2dc373da86fffef53c789425d73ef607d3fc6b6ad55c",
+        "micropython": "57fdfcf6951ec7cca501c2ea8bb36b62d3ca5ae9b4f917c3eba54097c4cb6e33"
+      }
+    }
+  },
+  "oracle": "micropython-vst3 instrument scripts via vstaudio"
+}

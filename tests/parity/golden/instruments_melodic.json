@@ -1,0 +1,349 @@
+{
+  "modules": {
+    "andromeda": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "f636751eaf8f3787397e375e2a992b248ef7cba77cbf832430fb6077094a349f",
+        "cpython": "500e1de8f91b4f33821e11e0f7efd769e26b7fa52e9005ac69e4b86ee8bc8567",
+        "micropython": "f636751eaf8f3787397e375e2a992b248ef7cba77cbf832430fb6077094a349f"
+      }
+    },
+    "arp2600": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "2011103969c416523407d26cb299b3169c17552b3321c27a1a0d58e503ae91a0",
+        "cpython": "b7a97f6c7ef0329f7b0da371762c648ff6926fd368215177f49fa97b935ec9bb",
+        "micropython": "2011103969c416523407d26cb299b3169c17552b3321c27a1a0d58e503ae91a0"
+      }
+    },
+    "b3": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "eda00e01687ca6bafc832f5218672cc1e7d71772bc8acf4f246d8badc95b142e",
+        "cpython": "8ca0cbfd4f7d5f8aea812be40a9a88b61405afec1384e6b921214f43c075bc78",
+        "micropython": "eda00e01687ca6bafc832f5218672cc1e7d71772bc8acf4f246d8badc95b142e"
+      }
+    },
+    "clavinet": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "b127745eefe80eba16cda6d36776f455c1e3c69a9632ddde6bbfef9fd53d5d1a",
+        "cpython": "9a2a4ccb38d88cdd660a9f86533405292ddc3e571ccddd4a7d5c7f3566cb2f51",
+        "micropython": "b127745eefe80eba16cda6d36776f455c1e3c69a9632ddde6bbfef9fd53d5d1a"
+      }
+    },
+    "cp70": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "dd69780371a7aedc9bf8c1259a9e0eb5643025ba5cd12e9947cc668194871ead",
+        "cpython": "bedfb10bfb645b3bbbb20cfd9d667fc188569600ee95858ab6c856c83e895b51",
+        "micropython": "dd69780371a7aedc9bf8c1259a9e0eb5643025ba5cd12e9947cc668194871ead"
+      }
+    },
+    "cs80": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "386dd5d0bbf7fec19fa34534cb0383656003e9c9269304a77893833e39924375",
+        "cpython": "14a8e475b4519c5f31a8145a229c4bb962b480b6648b8f720fac5fe5a2f0abce",
+        "micropython": "386dd5d0bbf7fec19fa34534cb0383656003e9c9269304a77893833e39924375"
+      }
+    },
+    "cz101": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "2031d8a5cfa126647adf2da6c22c6778d2e6b1bd6fa4392c23d7d8c5ae2a5cb3",
+        "cpython": "23fbd8747d0e6660dded59879d3bc95dfee198ffe36a0ccec8889d927e387321",
+        "micropython": "2031d8a5cfa126647adf2da6c22c6778d2e6b1bd6fa4392c23d7d8c5ae2a5cb3"
+      }
+    },
+    "d50": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "5c6a5cbe029163b86ed9c6f896793a2166ae845f627333001b95e4e76d7e1527",
+        "cpython": "b3fad27a8fd62e0b2036dd7ab66b832cb25c457cf4105b2e0078eb3c47e68cea",
+        "micropython": "5c6a5cbe029163b86ed9c6f896793a2166ae845f627333001b95e4e76d7e1527"
+      }
+    },
+    "dx7": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "e2d5929ccc9296fd05d94d4573f7fcadd50f3047067ee1db4f5f7821108b9958",
+        "cpython": "6ddac3c1f3d855320046570357fb691a26582039eca56fd1c7b3725f99c91c7d",
+        "micropython": "e2d5929ccc9296fd05d94d4573f7fcadd50f3047067ee1db4f5f7821108b9958"
+      }
+    },
+    "emulator2": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "01c4ff1c80bc508f2ae77bb6b0e5c5bbcd5d0ebe4d3e0970325ed35bf4cbcf1c",
+        "cpython": "e8c3345f0780d1cf83941e55e573141bc7ae8a30c9096055a6860efe97fe4c66",
+        "micropython": "53a1235d4da1ec2a275db3ef7af08f6c98123aedc0608d7cb5fb7cc73323899e"
+      }
+    },
+    "fairlight": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "2d2cf11e576fe1521b503dd9bedc77ab28cad9191600df3f2dbbc7cc37fd0d0e",
+        "cpython": "2d2cf11e576fe1521b503dd9bedc77ab28cad9191600df3f2dbbc7cc37fd0d0e",
+        "micropython": "2d2cf11e576fe1521b503dd9bedc77ab28cad9191600df3f2dbbc7cc37fd0d0e"
+      }
+    },
+    "farfisa": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "47c2f661dd14159ee5f3a23a480e0bbba3f8acefa3b485bd782cade73eebaf49",
+        "cpython": "00859124eda0719f51b2ff0d86853e245214ee823a037b554f9f979f86c41174",
+        "micropython": "47c2f661dd14159ee5f3a23a480e0bbba3f8acefa3b485bd782cade73eebaf49"
+      }
+    },
+    "fs1r": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "55baf49f29a46392a35c64b771cd29b2a05f75bc096e017d0d3cf39f4fe79f21",
+        "cpython": "0fc67ca14ffe1710463c647b1f38e7993840a37eb6adef2f1e781e74b78dcd60",
+        "micropython": "55baf49f29a46392a35c64b771cd29b2a05f75bc096e017d0d3cf39f4fe79f21"
+      }
+    },
+    "jp8000": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "bd249e6165f2f8ac54b556f7f012d79ff76c268a5cfc0b443b29bbbe7c5cff7e",
+        "cpython": "bd5f27960f24f42aa4eff5686621fb1523f891b25f5704e4195d9fdaf38f3747",
+        "micropython": "bd249e6165f2f8ac54b556f7f012d79ff76c268a5cfc0b443b29bbbe7c5cff7e"
+      }
+    },
+    "juno106": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "26af9bc67e01a69f7d636667d3c7c0175803ff6c7cf594556fc708357c2152e5",
+        "cpython": "99090d2089439621c3ad9ae9233a66cad3820937b626d5084f7d7699c17fb25a",
+        "micropython": "3b543b91ef8c1a23a9a02f6159d782d5a4fbcc419bba7f909bb6ff7cbfc56fcb"
+      }
+    },
+    "jupiter8": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "8a6f87877df4e1a3f7be17e96395fbca7cf1538aa5a3bbc25f518f8de7917f03",
+        "cpython": "2ffc7ec655cdd6dbf134aa165c3006b3488dfc3d3e1455eecba44f50b477708d",
+        "micropython": "8a6f87877df4e1a3f7be17e96395fbca7cf1538aa5a3bbc25f518f8de7917f03"
+      }
+    },
+    "k2600": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "3bd431943db6f0c3185b1d6109434c01e80f98351e7164f0bfa91200a6d08baf",
+        "cpython": "10ffa3ad9592b9d066ed786bfe9603878b599b7f27cdb950c34fae8f81723997",
+        "micropython": "3bd431943db6f0c3185b1d6109434c01e80f98351e7164f0bfa91200a6d08baf"
+      }
+    },
+    "karplus": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "b6d62950d938106059c6a824b9e34d55d79655041f66b4e3551508a859ded03f",
+        "cpython": "082728ea28ad14f632ac4f5c622fd1e54eae86979f501485bf3f6d64d1ac14e5",
+        "micropython": "b6d62950d938106059c6a824b9e34d55d79655041f66b4e3551508a859ded03f"
+      }
+    },
+    "mellotron": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "78444abda0bf088ab8b40ce6ad64f0a8a9caadbb0a86e9bb849c44f47ea1b1fa",
+        "cpython": "78444abda0bf088ab8b40ce6ad64f0a8a9caadbb0a86e9bb849c44f47ea1b1fa",
+        "micropython": "78444abda0bf088ab8b40ce6ad64f0a8a9caadbb0a86e9bb849c44f47ea1b1fa"
+      }
+    },
+    "microwave": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "06111ce0d756b863604426fa5a4f9f21246e9891e4a16c4e88e539a2870c2175",
+        "cpython": "caee84292622ae6587ae67d1af859e01b31dc26503618b62f42d9b6bddc24a58",
+        "micropython": "06111ce0d756b863604426fa5a4f9f21246e9891e4a16c4e88e539a2870c2175"
+      }
+    },
+    "minimoog": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "79f72929e6d3468499ea13e6a62a48cb44d9897194515630f6c656534120eb6a",
+        "cpython": "9dbe11d5b2be5ace5e4bc7e53126c39563da8a4eb032f30dc95d7eef52cd36aa",
+        "micropython": "79f72929e6d3468499ea13e6a62a48cb44d9897194515630f6c656534120eb6a"
+      }
+    },
+    "ms20": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "879cc258a29d4f6cd4956b82aa16508b59d2e1d5c9c1dddd9259ec746b5529da",
+        "cpython": "23f030c6ad870170ecf50ad6886054c5ffc6b808855516f0c20eae20ce98608d",
+        "micropython": "02a37b842c6f27faa0d8833372c68c5e2869eabbdfe773d9d3ec570150f456a0"
+      }
+    },
+    "ms2000": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "b8cf76c71098f984f458403cc698ed25184d9167c9c398c525f8d2d5fdf64a0d",
+        "cpython": "d5e9d861dff59bc307faf3b152dffccbdfc0bb3c28e4b46e0e89c93527891021",
+        "micropython": "b8cf76c71098f984f458403cc698ed25184d9167c9c398c525f8d2d5fdf64a0d"
+      }
+    },
+    "music_easel": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "cfc292fb67ff16763d6a26f1102e5368951500e0baeaa55ebfbd0264cc05f60b",
+        "cpython": "b3c6e236634d3921bb93f5497c89f93e7109d3304821f34ce841f1937739a2dd",
+        "micropython": "cfc292fb67ff16763d6a26f1102e5368951500e0baeaa55ebfbd0264cc05f60b"
+      }
+    },
+    "nord_lead": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "a9f51c4e6fde28b16c44efd9183ec1c70286a3061b331d4deb243460c35f20f1",
+        "cpython": "677ddf77536535e73afe17230deb062924dc930617dbf5c66c4b4bfabbed864a",
+        "micropython": "a9f51c4e6fde28b16c44efd9183ec1c70286a3061b331d4deb243460c35f20f1"
+      }
+    },
+    "obxa": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "4b54d9e2eb547e5dd03b537199e4be33cac5f35a20424e462b4164eef208141c",
+        "cpython": "8581bc6358fbe9114c934100a58864c6b94f57557c22f3cd3259f0b8340dfb03",
+        "micropython": "4b54d9e2eb547e5dd03b537199e4be33cac5f35a20424e462b4164eef208141c"
+      }
+    },
+    "odyssey": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "4eea856ca0533988bda8733633c515eb40f4b7d9ce4cb387da2b756f5ab4a2db",
+        "cpython": "0f7f1952c8beda05aee5b2b0d17d460302432e8aae504839b7fdf98cd5deb35d",
+        "micropython": "4eea856ca0533988bda8733633c515eb40f4b7d9ce4cb387da2b756f5ab4a2db"
+      }
+    },
+    "pianet": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "c0759eba88f45db7d3a18ad7845606a8851aaef8aa4bd44627982cd36dab386a",
+        "cpython": "d1431c799583024ba5eeb357f464296d2ee1ae30fe31dc10d9b9aad12f5046b6",
+        "micropython": "c0759eba88f45db7d3a18ad7845606a8851aaef8aa4bd44627982cd36dab386a"
+      }
+    },
+    "polysix": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "747d68c1af2667264e5e70778a5bba2ec4107037f306d4d308c5ed91ae0e7f88",
+        "cpython": "dd52b3459cacf5e2c1ff1f6564c32c418e26c4193697b123db9bc7a41fffc708",
+        "micropython": "747d68c1af2667264e5e70778a5bba2ec4107037f306d4d308c5ed91ae0e7f88"
+      }
+    },
+    "ppg_wave": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "aee5c14293183f043deffb6bfcc39fbee2634028b5b0151ad520c831aaba2a48",
+        "cpython": "d803245dcc4837ff6ab654750d4a442528b05648f5629fac88261aeb11102b3c",
+        "micropython": "aee5c14293183f043deffb6bfcc39fbee2634028b5b0151ad520c831aaba2a48"
+      }
+    },
+    "prophet5": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "c6b35f1a10bbf4fb7e08abb82c75fd8dfc092a2dad531a900c68de12cd098a3b",
+        "cpython": "c8f3a111a3f34e4d609a64b88fcac7d6f660288a10957a1b7a14939b7bb7b0cf",
+        "micropython": "c6b35f1a10bbf4fb7e08abb82c75fd8dfc092a2dad531a900c68de12cd098a3b"
+      }
+    },
+    "prophet_vs": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "2359d7a1bd6de2ef95e16567b5b8db68336d813a79bf70877ccb109b7550db31",
+        "cpython": "b60134e5fe4b1f664179e56748b03f04153522b129587cd6c77f5a3757e9c290",
+        "micropython": "2359d7a1bd6de2ef95e16567b5b8db68336d813a79bf70877ccb109b7550db31"
+      }
+    },
+    "rhodes": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "6cdea12c42cf1bc433f15f70fe5ee5f5830fad31688a28006ead68752e091d4b",
+        "cpython": "1aa190a6893378c315ca8e0f88f4051fc615740d3b72f723c0a57b6d5b365fa0",
+        "micropython": "6cdea12c42cf1bc433f15f70fe5ee5f5830fad31688a28006ead68752e091d4b"
+      }
+    },
+    "sh101": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "5ecd829453f6d0a504cf1a1e57ae5c70a4b57e489cabd856420324258186c155",
+        "cpython": "f48d4ca04bdbcd22e0afa9eb46bdf5df9db134df1d07b7a39d31dad8cdfd914d",
+        "micropython": "5ecd829453f6d0a504cf1a1e57ae5c70a4b57e489cabd856420324258186c155"
+      }
+    },
+    "solina": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "4ea642d1072af9fe507a9b76a4d8a0f201a9b1ad4ecb7b4781c76247aef6cef3",
+        "cpython": "5735ae8cf3006cf00b33f9ca2794bcabf5411647c69d6af754f32e0d8dfb9940",
+        "micropython": "4ea642d1072af9fe507a9b76a4d8a0f201a9b1ad4ecb7b4781c76247aef6cef3"
+      }
+    },
+    "taurus": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "1a41372499fe273bc0d554c8f59fbcb500206c5a906fc0a0e8f055f6b48f42eb",
+        "cpython": "9ceabd6252a0208f5d13868f0e7bfa52b928223f669add6c52c9dd9de196cac3",
+        "micropython": "1a41372499fe273bc0d554c8f59fbcb500206c5a906fc0a0e8f055f6b48f42eb"
+      }
+    },
+    "tb303": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "1a2691782d72d4a933f9a1b1722b72b019cd992dde1a1146093a39427c9188e2",
+        "cpython": "b651fd80b41ac77ec32ab9f0f411c94bea13a122dcd990e56d1980678fc3f3f7",
+        "micropython": "1a2691782d72d4a933f9a1b1722b72b019cd992dde1a1146093a39427c9188e2"
+      }
+    },
+    "virus": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "505c0ba15aac848896abc8f4f254ade5f11dc6e703519e708e05c3d1ba70cb12",
+        "cpython": "e8a67fb3d6dc91b837b05141d9125a7860c6580f4ade665ca44e94a42227154a",
+        "micropython": "505c0ba15aac848896abc8f4f254ade5f11dc6e703519e708e05c3d1ba70cb12"
+      }
+    },
+    "vl1": {
+      "cross_interpreter_equal": true,
+      "old": {
+        "circuitpython": "c0f08944bda6ac1b4044498ffdfe642a2fd7ac1eb89cc382f1d31c5740096955",
+        "cpython": "c0f08944bda6ac1b4044498ffdfe642a2fd7ac1eb89cc382f1d31c5740096955",
+        "micropython": "c0f08944bda6ac1b4044498ffdfe642a2fd7ac1eb89cc382f1d31c5740096955"
+      }
+    },
+    "vox_continental": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "b4d1296b1753c366213c7b953fedf8c273a8c84b12c3bf0501494eb6476d959f",
+        "cpython": "5a789a86b5f8cf7f5b2b1ca1c87cda5f09051f017fa49127c6a1ec7440d28c2f",
+        "micropython": "b4d1296b1753c366213c7b953fedf8c273a8c84b12c3bf0501494eb6476d959f"
+      }
+    },
+    "vp330": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "dafaa2f172df93e60be6fa881f00f4e4721cbe9641da2cfda6d0c355a0de462b",
+        "cpython": "ce730403fa38feba7e4d00ca580496953e31326b29307b034cd048b4de7501e0",
+        "micropython": "dafaa2f172df93e60be6fa881f00f4e4721cbe9641da2cfda6d0c355a0de462b"
+      }
+    },
+    "wasp": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "39c4ae4da326d5ccf26e3dd06de06dcfafb7007bfbfe5abbad55998780088ebb",
+        "cpython": "da97ad15b4d2cfc7f7e99903210665b2ed45f32384c524e7621ebbe926dd8705",
+        "micropython": "73a319894615fb309aeb92acb2cca73bfeadd1cbfc4a6652c984de06491bf399"
+      }
+    },
+    "wurlitzer": {
+      "cross_interpreter_equal": false,
+      "old": {
+        "circuitpython": "3380de1bbbc60e028ee14a8fcac572053d67f59c1bc3a971404ca7b2f114bc59",
+        "cpython": "173d925294a4e67147939ba7427a3104f8d85951492334331c96e28389a7374f",
+        "micropython": "3380de1bbbc60e028ee14a8fcac572053d67f59c1bc3a971404ca7b2f114bc59"
+      }
+    }
+  },
+  "oracle": "micropython-vst3 instrument scripts via vstaudio"
+}
