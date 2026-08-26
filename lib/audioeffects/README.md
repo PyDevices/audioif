@@ -97,13 +97,22 @@ then sums).
 - **Pitch correction** - needs pitch detection the engine does not have.
 - **Ring modulation of the input** - stream-by-oscillator multiplication
   is not available (synthio ring mod applies to synthesized notes only).
-- LFO-driven parameters update at the engine block rate (~187 Hz at
-  48 kHz), plenty for sweep rates but not audio-rate modulation.
+- LFO-driven parameters update at the block rate (~187 Hz at 48 kHz),
+  plenty for sweep rates but not audio-rate modulation.
+
+## A note on chaining after a Mixer
+
+Several classes here end in an `audiomixer.Mixer` - anything that splits
+into parallel branches and sums them. On MicroPython and CPython you can
+chain freely after one. On CircuitPython you cannot: its Mixer stops its
+voices when it is reset, and every effect resets its source when you
+`play()` it, so the chain goes silent. audioif fixes that for its own
+builds; see `docs/upstream-diff.md`, "Resetting a Mixer silenced it".
 
 ## Testing
 
-`tools/test-effects-lib.py` instantiates every class through the real
-MicroPython sidecar inside the VST3 effect (via the smoke host's
-`--effect-script` probe), feeding a quiet-then-loud sine and asserting
+`tests/test_cpython_effects_library.py` builds and renders every class.
+micropython-vst3's `tools/test-effects-lib.py` additionally runs them
+inside a real VST3 host, feeding a quiet-then-loud sine and asserting
 per-class behaviour: compressors and limiters squeeze the loud half,
 gates and expanders mute the quiet one, everything else passes signal.
