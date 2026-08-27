@@ -142,6 +142,7 @@ class Filter(_Effect):
             result = state.process_s16(
                 result, biquad.mode.value, _value(biquad.frequency),
                 _value(biquad.Q), amplitude, self.sample_rate, stage_mix,
+                self.channel_count,
             )
         return result
 

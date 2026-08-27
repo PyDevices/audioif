@@ -104,10 +104,15 @@ void common_hal_audiofilters_filter_set_filter(audiofilters_filter_obj_t *self, 
 
     self->filter = filter_in;
     self->filter_objs = filter_objs;
+    // One state per cascade stage *per channel*, indexed [stage * channels +
+    // channel]. Upstream CircuitPython allocates one per stage and runs it
+    // over the interleaved buffer, which makes each channel's filter memory
+    // the other channel's history; see docs/upstream-diff.md.
+    // `filter_states_len` still counts stages, so callers are unchanged.
     self->filter_states = m_renew(biquad_filter_state,
         self->filter_states,
-        self->filter_states_len,
-        n_items);
+        self->filter_states_len * self->base.channel_count,
+        n_items * self->base.channel_count);
     self->filter_states_len = n_items;
 }
 
@@ -134,7 +139,8 @@ void audiofilters_filter_reset_buffer(audiofilters_filter_obj_t *self,
     memset(self->filter_buffer, 0, SYNTHIO_MAX_DUR * sizeof(int32_t));
 
     if (self->filter_states) {
-        for (uint8_t i = 0; i < self->filter_states_len; i++) {
+        size_t total = self->filter_states_len * self->base.channel_count;
+        for (size_t i = 0; i < total; i++) {
             synthio_biquad_filter_reset(&self->filter_states[i]);
         }
     }
@@ -232,45 +238,66 @@ audioio_get_buffer_result_t audiofilters_filter_get_buffer(audiofilters_filter_o
                     }
                 }
             } else {
+                // Deinterleave a chunk of frames, filter each channel through
+                // the cascade with that channel's own states, and write it
+                // back. Chunking in frames (not samples) keeps every channel
+                // advancing in lockstep across chunk boundaries.
+                const uint8_t channels = self->base.channel_count;
                 uint32_t i = 0;
                 while (i < n) {
-                    uint32_t n_samples = MIN((uint32_t)SYNTHIO_MAX_DUR, n - i);
-
-                    for (uint32_t j = 0; j < n_samples; j++) {
-                        if (MP_LIKELY(self->base.bits_per_sample == 16)) {
-                            self->filter_buffer[j] = sample_src[i + j];
-                        } else {
-                            if (self->base.samples_signed) {
-                                self->filter_buffer[j] = sample_hsrc[i + j];
+                    uint32_t frames = MIN((uint32_t)SYNTHIO_MAX_DUR, (n - i) / channels);
+                    if (frames == 0) {
+                        // A partial frame can only appear if the source handed
+                        // us a fragment; copy it through rather than spin.
+                        for (uint32_t j = i; j < n; j++) {
+                            if (MP_LIKELY(self->base.bits_per_sample == 16)) {
+                                word_buffer[j] = sample_src[j];
                             } else {
-                                // Careful: 8-bit unsigned -> 32-bit signed
-                                self->filter_buffer[j] = (int8_t)(((uint8_t)sample_hsrc[i + j]) ^ 0x80);
+                                hword_buffer[j] = sample_hsrc[j];
+                            }
+                        }
+                        break;
+                    }
+
+                    for (uint8_t c = 0; c < channels; c++) {
+                        for (uint32_t k = 0; k < frames; k++) {
+                            uint32_t idx = i + k * channels + c;
+                            if (MP_LIKELY(self->base.bits_per_sample == 16)) {
+                                self->filter_buffer[k] = sample_src[idx];
+                            } else {
+                                if (self->base.samples_signed) {
+                                    self->filter_buffer[k] = sample_hsrc[idx];
+                                } else {
+                                    // Careful: 8-bit unsigned -> 32-bit signed
+                                    self->filter_buffer[k] = (int8_t)(((uint8_t)sample_hsrc[idx]) ^ 0x80);
+                                }
+                            }
+                        }
+
+                        for (uint8_t j = 0; j < self->filter_states_len; j++) {
+                            mp_obj_t filter_obj = self->filter_objs[j];
+                            common_hal_synthio_biquad_tick(filter_obj);
+                            synthio_biquad_filter_samples(filter_obj, &self->filter_states[j * channels + c], self->filter_buffer, frames);
+                        }
+
+                        for (uint32_t k = 0; k < frames; k++) {
+                            uint32_t idx = i + k * channels + c;
+                            if (MP_LIKELY(self->base.bits_per_sample == 16)) {
+                                word_buffer[idx] = synthio_mix_down_sample((int32_t)((sample_src[idx] * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[k] * mix)), SYNTHIO_MIX_DOWN_SCALE(2));
+                                if (!self->base.samples_signed) {
+                                    word_buffer[idx] ^= 0x8000;
+                                }
+                            } else {
+                                if (self->base.samples_signed) {
+                                    hword_buffer[idx] = (int8_t)((sample_hsrc[idx] * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[k] * mix));
+                                } else {
+                                    hword_buffer[idx] = (uint8_t)(((int8_t)(((uint8_t)sample_hsrc[idx]) ^ 0x80) * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[k] * mix)) ^ 0x80;
+                                }
                             }
                         }
                     }
 
-                    for (uint8_t j = 0; j < self->filter_states_len; j++) {
-                        mp_obj_t filter_obj = self->filter_objs[j];
-                        common_hal_synthio_biquad_tick(filter_obj);
-                        synthio_biquad_filter_samples(filter_obj, &self->filter_states[j], self->filter_buffer, n_samples);
-                    }
-
-                    for (uint32_t j = 0; j < n_samples; j++) {
-                        if (MP_LIKELY(self->base.bits_per_sample == 16)) {
-                            word_buffer[i + j] = synthio_mix_down_sample((int32_t)((sample_src[i + j] * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[j] * mix)), SYNTHIO_MIX_DOWN_SCALE(2));
-                            if (!self->base.samples_signed) {
-                                word_buffer[i + j] ^= 0x8000;
-                            }
-                        } else {
-                            if (self->base.samples_signed) {
-                                hword_buffer[i + j] = (int8_t)((sample_hsrc[i + j] * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[j] * mix));
-                            } else {
-                                hword_buffer[i + j] = (uint8_t)(((int8_t)(((uint8_t)sample_hsrc[i + j]) ^ 0x80) * (MICROPY_FLOAT_CONST(1.0) - mix)) + (self->filter_buffer[j] * mix)) ^ 0x80;
-                            }
-                        }
-                    }
-
-                    i += n_samples;
+                    i += frames * channels;
                 }
             }
 

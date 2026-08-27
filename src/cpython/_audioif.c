@@ -470,21 +470,28 @@ static PyType_Spec envelope_state_spec = {
     .slots = envelope_state_slots,
 };
 
+// One filter state per channel. A stereo stream filtered through a single
+// state makes each channel's filter memory the other channel's history; see
+// docs/upstream-diff.md. CircuitPython caps channel_count at 2.
+#define AUDIOIF_BIQUAD_MAX_CHANNELS 2
+
 typedef struct {
     PyObject_HEAD
-    audioif_biquad_state_t state;
+    audioif_biquad_state_t state[AUDIOIF_BIQUAD_MAX_CHANNELS];
 } audioif_biquad_state_object_t;
 
 static int biquad_state_init(audioif_biquad_state_object_t *self,
     PyObject *args, PyObject *kwargs) {
     if (!PyArg_ParseTuple(args, ":BiquadState")) return -1;
-    memset(&self->state, 0, sizeof(self->state));
+    memset(self->state, 0, sizeof(self->state));
     return 0;
 }
 
 static PyObject *biquad_state_reset(audioif_biquad_state_object_t *self,
     PyObject *unused) {
-    audioif_biquad_reset(&self->state);
+    for (int c = 0; c < AUDIOIF_BIQUAD_MAX_CHANNELS; c++) {
+        audioif_biquad_reset(&self->state[c]);
+    }
     Py_RETURN_NONE;
 }
 
@@ -509,7 +516,8 @@ static PyObject *biquad_state_process(audioif_biquad_state_object_t *self,
     audioif_biquad_coefficients_t coefficients;
     audioif_biquad_configure(&coefficients, mode, frequency, Q, A,
         sample_rate);
-    audioif_biquad_process(&coefficients, &self->state,
+    // Mono path (synthio's per-note filters): one channel, state[0].
+    audioif_biquad_process(&coefficients, &self->state[0],
         (int32_t *)PyBytes_AS_STRING(result),
         PyBytes_GET_SIZE(result) / sizeof(int32_t));
     return result;
@@ -518,38 +526,53 @@ static PyObject *biquad_state_process(audioif_biquad_state_object_t *self,
 static PyObject *biquad_state_process_s16(audioif_biquad_state_object_t *self,
     PyObject *args) {
     Py_buffer input = {0};
-    int mode;
+    int mode, channels;
     double frequency, Q, A, mix;
     unsigned int sample_rate;
-    if (!PyArg_ParseTuple(args, "y*idddId:process_s16", &input, &mode,
-        &frequency, &Q, &A, &sample_rate, &mix)) return NULL;
+    if (!PyArg_ParseTuple(args, "y*idddIdi:process_s16", &input, &mode,
+        &frequency, &Q, &A, &sample_rate, &mix, &channels)) return NULL;
     if (input.len % sizeof(int16_t) || mode < 0 || mode > 6 ||
-        sample_rate < 1) {
+        sample_rate < 1 || channels < 1 ||
+        channels > AUDIOIF_BIQUAD_MAX_CHANNELS ||
+        (input.len / sizeof(int16_t)) % (size_t)channels) {
         PyBuffer_Release(&input);
         PyErr_SetString(PyExc_ValueError, "invalid biquad parameters");
         return NULL;
     }
     Py_ssize_t count = input.len / sizeof(int16_t);
+    Py_ssize_t frames = count / channels;
     int32_t *working = PyMem_Malloc((size_t)count * sizeof(int32_t));
     if (working == NULL) {
         PyBuffer_Release(&input);
         return PyErr_NoMemory();
     }
     const int16_t *source = input.buf;
-    for (Py_ssize_t i = 0; i < count; i++) working[i] = source[i];
     audioif_biquad_coefficients_t coefficients;
     audioif_biquad_configure(&coefficients, mode, frequency, Q, A,
         sample_rate);
-    audioif_biquad_process(&coefficients, &self->state, working, count);
+    // Deinterleave each channel into its own contiguous span of `working`,
+    // filter it with that channel's state, and read it back interleaved.
+    for (int c = 0; c < channels; c++) {
+        int32_t *segment = working + (Py_ssize_t)c * frames;
+        for (Py_ssize_t k = 0; k < frames; k++) {
+            segment[k] = source[k * channels + c];
+        }
+        audioif_biquad_process(&coefficients, &self->state[c], segment,
+            frames);
+    }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
     if (result != NULL) {
         int16_t *destination = (int16_t *)PyBytes_AS_STRING(result);
         int32_t scale = 0x0fffffff / (32768 * 2 - 28000);
-        for (Py_ssize_t i = 0; i < count; i++) {
-            int32_t combined = (int32_t)(source[i] * (1.0 - mix) +
-                working[i] * mix);
-            destination[i] = audioif_mix_down_sample(combined, scale,
-                -28000, 28000);
+        for (Py_ssize_t k = 0; k < frames; k++) {
+            for (int c = 0; c < channels; c++) {
+                Py_ssize_t index = k * channels + c;
+                int32_t filtered = working[(Py_ssize_t)c * frames + k];
+                int32_t combined = (int32_t)(source[index] * (1.0 - mix) +
+                    filtered * mix);
+                destination[index] = audioif_mix_down_sample(combined, scale,
+                    -28000, 28000);
+            }
         }
     }
     PyMem_Free(working);

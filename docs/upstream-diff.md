@@ -783,3 +783,49 @@ it by synthesizing bells out of notch and band-pass sections instead.
 **Deviation**: fixed here, so `PEAKING_EQ` diverges from `bin/circuitpython`.
 Nothing else moves — no existing fixture reached mode 4, which is also why
 `tests/parity/biquad_component_probe.py` now walks all seven modes.
+
+## A stereo `Filter` shared one biquad state between the channels (effects-extension tier)
+
+A biquad is a recursion: each output sample is computed from the two input and
+two output samples before it. Upstream's `audiofilters.Filter` allocates one
+`biquad_filter_state` per cascade stage and runs it across the whole
+*interleaved* buffer, so when it processes a left sample, the "two samples
+before it" are the previous right sample and the previous left one.
+
+Two consequences, both measured:
+
+- **Every frequency lands an octave high.** The recursion advances twice per
+  stereo frame, so the filter effectively runs at double the rate its
+  coefficients were computed for. A bell asked for 1200 Hz peaked near
+  2400 Hz. `audioeffects` compensated for this with a `SPECTRAL_SCALE = 0.5`
+  factor applied to every frequency before handing it to a Biquad.
+- **The channels are not independent.** With left fed 2400 Hz, the left output
+  measured +3.63 dB when the right carried 300 Hz and +4.89 dB when the right
+  carried 2400 Hz — the left channel's level moved 1.26 dB because of a change
+  the right channel made. Identical input in both channels came out 3.3 dB
+  apart at 3 kHz. No scale factor can correct this one.
+
+**Deviation**: one state per stage *per channel*, indexed
+`[stage * channels + channel]`, with the buffer deinterleaved per channel and
+chunked in whole frames so the channels stay in lockstep across chunk
+boundaries. `filter_states_len` still counts stages, so callers are unchanged.
+Fixed in both implementations — the usermod (`src/audiofilters/Filter.c`) and
+the CPython extension (`BiquadState.process_s16` in `src/cpython/_audioif.c`,
+which gained a `channels` argument). The two agree byte-for-byte.
+
+After the fix the same bell peaks at 1200 Hz where it was asked to, both
+channels read identically for identical input, and the left channel's level is
+unchanged by the right channel's content. Mono and stereo now agree exactly;
+`SPECTRAL_SCALE` and `_core.filter_hz()` are gone from `audioeffects`.
+
+**Not affected**: synthio's per-note filters. `synthio_synth_synthesize()`
+filters a *mono* `tmp_buffer32` with a per-note state and only then expands to
+stereo (`src/synthio/__init__.c`), so every instrument renders identically
+before and after. The blast radius was the `audiofilters.Filter` sites in
+`audioeffects`.
+
+Stereo `Filter` had no fixture anywhere in this repository before this change —
+its only two uses in the suite pass `channel_count=1` — which is how both of
+these survived. `tests/parity/biquad_component_probe.py` covers mono and stereo
+across all seven modes, and its golden is captured from this port rather than
+from CircuitPython, because of the two deviations above.
