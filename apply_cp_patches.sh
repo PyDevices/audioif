@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Add audioif's audiodynamics and audioroute modules to a CircuitPython tree.
+# Add audioif's audiodynamics, audioroute and audiomath modules to a
+# CircuitPython tree.
 #
 #   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
 #   ./apply_cp_patches.sh --apply   [--port PORT] [--variant VARIANT]
 #   ./apply_cp_patches.sh --status  [--port PORT] [--variant VARIANT]
 #
 # CircuitPython already has everything else audioif ports - audiocore, synthio,
-# audiomixer, the effects - so this script only *adds*: two modules that
+# audiomixer, the effects - so this script only *adds*: modules that
 # CircuitPython never had, whose DSP is the same src/shared/ C the MicroPython
 # usermod and the CPython extension compile. The one exception is a rewrite of
 # audiocore.get_buffer's return type; see src/circuitpython_spike/
@@ -92,34 +93,52 @@ block_present() {
     [ -f "$1" ] && grep -qF "${2:-audioif-cp begin}" "$1"
 }
 
-# Insert a marked block after the first line containing `anchor`.
+# Insert a marked block after the first line containing `anchor` -- or, when
+# the markers are already there, rewrite what is between them.
+#
+# That second half matters: adding a module to this script has to reach a tree
+# that was patched by an earlier version of it. Skipping on "marker present"
+# used to mean a new module's CIRCUITPY_* flag silently never landed, and the
+# build then failed a long way from the cause.
 insert_block_after() {
     local file="$1" anchor="$2" block="$3" needle="${4:-audioif-cp begin}"
-    if block_present "$file" "$needle"; then
-        echo "  skip (already patched): ${file#"$CP_DIR"/}"
-        return 0
-    fi
-    if [ "$DRY_RUN" = 1 ]; then
-        echo "  [dry-run] insert into ${file#"$CP_DIR"/} after: $anchor"
-        return 0
-    fi
     local begin end
     begin=$(markers_for_file "$file" | sed -n '1p')
     end=$(markers_for_file "$file" | sed -n '2p')
-    python3 - "$file" "$anchor" "$begin" "$end" "$block" <<'PY'
+    if [ "$DRY_RUN" = 1 ]; then
+        if block_present "$file" "$needle"; then
+            echo "  [dry-run] refresh block in ${file#"$CP_DIR"/}"
+        else
+            echo "  [dry-run] insert into ${file#"$CP_DIR"/} after: $anchor"
+        fi
+        return 0
+    fi
+    local outcome
+    outcome=$(python3 - "$file" "$anchor" "$begin" "$end" "$block" <<'PY'
 import sys
 from pathlib import Path
 
 path, anchor, begin, end, block = sys.argv[1:6]
 text = Path(path).read_text()
 if begin in text:
+    head, _, rest = text.partition(begin)
+    body, separator, tail = rest.partition(end)
+    if not separator:
+        raise SystemExit("unterminated block in %s" % path)
+    if body.strip("\n") == block:
+        print("current")
+        raise SystemExit(0)
+    Path(path).write_text(head + begin + "\n" + block + "\n" + end + tail)
+    print("updated")
     raise SystemExit(0)
 if anchor not in text:
     raise SystemExit("anchor not found in %s: %r" % (path, anchor))
 Path(path).write_text(
     text.replace(anchor, anchor + "\n%s\n%s\n%s" % (begin, block, end), 1))
+print("patched")
 PY
-    echo "  patched: ${file#"$CP_DIR"/}"
+    )
+    echo "  ${outcome}: ${file#"$CP_DIR"/}"
 }
 
 # Insert one plain line after `anchor` - for the build lists, where a marker
@@ -214,7 +233,9 @@ if [[ "$MODE" == "--status" ]]; then
     done
     for file in shared-bindings/audiodynamics/__init__.c \
                 shared-bindings/audioroute/__init__.c \
-                shared/audioif_dynamics.c shared/audioif_splitter.c; do
+                shared-bindings/audiomath/__init__.c \
+                shared/audioif_dynamics.c shared/audioif_splitter.c \
+                shared/audioif_multiply.c; do
         [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
     done
     python3 "$REPLACEMENTS" "$CP_DIR" status
@@ -237,7 +258,9 @@ insert_block_after "$MPCONFIG_MK" "$MPCONFIG_ANCHOR" \
 "CIRCUITPY_AUDIODYNAMICS ?= 0
 CFLAGS += -DCIRCUITPY_AUDIODYNAMICS=\$(CIRCUITPY_AUDIODYNAMICS)
 CIRCUITPY_AUDIOROUTE ?= 0
-CFLAGS += -DCIRCUITPY_AUDIOROUTE=\$(CIRCUITPY_AUDIOROUTE)"
+CFLAGS += -DCIRCUITPY_AUDIOROUTE=\$(CIRCUITPY_AUDIOROUTE)
+CIRCUITPY_AUDIOMATH ?= 0
+CFLAGS += -DCIRCUITPY_AUDIOMATH=\$(CIRCUITPY_AUDIOMATH)"
 echo
 
 echo "==> py/circuitpy_defns.mk (source patterns)"
@@ -250,6 +273,9 @@ SRC_PATTERNS += audiodynamics/%
 endif
 ifeq (\$(CIRCUITPY_AUDIOROUTE),1)
 SRC_PATTERNS += audioroute/%
+endif
+ifeq (\$(CIRCUITPY_AUDIOMATH),1)
+SRC_PATTERNS += audiomath/%
 endif" "SRC_PATTERNS += audiodynamics/%"
 echo
 
@@ -263,12 +289,14 @@ insert_block_after "$VARIANT_MK" "$VARIANT_ANCHOR" \
 "CIRCUITPY_AUDIODYNAMICS = 1
 CFLAGS += -DCIRCUITPY_AUDIODYNAMICS=1
 CIRCUITPY_AUDIOROUTE = 1
-CFLAGS += -DCIRCUITPY_AUDIOROUTE=1"
+CFLAGS += -DCIRCUITPY_AUDIOROUTE=1
+CIRCUITPY_AUDIOMATH = 1
+CFLAGS += -DCIRCUITPY_AUDIOMATH=1"
 echo
 
 echo "==> Unix variant: source list"
 # The coverage variant hand-lists its sources and never consults SRC_PATTERNS,
-# so these five lines are what actually gets the modules compiled here.
+# so these lines are what actually gets the modules compiled here.
 BINDING_ANCHOR=$'\tshared-bindings/audiofilters/__init__.c \\'
 MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
@@ -276,11 +304,15 @@ insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynam
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/Splitter.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/SplitterTap.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiomath/Multiply.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiomath/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/Splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/SplitterTap.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiomath/Multiply.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_splitter.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_multiply.c \\'
 echo
 
 echo "==> Unix variant: mpconfigvariant.h guards"
@@ -295,6 +327,9 @@ if [ -f "$VARIANT_H" ]; then
 #endif
 #ifndef CIRCUITPY_AUDIOROUTE
 #define CIRCUITPY_AUDIOROUTE (0)
+#endif
+#ifndef CIRCUITPY_AUDIOMATH
+#define CIRCUITPY_AUDIOMATH (0)
 #endif"
 fi
 echo

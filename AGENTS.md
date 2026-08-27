@@ -11,7 +11,8 @@ for source compatibility; only this repo's own name differs.
   (esp32/rp2, CMake-based ports) — build glue for `USER_C_MODULES` discovery
 - `src/` — one directory per module (`audiocore/`, `synthio/`, `audiomixer/`,
   `audiospeed/`, `audiofreeverb/`, `audiofilters/`, `audiodelays/`,
-  `audiomp3/`, `audiodynamics/`, `audioroute/`), plus `src/cp_compat/`
+  `audiomp3/`, `audiodynamics/`, `audioroute/`, `audiomath/`), plus
+  `src/cp_compat/`
   (CircuitPython-only core primitives ported as standalone compat shims, each
   individually verified against mainline MicroPython before use — not assumed
   missing) and `src/shared/` (runtime-neutral DSP the MicroPython usermod and
@@ -19,12 +20,13 @@ for source compatibility; only this repo's own name differs.
 - `lib/` — the pure-Python tiers, published to boards by MIP from
   `<repo>/lib/<package>` and to PyPI in the same wheel:
   `lib/audioinstruments/` (53 `synthio` instruments), `lib/audioeffects/`
-  (39 effect classes) and `lib/audiorender/` (whole-composition offline
+  (40 effect classes) and `lib/audiorender/` (whole-composition offline
   rendering — numpy, desktop-only, never frozen)
-- `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics` and
-  `audioroute` to a CircuitPython tree. Those two are not CircuitPython ports:
-  they come from micropython-vst3's `vstaudio` engine, so CircuitPython gains
-  them here rather than the other way round.
+- `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics`,
+  `audioroute` and `audiomath` to a CircuitPython tree. None of the three is a
+  CircuitPython port: the first two come from micropython-vst3's `vstaudio`
+  engine and the third is audioif's own, so CircuitPython gains them here
+  rather than the other way round.
 - `docs/porting-plan.md` — the full phased porting history, architecture,
   and target layout
 - `docs/upstream-diff.md` — every deliberate deviation from upstream
@@ -64,7 +66,10 @@ Both are expected as siblings in the parent workspace (`cmods/` in
     `audioroute` against `vstaudio_dsp.c` compiled unmodified by
     `tests/parity/build_vstaudio_oracle.sh`. One hash covers every
     interpreter here: the arithmetic is all in `src/shared/`, so two
-    interpreters disagreeing would itself be the finding.
+    interpreters disagreeing would itself be the finding. `audiomath` rides
+    along in the same file with no oracle at all — captured from the port,
+    it pins cross-interpreter agreement rather than fidelity to something
+    older.
 - Those two oracles are the *original* scripts and `vstaudio_dsp.c`, which
   micropython-vst3 no longer carries — it imports these packages now. Both
   are read out of its git history, so they stay fixed no matter what that

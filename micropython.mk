@@ -38,6 +38,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_pitchshift.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_freeverb.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
 
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
@@ -136,11 +137,13 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/PitchShift.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
-# --- tier 6: audiodynamics (Dynamics, DYN_*) and audioroute (Splitter) ---
+# --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter) and
+#     audiomath (Multiply) ---
 #
-# The first modules here that are not CircuitPython ports: both come from
+# The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
-# library. See docs/upstream-diff.md.
+# library; audiomath is audioif's own, and is the only way to modulate a
+# stream at audio rate. See docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
     $(MPAUDIO_SRC_DIR)/audiodynamics/module.c
@@ -148,6 +151,9 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioroute/Splitter.c \
     $(MPAUDIO_SRC_DIR)/audioroute/SplitterTap.c \
     $(MPAUDIO_SRC_DIR)/audioroute/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audiomath/Multiply.c \
+    $(MPAUDIO_SRC_DIR)/audiomath/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #

@@ -18,6 +18,7 @@
 #include "shared/audioif_freeverb.h"
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
+#include "shared/audioif_multiply.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
 // someone compiling this source by hand.
@@ -807,6 +808,38 @@ static PyType_Spec splitter_ring_spec = {
     .slots = splitter_ring_slots,
 };
 
+// audiomath.Multiply's arithmetic. A plain function rather than a type
+// because the multiply carries no state at all: mix is the only setting, and
+// the Python side already holds it.
+static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
+    Py_buffer signal = {0};
+    Py_buffer modulator = {0};
+    double mix = 1.0;
+    if (!PyArg_ParseTuple(args, "y*y*d:multiply_s16", &signal, &modulator,
+        &mix)) {
+        return NULL;
+    }
+    if (signal.len != modulator.len || signal.len % 4) {
+        PyBuffer_Release(&signal);
+        PyBuffer_Release(&modulator);
+        PyErr_SetString(PyExc_ValueError,
+            "buffers must be the same whole number of stereo 16-bit frames");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, signal.len);
+    if (result != NULL) {
+        audioif_multiply_config_t config;
+        audioif_multiply_config_init(&config);
+        audioif_multiply_set_mix(&config, (float)mix);
+        audioif_multiply_process_s16(&config,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)signal.buf,
+            (const int16_t *)modulator.buf, (uint32_t)(signal.len / 4));
+    }
+    PyBuffer_Release(&signal);
+    PyBuffer_Release(&modulator);
+    return result;
+}
+
 static PyObject *audioif_mix_s16(PyObject *module, PyObject *args) {
     Py_buffer left = {0};
     Py_buffer right = {0};
@@ -1230,6 +1263,7 @@ static PyMethodDef audioif_methods[] = {
     {"multitap_s16", audioif_multitap_s16, METH_VARARGS, NULL},
     {"pitchshift_s16", audioif_pitchshift_s16, METH_VARARGS, NULL},
     {"freeverb_s16", audioif_freeverb_s16, METH_VARARGS, NULL},
+    {"multiply_s16", audioif_multiply_s16, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL},
 };
 
@@ -1265,6 +1299,8 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_SPLITTER_CHUNK_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "DYNAMICS_FRAMES",
         AUDIOIF_DYNAMICS_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "MULTIPLY_FRAMES",
+        AUDIOIF_MULTIPLY_FRAMES) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__",
     AUDIOIF_VERSION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Dynamics and Splitter parity: what the originals rendered, and what the
-ports render now.
+"""audiodynamics, audioroute and audiomath parity: what the originals
+rendered, and what the ports render now.
 
     verify_dsp.py --capture-old     record the goldens from the original nodes
     verify_dsp.py                    hold the ports to them
@@ -11,9 +11,15 @@ reach it: the usermod that publishes those types is the plugin sidecar, and it
 wants a shared memory mapping a VST host created.
 
 One hash per probe covers every interpreter, unlike the instrument goldens.
-The arithmetic here is entirely inside shared/audioif_dynamics.c and
-shared/audioif_splitter.c -- the same C the CPython extension links -- so a
-disagreement between two interpreters would itself be the finding.
+The arithmetic here is entirely inside shared/audioif_dynamics.c,
+shared/audioif_splitter.c and shared/audioif_multiply.c -- the same C the
+CPython extension links -- so a disagreement between two interpreters would
+itself be the finding.
+
+`audiomath` has no oracle at all: it is audioif's own module, with no ancestor
+in CircuitPython or in the engine. Its golden is captured from the port under
+CPython, and what it proves is cross-interpreter agreement and no accidental
+change over time, not fidelity to something older.
 """
 
 import argparse
@@ -29,13 +35,14 @@ ROOT = HERE.parents[1]
 WORKSPACE = ROOT.parent
 GOLDEN = HERE / "golden" / "dsp_nodes.json"
 
-#: (probe, module the port provides it as, module the oracle provides it as,
-#:  {interpreter: why it is skipped there})
+#: (probe, module the port provides it as, module the oracle provides it as
+#:  or None where there is no oracle, {interpreter: why it is skipped there})
 PROBES = (
     ("dynamics_probe.py", "audiodynamics", "vstaudio_oracle", {}),
     ("route_probe.py", "audioroute", "vstaudio_oracle", {}),
     ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
+    ("multiply_probe.py", "audiomath", None, {}),
 )
 
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
@@ -76,17 +83,22 @@ def interpreter_table(args):
 
 def capture(args):
     oracle = Path(args.oracle)
-    if not oracle.exists():
+    if not oracle.exists() and any(old for _, _, old, _ in PROBES):
         raise SystemExit(
             "the oracle interpreter is not built at %s\n"
             "build it with tests/parity/build_vstaudio_oracle.sh" % oracle)
     fixture = {
         "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, "
                   "compiled unmodified (see build_vstaudio_oracle.sh)",
+        "no_oracle": "audiomath is audioif's own; multiply_probe.py is "
+                     "captured from the port under CPython",
         "probes": {},
     }
-    for probe, _, old_module, _skips in PROBES:
-        digest = run_probe([str(oracle)], probe, old_module)
+    for probe, module, old_module, _skips in PROBES:
+        if old_module is None:
+            digest = run_probe([sys.executable], probe, module)
+        else:
+            digest = run_probe([str(oracle)], probe, old_module)
         fixture["probes"][probe] = digest
         print("captured %-20s %s" % (probe, digest[:16]))
     GOLDEN.parent.mkdir(exist_ok=True)

@@ -12,6 +12,8 @@ src/shared/audioif_dynamics.h	shared/audioif_dynamics.h
 src/shared/audioif_dynamics.c	shared/audioif_dynamics.c
 src/shared/audioif_splitter.h	shared/audioif_splitter.h
 src/shared/audioif_splitter.c	shared/audioif_splitter.c
+src/shared/audioif_multiply.h	shared/audioif_multiply.h
+src/shared/audioif_multiply.c	shared/audioif_multiply.c
 
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.h	shared-bindings/audiodynamics/__init__.h
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.c	shared-bindings/audiodynamics/__init__.c
@@ -30,3 +32,10 @@ src/circuitpython_spike/shared-module/audioroute/Splitter.h	shared-module/audior
 src/circuitpython_spike/shared-module/audioroute/Splitter.c	shared-module/audioroute/Splitter.c
 src/circuitpython_spike/shared-module/audioroute/SplitterTap.h	shared-module/audioroute/SplitterTap.h
 src/circuitpython_spike/shared-module/audioroute/SplitterTap.c	shared-module/audioroute/SplitterTap.c
+
+src/circuitpython_spike/shared-bindings/audiomath/__init__.h	shared-bindings/audiomath/__init__.h
+src/circuitpython_spike/shared-bindings/audiomath/__init__.c	shared-bindings/audiomath/__init__.c
+src/circuitpython_spike/shared-bindings/audiomath/Multiply.h	shared-bindings/audiomath/Multiply.h
+src/circuitpython_spike/shared-bindings/audiomath/Multiply.c	shared-bindings/audiomath/Multiply.c
+src/circuitpython_spike/shared-module/audiomath/Multiply.h	shared-module/audiomath/Multiply.h
+src/circuitpython_spike/shared-module/audiomath/Multiply.c	shared-module/audiomath/Multiply.c

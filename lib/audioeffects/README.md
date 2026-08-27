@@ -1,6 +1,6 @@
 # audioeffects
 
-Thirty-nine effect classes built out of audioif's audio nodes, for any host
+Forty effect classes built out of audioif's audio nodes, for any host
 that can pull an audiosample:
 
 ```python
@@ -72,6 +72,7 @@ then sums).
 | `Vibrato` | pitch LFO through the pitch shifter |
 | `AutoPan` | panning LFO |
 | `Rotary` | vibrato + tremolo + auto-pan at a shared slow/fast speed |
+| `RingMod` | audio-rate multiply against a sine carrier; **patches** |
 
 ### Drive - `drive.py`
 | Class | Notes |
@@ -107,14 +108,13 @@ scales the whole character, tone shaping included.
 
 - **Convolution reverb** - no impulse-response engine in the palette.
 - **Pitch correction** - needs pitch detection the engine does not have.
-- **Ring modulation of the input** - stream-by-oscillator multiplication
-  is not available (synthio ring mod applies to synthesized notes only).
 - **Sample-rate reduction** - the other half of a lo-fi box. The engine's
   LOFI mode masks low bits and nothing else; decimation needs a
   sample-and-hold that is not in the palette. `Bitcrusher` does the bit
   depth alone.
 - LFO-driven parameters update at the block rate (~187 Hz at 48 kHz),
-  plenty for sweep rates but not audio-rate modulation.
+  plenty for sweep rates but not audio-rate modulation. `RingMod` is the
+  exception and does not use an LFO at all - see below.
 
 ## A note on how low a filter can go
 
@@ -146,6 +146,36 @@ Nothing refuses a low frequency and nothing ever did, because a
 `LadderFilter` sweeping down through 40 Hz is a legitimate thing to do.
 The only remaining rule is the one that was always real: stay below
 Nyquist, which `check_hz` enforces.
+
+## A note on patches
+
+Some classes carry **patches**: named settings on the same 0-127 MIDI grid
+`audioinstruments` uses, so a host or an app can offer presets and automate
+knobs without knowing what any particular effect's arguments mean.
+
+```python
+mod = audioeffects.RingMod(source, patch=1)   # "Dalek"
+mod.set_macro(0, 96)                          # Frequency, MIDI scale
+name, values = audioeffects.RingMod.PATCHES[2]
+```
+
+A patchable class declares `MACRO_LABELS` (the knob names), `MACRO_RANGES`
+(what each spans, linear or logarithmic), and `PATCHES`
+(`{index: (name, (values,))}`). `set_macro(index, value)` takes the MIDI
+scale and accepts floats, so a host with finer resolution need not quantize;
+`macro(index)` reads a knob back in its own units; `program_change(index)`
+applies a patch and ignores an index the class does not have, the way an
+instrument does.
+
+**Patch 0 is always the constructor's own defaults**, rendered onto the 7-bit
+grid - close to a fresh instance, not identical to one, because 128 steps
+cannot land exactly on every default. Constructor arguments are *not*
+quantized: `RingMod(src, frequency=440)` gets 440 Hz, while patch 0's nearest
+grid point for the 220 Hz default is 215.7.
+
+It is optional, and most classes do not have one yet. A class without
+`MACRO_LABELS` raises rather than pretending: `set_macro` on it is an
+application bug, not a wire message.
 
 ## A note on chaining after a Mixer
 
@@ -186,8 +216,11 @@ the measurements and the one-line coefficient fix.
 
 ## Testing
 
-`tests/test_cpython_effects_library.py` builds and renders every class.
-micropython-vst3's `tools/test-effects-lib.py` additionally runs them
-inside a real VST3 host, feeding a quiet-then-loud sine and asserting
+`tests/test_cpython_effects_library.py` builds and renders every class and
+measures what it does, under CPython. `tests/parity/effects_library_smoke.py`
+is the coarse half of that in portable Python, so MicroPython and patched
+CircuitPython can walk the same catalogue - every class, and every patch of
+every patchable class. micropython-vst3's `tools/test-effects-lib.py`
+additionally runs them inside a real VST3 host, feeding a quiet-then-loud sine and asserting
 per-class behaviour: compressors and limiters squeeze the loud half,
 gates and expanders mute the quiet one, everything else passes signal.

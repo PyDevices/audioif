@@ -37,6 +37,11 @@ CLASSES = tuple(sorted(
 #: The one class that cannot be built from a source alone.
 EXTRA_ARGUMENTS = {"GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)}}
 
+#: The classes that carry a patch surface. Optional, and most do not yet -
+#: see audioeffects._core.Effect.
+PATCHABLE = tuple(name for name in CLASSES
+                  if getattr(audioeffects, name).MACRO_LABELS)
+
 
 def source(frames=4096, level=11000, rate=SAMPLE_RATE):
     """A stereo signal with content across the spectrum, loud enough to trip
@@ -186,7 +191,7 @@ def harmonic_db(build_chain, hz=1000.0, orders=(2, 3)):
 
 class EffectsLibraryTest(unittest.TestCase):
     def test_the_catalogue_is_all_there(self):
-        self.assertEqual(len(CLASSES), 39, CLASSES)
+        self.assertEqual(len(CLASSES), 40, CLASSES)
 
     def test_every_effect_builds_and_renders(self):
         for name in CLASSES:
@@ -446,6 +451,103 @@ class EffectsLibraryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             audioeffects.Octaver(source(), down=0.3, down2=0.3, up=0.3,
                                  up2=0.3)
+
+    def test_a_ring_modulator_makes_sidebands_and_keeps_neither_original(
+            self):
+        # The definition of ring modulation, and the thing no LFO can do: a
+        # 1 kHz tone against a 220 Hz carrier comes back as 780 and 1220 and
+        # nothing at 1000. A Tremolo at the same settings would keep the
+        # 1 kHz and could not reach 220 Hz in the first place.
+        effect = audioeffects.RingMod(sine(1000.0, frames=80000),
+                                      frequency=220.0)
+        # The carrier table holds a whole number of cycles, so it lands a
+        # fraction of a hertz off what was asked for; the sidebands are around
+        # what it actually is, not around 220.
+        carrier = effect.macro(0)
+        magnitudes, bin_hz = spectrum(effect.output)
+
+        def peak_near(frequency):
+            lo = max(0, int(frequency * 0.97 / bin_hz))
+            hi = min(len(magnitudes), int(frequency * 1.03 / bin_hz) + 1)
+            return max(magnitudes[lo:hi]) if hi > lo else 0.0
+
+        lower = peak_near(1000.0 - carrier)
+        upper = peak_near(1000.0 + carrier)
+        self.assertGreater(lower, 0.0)
+        self.assertAlmostEqual(20.0 * math.log10(upper / lower), 0.0, delta=1.5)
+        self.assertLess(20.0 * math.log10(peak_near(1000.0) / lower), -25.0)
+        self.assertLess(20.0 * math.log10(peak_near(carrier) / lower), -25.0)
+
+    def test_a_ring_modulator_at_zero_depth_is_a_wire(self):
+        # Depth folds into the carrier table rather than being a second
+        # multiply, so zero depth has to come out as a constant carrier -
+        # which is the one setting that proves the table is built the way the
+        # docstring says it is.
+        self.assertAlmostEqual(
+            tone_gain_db(1000.0,
+                         lambda s: audioeffects.RingMod(s, depth=0.0).output),
+            0.0, delta=0.05)
+        self.assertAlmostEqual(
+            tone_gain_db(1000.0,
+                         lambda s: audioeffects.RingMod(s, mix=0.0).output),
+            0.0, delta=0.05)
+
+    def test_patch_zero_is_the_constructor_defaults(self):
+        # Patch 0 is defined as the defaults rendered onto the 7-bit grid, so
+        # this catches a default that moves without its patch following it.
+        for name in PATCHABLE:
+            effect = build(name)
+            expected = tuple(
+                int(round(position * 127)) for position in effect._macros)
+            self.assertEqual(getattr(audioeffects, name).PATCHES[0][1],
+                             expected, name)
+
+    def test_every_patch_names_a_value_for_every_macro(self):
+        for name in PATCHABLE:
+            cls = getattr(audioeffects, name)
+            for index, (patch_name, values) in sorted(cls.PATCHES.items()):
+                self.assertEqual(len(values), len(cls.MACRO_LABELS),
+                                 "%s patch %d" % (name, index))
+                self.assertTrue(patch_name, "%s patch %d" % (name, index))
+                for value in values:
+                    self.assertIsInstance(value, int)
+                    self.assertTrue(0 <= value <= 127,
+                                    "%s patch %d" % (name, index))
+
+    def test_every_patch_builds_and_renders(self):
+        for name in PATCHABLE:
+            for index in sorted(getattr(audioeffects, name).PATCHES):
+                effect = build(name, patch=index)
+                self.assertGreater(peak(effect.output, 8), 0.001,
+                                   "%s patch %d renders silence"
+                                   % (name, index))
+
+    def test_a_macro_moves_the_thing_it_names(self):
+        effect = build(PATCHABLE[0])
+        for index, span in enumerate(effect.MACRO_RANGES):
+            effect.set_macro(index, 127)
+            self.assertAlmostEqual(effect.macro(index), span[1], delta=1e-6)
+            effect.set_macro(index, 0)
+            self.assertAlmostEqual(effect.macro(index), span[0], delta=1e-6)
+
+    def test_a_macro_index_the_class_does_not_have_is_refused(self):
+        # Loud, unlike an unknown program change: a host addressing a knob
+        # that is not there is an application bug, not a wire message.
+        effect = build(PATCHABLE[0])
+        with self.assertRaises(IndexError):
+            effect.set_macro(len(effect.MACRO_LABELS), 64)
+
+    def test_a_program_change_to_a_patch_that_is_not_there_is_ignored(self):
+        effect = build(PATCHABLE[0])
+        before = list(effect._macros)
+        effect.program_change(99)
+        self.assertEqual(effect._macros, before)
+
+    def test_a_class_without_macros_has_no_patch_surface(self):
+        plain = audioeffects.Reverb(source())
+        self.assertEqual(plain.MACRO_LABELS, ())
+        with self.assertRaises(IndexError):
+            plain.set_macro(0, 64)
 
     def test_the_compressor_actually_compresses(self):
         # Not just "it renders". The comparison is against a Compressor whose

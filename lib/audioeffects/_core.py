@@ -15,7 +15,12 @@ tail as ``.output``:
 
 The underlying audioif nodes are kept as attributes so applications can
 bind parameters straight to them.
+
+Some classes also carry patches - named settings on the 0-127 MIDI grid, the
+way an instrument does. See `Effect` below.
 """
+
+import math
 
 #: Every node this library builds is created at this rate. It is module state
 #: rather than a constructor argument because a process only ever has one
@@ -68,10 +73,108 @@ def logmap(value, lo, hi):
     return lo * ((hi / lo) ** value)
 
 
+def macro_value(span, position):
+    """A macro's 0..1 position -> the value it stands for. ``span`` is
+    ``(low, high)``, or ``(low, high, "log")`` for the ones that should sweep
+    by ratio rather than by difference - anything in hertz or seconds."""
+    low, high = span[0], span[1]
+    if len(span) > 2:
+        return logmap(position, low, high)
+    return low + (high - low) * position
+
+
+def macro_position(span, value):
+    """The inverse of `macro_value`, unquantized. Used to seed a knob from a
+    constructor argument, so the exact number a caller asked for stays on the
+    audio path rather than being rounded onto the 7-bit grid first."""
+    low, high = span[0], span[1]
+    if len(span) > 2:
+        position = math.log(value / low) / math.log(high / low)
+    else:
+        position = (value - low) / (high - low)
+    return min(1.0, max(0.0, position))
+
+
+def macro_of(span, value):
+    """`value` as the nearest integer on the 0-127 MIDI grid. Patch authoring
+    and the tests that hold patch 0 to the constructor's defaults need this;
+    nothing on the audio path calls it."""
+    return int(round(macro_position(span, value) * 127))
+
+
 class Effect:
-    """Base: subclasses set self.output to their chain tail."""
+    """Base: subclasses set self.output to their chain tail.
+
+    A subclass may also carry a **patch surface**, in the shape the instrument
+    tier uses: `MACRO_LABELS` names the knobs, `MACRO_RANGES` says what each
+    one spans, `PATCHES` holds settings on the 0-127 MIDI grid, and
+    `_apply_macro` does the work. It is optional and most classes do not have
+    one yet - without `MACRO_LABELS` the methods below raise rather than
+    quietly pretending.
+
+    A patchable class calls `_init_macros()` at the end of its `__init__` with
+    its own arguments, in the macros' own units. That is deliberately the only
+    route into `_apply_macro`, so the constructor and a later `set_macro` can
+    never drift apart.
+    """
 
     output = None
+
+    #: Knob names, one per macro index - the same thing an instrument module's
+    #: MACRO_LABELS means.
+    MACRO_LABELS = ()
+
+    #: Parallel to MACRO_LABELS: `(low, high)`, or `(low, high, "log")`.
+    MACRO_RANGES = ()
+
+    #: {index: (name, (values on the 0-127 grid,))}. Patch 0 is the
+    #: constructor's own defaults rendered onto that grid - close to a fresh
+    #: instance, not identical to one, because the grid is 128 steps wide and
+    #: the defaults are not obliged to land on it. `test_patch_zero_is_the_
+    #: constructor_defaults` holds every patchable class to that.
+    PATCHES = {}
+
+    def _init_macros(self, values, patch=None):
+        """Seed the knobs from the constructor's arguments and, if one was
+        asked for, apply a patch over the top."""
+        self._macros = [macro_position(span, value)
+                        for span, value in zip(self.MACRO_RANGES, values)]
+        for index, position in enumerate(self._macros):
+            self._apply_macro(index, position)
+        if patch is not None:
+            self.program_change(patch)
+
+    def set_macro(self, index, value):
+        """Set macro `index` from the 0-127 MIDI scale. Floats are accepted so
+        a host with finer resolution need not quantize."""
+        index = int(index)
+        if not 0 <= index < len(self.MACRO_LABELS):
+            raise IndexError("%s has %d macros; no index %d"
+                             % (type(self).__name__, len(self.MACRO_LABELS),
+                                index))
+        self._macros[index] = min(1.0, max(0.0, value / 127.0))
+        self._apply_macro(index, self._macros[index])
+
+    def program_change(self, index):
+        """Apply patch `index`. An index this class does not have is ignored,
+        as it is on an instrument: a program change is a wire message, and the
+        wire carries indices nobody has to have implemented."""
+        patch = self.PATCHES.get(int(index))
+        if patch is None:
+            return
+        for macro, value in enumerate(patch[1]):
+            self.set_macro(macro, value)
+
+    def macro(self, index):
+        """What macro `index` currently stands for, in its own units."""
+        return macro_value(self.MACRO_RANGES[index], self._macros[index])
+
+    def _apply_macro(self, index, position):
+        """Push macro `index`, at its 0..1 `position`, into the nodes. Read
+        `self._macros[other]` for a setting that depends on two knobs."""
+        raise NotImplementedError(
+            "%s declares macros but does not apply them"
+            % (type(self).__name__,))
 
 
 # This library used to halve every frequency it handed a Biquad, and to

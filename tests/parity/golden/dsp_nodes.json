@@ -1,7 +1,9 @@
 {
+  "no_oracle": "audiomath is audioif's own; multiply_probe.py is captured from the port under CPython",
   "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, compiled unmodified (see build_vstaudio_oracle.sh)",
   "probes": {
     "dynamics_probe.py": "3e5462291e2a38ed8e3061c43c22d312ff0d967b803e7e2a39d08a45595efc7d",
+    "multiply_probe.py": "f3d5ff2ed758647f73692426ef6046dfe8ffcdf9e13dd71a19f01f3f483fe46d",
     "route_dry_probe.py": "bb495c065900819b2ba6858de03fdf000bb6c08d0f6ef07001813412ef2ca81b",
     "route_probe.py": "fdb04d12c18c37e0c3f57c8c8b1411a6b0eb5659091f710fb77876f2651f73aa"
   }

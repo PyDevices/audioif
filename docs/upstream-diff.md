@@ -682,6 +682,62 @@ CircuitPython effects around them. The originals had no lifecycle, and giving
 one to three implementations to keep in step buys nothing the collector does
 not already do.
 
+## `audiomath`: audioif's own, with no ancestor anywhere (phase 9)
+
+`audiodynamics` and `audioroute` above are at least *someone's* code moved.
+`audiomath` is not: nothing in CircuitPython and nothing in
+micropython-vst3's engine multiplies one audio stream by another, so there is
+no oracle to diff against and this section records a new module rather than a
+deviation.
+
+`Multiply(source, modulator, mix=1.0)` writes `source * modulator`, blended
+back against the untouched source by `mix`. That is ring modulation, and with
+a modulator that does not cross zero it is amplitude modulation. The palette
+could not do either:
+
+- **`synthio` rings a *note*** against an oscillator. It reaches synthesized
+  notes and nothing else -- not a microphone, not a sample, not the output of
+  another effect.
+- **An LFO-driven parameter updates once per block**, about 187 Hz at 48 kHz.
+  `audioeffects.Tremolo` is exactly this effect inside that ceiling; a ring
+  modulator wants hundreds of hertz and a carrier of a few kilohertz.
+
+The arithmetic is `shared/audioif_multiply.c`, Q15 and stateless: the product
+is `(a * b) >> 15`, blended `(dry * a + wet * product) >> 15`, clamped. The
+two negative rails are the one product that lands outside `int16`, which is
+what the clamp is for; `tests/parity/multiply_probe.py` drives it there
+deliberately rather than assuming.
+
+**The two inputs fail in opposite directions, on purpose.** A source that runs
+dry gives silence, the way every other node in the palette does. A modulator
+that is absent, or has stopped, lets the signal through **untouched** --
+`audioif_multiply_passthrough_s16()`. This is the one place where "no input"
+and "an input of zero" must not mean the same thing: a missing modulator that
+muted the signal would make every dropout a hard gate.
+
+A modulator is normally a short looping table, and looping is free here rather
+than a feature: `audiocore.RawSample` returns `GET_BUFFER_DONE` with its whole
+buffer every time it is asked, so pulling one repeatedly *is* the loop. The
+carrier `audioeffects.RingMod` builds therefore holds a whole number of cycles
+(`modulation.py`, `_carrier`), because a partial one would step the phase once
+per table and buzz at the table rate.
+
+`verify_dsp.py` covers it, but differently from its two neighbours: with no
+oracle, the golden is captured from the port under CPython and what it proves
+is cross-interpreter agreement and no accidental drift, not fidelity to
+something older. All three interpreters render it identically.
+
+### `apply_cp_patches.sh` could not add a module to a tree it had already
+### patched
+
+Found while landing this one, and worth recording because it failed quietly.
+`insert_block_after` skipped any file whose `audioif-cp begin` marker was
+already there, so extending a block -- which is exactly what adding a module
+does -- reached a fresh CircuitPython tree and no other. `CIRCUITPY_AUDIOMATH`
+never landed, and the build then failed a long way from the cause. It now
+rewrites the contents between the markers when they differ, and reports
+`current` / `updated` / `patched` so the three cases are distinguishable.
+
 ## `audiocore.get_buffer` returns a byte view (CircuitPython patch)
 
 The one place `apply_cp_patches.sh` changes code CircuitPython already had,
