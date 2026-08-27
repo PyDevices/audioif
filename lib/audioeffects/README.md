@@ -190,6 +190,32 @@ It is optional, and most classes do not have one yet. A class without
 `MACRO_LABELS` raises rather than pretending: `set_macro` on it is an
 application bug, not a wire message.
 
+### Known gap: a *rack* cannot have patches
+
+Patches live on a class. A **rack** - several of these classes wired
+together, with a `handle_event` mapping incoming macros onto whichever knobs
+of whichever nodes the author chose - is a script, not a class, so there is
+nothing for `MACRO_LABELS`/`PATCHES` to attach to. Every rack in
+`micropython-vst3/soundtrack/` is one of these, and none of them can offer a
+preset.
+
+That is the gap, found 2026-08-27 while auditioning
+`soundtrack/Perihelion/fx_shimmer.py` (a choir into an octave-up tape echo
+into a long hall). The user's words: *"This effect needs presets to be very
+usable."* The composed thing is what a musician actually reaches for, and it
+is exactly the layer with no preset story.
+
+**Deliberately not solved here.** It wants its own plan: a rack needs a
+declared identity (labels, ranges, patches) that survives being a plain
+script the sidecar `exec`s, and the answer probably looks like the
+`create()` factory convention `audioinstruments` uses rather than anything
+in this package. Sketched, not designed: a rack module declaring
+`MACRO_LABELS`/`MACRO_RANGES`/`PATCHES` at module scope and a
+`create(source, sample_rate)` returning an object with the same
+`set_macro`/`program_change` surface as an `Effect`, so hosts cannot tell a
+rack from a single class. That would also give `render_preview.py` and
+`generate_project.py` one thing to read instead of two.
+
 ## A note on chaining after a Mixer
 
 Several classes here end in an `audiomixer.Mixer` - anything that splits
