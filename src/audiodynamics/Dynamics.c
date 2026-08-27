@@ -26,7 +26,21 @@ static const dynamics_option_name_t dynamics_option_names[] = {
     { MP_QSTR_attack_gain_db, AUDIOIF_DYNAMICS_OPT_ATTACK_GAIN_DB },
     { MP_QSTR_sustain_gain_db, AUDIOIF_DYNAMICS_OPT_SUSTAIN_GAIN_DB },
     { MP_QSTR_sidechain_hz, AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ },
+    { MP_QSTR_lookahead_ms, AUDIOIF_DYNAMICS_OPT_LOOKAHEAD_MS },
+    { MP_QSTR_true_peak, AUDIOIF_DYNAMICS_OPT_TRUE_PEAK },
 };
+
+// The lookahead buffer is allocated only once someone asks for one, and only
+// ever grows: `set(lookahead_ms=...)` mid-stream is a live gesture, and
+// shrinking would mean freeing memory the DSP is reading out of.
+static void dynamics_ensure_lookahead(audiodynamics_dynamics_obj_t *self) {
+    const uint32_t wanted = audioif_dynamics_lookahead_frames(&self->config);
+    if (wanted == 0 || wanted <= self->state.lookahead_capacity) {
+        return;
+    }
+    int16_t *buffer = m_malloc((size_t)wanted * 2u * sizeof(int16_t));
+    audioif_dynamics_set_lookahead(&self->state, buffer, wanted);
+}
 
 static void dynamics_apply_kwargs(audiodynamics_dynamics_obj_t *self,
     const mp_map_t *kw) {
@@ -62,6 +76,7 @@ static void dynamics_apply_kwargs(audiodynamics_dynamics_obj_t *self,
                 MP_ERROR_TEXT("unknown Dynamics option '%q'"), name);
         }
     }
+    dynamics_ensure_lookahead(self);
 }
 
 static mp_obj_t audiodynamics_dynamics_make_new(const mp_obj_type_t *type,

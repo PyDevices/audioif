@@ -1,4 +1,4 @@
-"""Forty effect classes built out of audioif's audio nodes.
+"""Forty-one effect classes built out of audioif's audio nodes.
 
 Every class wires itself from an audio source - a synthesizer, an
 instrument's `output`, a host input, or a previous effect's `output` - and
@@ -23,8 +23,8 @@ from .dynamics import (Compressor, Limiter, Expander, NoiseGate, DeEsser,
 from .eq import (ParametricEQ, GraphicEQ, LowPass, HighPass, BandPass,
                  Notch, LadderFilter, CombFilter, DynamicEQ)
 from .reverb import Reverb
-from .delay import (DigitalDelay, SlapbackDelay, TapeDelay, PingPongDelay,
-                    MultiTapDelay)
+from .delay import (DigitalDelay, SlapbackDelay, TapeDelay, AnalogDelay,
+                    PingPongDelay, MultiTapDelay)
 from .modulation import (Chorus, Flanger, Phaser, Tremolo, AutoPan,
                          Vibrato, Rotary, RingMod)
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
@@ -44,8 +44,8 @@ __all__ = [
     # reverb
     "Reverb",
     # delay
-    "DigitalDelay", "SlapbackDelay", "TapeDelay", "PingPongDelay",
-    "MultiTapDelay",
+    "DigitalDelay", "SlapbackDelay", "TapeDelay", "AnalogDelay",
+    "PingPongDelay", "MultiTapDelay",
     # modulation
     "Chorus", "Flanger", "Phaser", "Tremolo", "AutoPan", "Vibrato", "Rotary",
     "RingMod",

@@ -738,6 +738,108 @@ never landed, and the build then failed a long way from the cause. It now
 rewrites the contents between the markers when they differ, and reports
 `current` / `updated` / `patched` so the three cases are distinguishable.
 
+## `audioecho`: a delay with a filter inside its feedback loop (phase 10)
+
+`audiodelays.Echo` exists upstream, and its feedback path is `echo * decay`
+and nothing else. Everything a delay is actually *named* after falls out of
+what happens in that path, so without it there is one delay with a level
+knob:
+
+- **Tape.** Every pass through a tape machine loses top and bottom and
+  softens. Filtering the delay's output once, after the fact, is not the same
+  thing: it darkens the first repeat exactly as much as the tenth.
+- **Analog / BBD.** The same, further. A bucket-brigade line is band-limited
+  by construction and its clock drifts.
+- **Ping-pong.** Repeats alternating between the speakers needs each
+  channel's output fed into the *other* channel's line. Two delays panned
+  hard apart, which is all the palette could do, gives repeats on both sides
+  at once.
+
+`audioecho.FeedbackDelay` puts a one-pole low-pass (`damping_hz`), a one-pole
+high-pass (`cut_hz`), a cubic soft-clip (`loop_drive`), a per-sample delay
+modulation (`wow_hz`/`wow_depth_ms`) and a cross-feed (`cross_feed`,
+`input_pan`) in the loop. `shared/audioif_feedback_delay.c`, `float` working
+precision to match `audioif_dynamics.c`.
+
+**A new module rather than arguments on `Echo`, deliberately.** An argument
+added to audioif's copy of a CircuitPython module would not exist on a stock
+board, so a `TapeDelay` written against it would silently be a different
+effect there -- the exact failure `apply_cp_patches.sh` exists to avoid. A
+new module either installs whole or is absent and says so on import.
+
+Two details worth recording:
+
+- **The wow oscillator is a magic-circle resonator**, two states rotated by a
+  constant each frame, not `sinf()`. Per-sample modulation is the point (an
+  LFO-driven `delay_ms` updates once per block, about 187 Hz at 48 kHz, so it
+  steps rather than glides and there is no doppler), and a library call per
+  sample would not be affordable on the parts this has to run on.
+- **`reset_buffer` really does drop everything**, unlike `audiodynamics`,
+  which keeps its sidechain filter and last gain. A delay's whole state is
+  audible: a chain restarted with the old repeats still in the line plays the
+  previous take over the new one.
+
+Verified by `tests/parity/feedback_delay_probe.py` through `verify_dsp.py`,
+with no oracle -- the golden is captured from the port. That is a weaker
+claim than the `audiodynamics` fixtures make, but a stricter cross-interpreter
+one than anything else in the suite: the loop is recursive and runs in
+`float`, so a one-ulp disagreement between two builds would be fed back and
+amplified rather than staying one ulp. All three render it identically.
+
+### `audioeffects.TapeDelay` was low-passing the dry signal
+
+Found while rebuilding it, and it had been there since the class was written.
+The tone filter sat *after* the delay node, and the delay node had already
+blended dry with wet -- so the filter darkened the untouched signal along
+with the repeats. At the class's own defaults, and worse at the low mixes the
+soundtrack uses:
+
+| tone through `TapeDelay(mix=0.14, tone_hz=3800)` | before | after |
+|---|---|---|
+| 1 kHz | -0.02 dB | -1.30 dB |
+| 4.3 kHz | -4.28 dB | -1.30 dB |
+| 10 kHz | **-19.26 dB** | -1.31 dB |
+| 16 kHz | **-33.33 dB** | -1.31 dB |
+
+("after" is the mix attenuation, flat across the band, which is what a delay
+at 14% wet should cost.) Three racks in the soundtrack used it, so their
+renders move -- that is the fix arriving, not a regression.
+
+## `audiodynamics` gains lookahead and true-peak detection (phase 11)
+
+Additive, and both default off, so a `Dynamics` built the way the original was
+*is* the original -- `tests/parity/dynamics_probe.py`'s hash is unchanged
+across this phase, which is the check that says so. The new paths get their
+own fixture (`dynamics_extras_probe.py`) rather than joining that one, because
+that one is held against `vstaudio_dsp.c` compiled unmodified and may only use
+forms the original accepts.
+
+- **`lookahead_ms`** holds the audio back while the detector reads ahead of
+  it, so the gain is already down when the transient arrives rather than a
+  fraction of a millisecond after it. Without it, brickwall limiting always
+  overshoots the first cycle of every attack. Capped at 50 ms: it is latency
+  the whole chain pays, and past a few milliseconds a limiter stops sounding
+  like a limiter and starts sounding like it is ducking before the note.
+- **`true_peak`** adds the level *between* samples to what the detector sees,
+  by four-point half-band interpolation of the midpoint. A signal can pass
+  through the ceiling between one sample and the next with no sample over it,
+  and a converter downstream reproduces that peak; sample-peak limiting cannot
+  see it at all. This is an estimate, not ITU-R BS.1770 true-peak metering,
+  which oversamples by four -- it is the cheapest version worth having.
+
+**The lookahead buffer is allocated by the bindings, not the DSP**, and only
+when someone asks for one. 50 ms of stereo is 9.6 KB and `audioeffects` builds
+nine `Dynamics` instances, so an unconditional buffer would cost 86 KB for a
+feature almost nothing uses. `audioif_dynamics_lookahead_frames()` tells a
+binding how much to hand over; the DSP uses whatever it has, so a binding that
+allocates nothing gets no lookahead rather than reading off the end of one.
+
+One deliberate difference from the node's documented reset behaviour: the
+sidechain filter's memory and the last reported gain reduction still survive
+`reset_buffer`, but **what is in the lookahead buffer does not**. That is
+audio in flight, and a chain restarted with the previous take still queued
+would play it.
+
 ## `audiocore.get_buffer` returns a byte view (CircuitPython patch)
 
 The one place `apply_cp_patches.sh` changes code CircuitPython already had,

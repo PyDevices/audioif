@@ -15,6 +15,15 @@ CircuitPython alike.
 `sidechain_hz` high-passes the detector without touching the audio, which is
 how the de-essers in the effects library are built. `gain_reduction_db()`
 reports what the last processed frame was reduced by, for a meter.
+
+`lookahead_ms` holds the audio back while the detector reads ahead of it, so
+the gain is already down by the time the peak arrives - the difference
+between a brickwall limiter that catches transients and one that overshoots
+them. It is latency the whole chain pays, capped at 50 ms, and it costs a
+buffer that is allocated only if asked for. `true_peak=True` adds the peak
+*between* samples to what the detector sees, which is where an inter-sample
+over hides. Both default off: a Dynamics built without them is the node
+exactly as it was.
 """
 
 from audiocore import (
@@ -41,6 +50,8 @@ _OPTIONS = {
     "attack_gain_db": 6,
     "sustain_gain_db": 7,
     "sidechain_hz": 8,
+    "lookahead_ms": 9,
+    "true_peak": 10,
 }
 
 FRAMES = _audioif.DYNAMICS_FRAMES
@@ -77,7 +88,8 @@ class Dynamics(_AudioSample):
             slot = _OPTIONS.get(name)
             if slot is None:
                 raise TypeError("unknown Dynamics option %r" % (name,))
-            self._state.configure(slot, float(value))
+            self._state.configure(slot, float(bool(value))
+                                  if name == "true_peak" else float(value))
 
     def set(self, **options):
         """Change settings mid-stream. The detector keeps its memory."""

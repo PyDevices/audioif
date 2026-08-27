@@ -39,6 +39,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_freeverb.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
@@ -154,6 +155,9 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiomath/Multiply.c \
     $(MPAUDIO_SRC_DIR)/audiomath/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audioecho/FeedbackDelay.c \
+    $(MPAUDIO_SRC_DIR)/audioecho/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""audiodynamics, audioroute and audiomath parity: what the originals
-rendered, and what the ports render now.
+"""audiodynamics, audioroute, audiomath and audioecho parity: what the
+originals rendered, and what the ports render now.
 
     verify_dsp.py --capture-old     record the goldens from the original nodes
     verify_dsp.py                    hold the ports to them
@@ -16,10 +16,15 @@ shared/audioif_splitter.c and shared/audioif_multiply.c -- the same C the
 CPython extension links -- so a disagreement between two interpreters would
 itself be the finding.
 
-`audiomath` has no oracle at all: it is audioif's own module, with no ancestor
-in CircuitPython or in the engine. Its golden is captured from the port under
-CPython, and what it proves is cross-interpreter agreement and no accidental
-change over time, not fidelity to something older.
+`audiomath` and `audioecho` have no oracle at all: they are audioif's own
+modules, and neither do `Dynamics`' lookahead and true-peak options, which is
+why those get a fixture of their own rather than joining dynamics_probe.py --
+that one is held against `vstaudio_dsp.c` compiled unmodified, so it may only
+use forms the original accepts. The modules with no ancestor in CircuitPython or in the engine. Their goldens are
+captured from the port under CPython, and what they prove is cross-interpreter
+agreement and no accidental change over time, not fidelity to something older.
+The delay is the strictest of the three: its loop is recursive and runs in
+`float`, so a one-ulp disagreement between two builds would not stay one ulp.
 """
 
 import argparse
@@ -43,6 +48,8 @@ PROBES = (
     ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
     ("multiply_probe.py", "audiomath", None, {}),
+    ("feedback_delay_probe.py", "audioecho", None, {}),
+    ("dynamics_extras_probe.py", "audiodynamics", None, {}),
 )
 
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
@@ -90,8 +97,8 @@ def capture(args):
     fixture = {
         "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, "
                   "compiled unmodified (see build_vstaudio_oracle.sh)",
-        "no_oracle": "audiomath is audioif's own; multiply_probe.py is "
-                     "captured from the port under CPython",
+        "no_oracle": "audiomath and audioecho are audioif's own; their "
+                     "probes are captured from the port under CPython",
         "probes": {},
     }
     for probe, module, old_module, _skips in PROBES:

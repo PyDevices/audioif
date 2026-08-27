@@ -24,31 +24,91 @@ _CHARACTERS = {
 
 
 class Compressor(_core.Effect):
+    """`character` picks the envelope times; the macros then move whatever it
+    resolved to, so a patch and a character are two ways at the same knobs."""
+
+    MACRO_LABELS = ("Threshold", "Ratio", "Attack", "Release", "Knee",
+                    "Makeup")
+    MACRO_RANGES = ((-60.0, 0.0), (1.0, 20.0, "log"), (0.1, 100.0, "log"),
+                    (5.0, 1000.0, "log"), (0.0, 24.0), (0.0, 24.0))
+    PATCHES = {
+        0: ("Init", (76, 59, 85, 76, 32, 0)),
+        1: ("Drum Bus", (89, 59, 81, 69, 21, 21)),
+        2: ("Vocal Level", (80, 47, 92, 105, 64, 26)),
+        3: ("Pump", (68, 88, 30, 86, 0, 37)),
+        4: ("Gentle Glue", (93, 29, 105, 94, 95, 11)),
+        5: ("Squash", (55, 118, 20, 60, 0, 53)),
+    }
+
     def __init__(self, source, threshold_db=-24.0, ratio=4.0,
                  character="vca", attack_ms=None, release_ms=None,
-                 knee_db=None, makeup_db=0.0):
+                 knee_db=None, makeup_db=0.0, patch=None):
         preset = _CHARACTERS[character]
         self.node = audiodynamics.Dynamics(
-            audiodynamics.DYN_COMPRESS,
-            threshold_db=threshold_db, ratio=ratio,
-            attack_ms=attack_ms if attack_ms is not None else preset[0],
-            release_ms=release_ms if release_ms is not None else preset[1],
-            knee_db=knee_db if knee_db is not None else preset[2],
-            makeup_db=makeup_db, sample_rate=_core.SAMPLE_RATE)
+            audiodynamics.DYN_COMPRESS, sample_rate=_core.SAMPLE_RATE)
         self.node.play(source)
         self.output = self.node
+        self._init_macros((
+            threshold_db, ratio,
+            attack_ms if attack_ms is not None else preset[0],
+            release_ms if release_ms is not None else preset[1],
+            knee_db if knee_db is not None else preset[2],
+            makeup_db), patch)
+
+    def _apply_macro(self, index, position):
+        name = ("threshold_db", "ratio", "attack_ms", "release_ms", "knee_db",
+                "makeup_db")[index]
+        self.node.set(**{name: self.macro(index)})
 
 
 class Limiter(_core.Effect):
-    """Brickwall-style: instant attack against a hard ceiling."""
+    """Brickwall-style: instant attack against a hard ceiling.
 
-    def __init__(self, source, ceiling_db=-1.0, release_ms=60.0):
+    With `lookahead_ms` the detector reads ahead of the audio, so the gain is
+    already down when the transient arrives instead of a fraction of a
+    millisecond after it - which is the difference between a limiter that
+    catches peaks and one that lets the first cycle of each through. It is
+    latency the whole chain pays, so it is off by default.
+
+    `true_peak` adds the level *between* samples to what the detector sees.
+    A signal can pass through the ceiling between one sample and the next
+    with no sample over it, and a converter downstream will reproduce that
+    peak; sample-peak limiting cannot see it at all.
+    """
+
+    MACRO_LABELS = ("Ceiling", "Release", "Lookahead", "True Peak")
+    #: True Peak is a switch worn as a knob: anything at or above the middle
+    #: turns it on. A macro surface has no room for a boolean, and pretending
+    #: otherwise would mean two ways to set one thing.
+    MACRO_RANGES = ((-24.0, 0.0), (5.0, 1000.0, "log"), (0.0, 20.0),
+                    (0.0, 1.0))
+    PATCHES = {
+        0: ("Init", (122, 60, 0, 0)),
+        1: ("Safety Catch", (125, 76, 32, 127)),
+        2: ("Brickwall", (126, 43, 51, 127)),
+        3: ("Glue", (111, 94, 13, 0)),
+        4: ("Broadcast", (122, 105, 64, 127)),
+    }
+
+    def __init__(self, source, ceiling_db=-1.0, release_ms=60.0,
+                 lookahead_ms=0.0, true_peak=False, patch=None):
         self.node = audiodynamics.Dynamics(
-            audiodynamics.DYN_LIMIT, threshold_db=ceiling_db,
-            attack_ms=0.05, release_ms=release_ms,
+            audiodynamics.DYN_LIMIT, attack_ms=0.05,
             sample_rate=_core.SAMPLE_RATE)
         self.node.play(source)
         self.output = self.node
+        self._init_macros((ceiling_db, release_ms, lookahead_ms,
+                           1.0 if true_peak else 0.0), patch)
+
+    def _apply_macro(self, index, position):
+        if index == 0:
+            self.node.set(threshold_db=self.macro(0))
+        elif index == 1:
+            self.node.set(release_ms=self.macro(1))
+        elif index == 2:
+            self.node.set(lookahead_ms=self.macro(2))
+        else:
+            self.node.set(true_peak=self.macro(3) >= 0.5)
 
 
 class Expander(_core.Effect):

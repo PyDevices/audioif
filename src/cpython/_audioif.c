@@ -19,6 +19,7 @@
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
 #include "shared/audioif_multiply.h"
+#include "shared/audioif_feedback_delay.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
 // someone compiling this source by hand.
@@ -34,6 +35,7 @@ typedef struct {
     PyObject *biquad_state_type;
     PyObject *dynamics_state_type;
     PyObject *splitter_ring_type;
+    PyObject *feedback_delay_state_type;
 } audioif_state_t;
 
 typedef struct {
@@ -614,7 +616,35 @@ typedef struct {
     PyObject_HEAD
     audioif_dynamics_config_t config;
     audioif_dynamics_state_t state;
+    int16_t *lookahead;
 } audioif_dynamics_object_t;
+
+// Allocated only once someone asks for lookahead, and only ever grown:
+// `set(lookahead_ms=...)` mid-stream is a live gesture, and shrinking would
+// mean freeing memory the DSP is reading out of.
+static int dynamics_ensure_lookahead(audioif_dynamics_object_t *self) {
+    const uint32_t wanted = audioif_dynamics_lookahead_frames(&self->config);
+    if (wanted == 0 || wanted <= self->state.lookahead_capacity) {
+        return 0;
+    }
+    int16_t *buffer = PyMem_Calloc((size_t)wanted * 2u, sizeof(int16_t));
+    if (buffer == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    PyMem_Free(self->lookahead);
+    self->lookahead = buffer;
+    audioif_dynamics_set_lookahead(&self->state, buffer, wanted);
+    return 0;
+}
+
+static void dynamics_state_dealloc(audioif_dynamics_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->lookahead);
+    self->lookahead = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
 
 static int dynamics_state_init(audioif_dynamics_object_t *self,
     PyObject *args, PyObject *kwargs) {
@@ -629,6 +659,8 @@ static int dynamics_state_init(audioif_dynamics_object_t *self,
     }
     audioif_dynamics_config_init(&self->config, mode, sample_rate);
     audioif_dynamics_state_init(&self->state);
+    PyMem_Free(self->lookahead);
+    self->lookahead = NULL;
     return 0;
 }
 
@@ -650,12 +682,13 @@ static PyObject *dynamics_state_configure(audioif_dynamics_object_t *self,
     double value;
     if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
     if (option < AUDIOIF_DYNAMICS_OPT_THRESHOLD_DB ||
-        option > AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ) {
+        option > AUDIOIF_DYNAMICS_OPT_TRUE_PEAK) {
         PyErr_SetString(PyExc_ValueError, "unknown dynamics option");
         return NULL;
     }
     audioif_dynamics_configure(&self->config,
         (audioif_dynamics_option_t)option, (float)value);
+    if (dynamics_ensure_lookahead(self) < 0) return NULL;
     Py_RETURN_NONE;
 }
 
@@ -719,6 +752,7 @@ static PyGetSetDef dynamics_state_getset[] = {
 static PyType_Slot dynamics_state_slots[] = {
     {Py_tp_new, PyType_GenericNew},
     {Py_tp_init, dynamics_state_init},
+    {Py_tp_dealloc, dynamics_state_dealloc},
     {Py_tp_methods, dynamics_state_methods},
     {Py_tp_getset, dynamics_state_getset},
     {0, NULL},
@@ -811,6 +845,127 @@ static PyType_Spec splitter_ring_spec = {
 // audiomath.Multiply's arithmetic. A plain function rather than a type
 // because the multiply carries no state at all: mix is the only setting, and
 // the Python side already holds it.
+// audioecho.FeedbackDelay's line and filters. Unlike the multiply above this
+// one is all state -- the delay line dwarfs everything else in the object --
+// so it is a type, the way DynamicsState is.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_feedback_delay_config_t config;
+    audioif_feedback_delay_state_t state;
+    int16_t *line;
+} audioif_feedback_delay_object_t;
+
+static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    double max_delay_ms = 250.0;
+    static char *keywords[] = {"sample_rate", "max_delay_ms", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Id:FeedbackDelayState",
+        keywords, &sample_rate, &max_delay_ms)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (max_delay_ms <= 0.0) {
+        PyErr_SetString(PyExc_ValueError, "max_delay_ms must be positive");
+        return -1;
+    }
+    uint32_t frames = (uint32_t)((double)sample_rate * max_delay_ms / 1000.0);
+    if (frames < 2) frames = 2;
+    int16_t *line = PyMem_Calloc((size_t)frames * 2u, sizeof(int16_t));
+    if (line == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    PyMem_Free(self->line);
+    self->line = line;
+    audioif_feedback_delay_config_init(&self->config, sample_rate, frames);
+    audioif_feedback_delay_state_init(&self->state, line);
+    audioif_feedback_delay_configure(&self->config,
+        AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_MS, (float)max_delay_ms * 0.5f);
+    return 0;
+}
+
+static void feedback_delay_state_dealloc(
+    audioif_feedback_delay_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->line);
+    self->line = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
+
+static PyObject *feedback_delay_state_configure(
+    audioif_feedback_delay_object_t *self, PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_MS ||
+        option > AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN) {
+        PyErr_SetString(PyExc_ValueError, "unknown feedback delay option");
+        return NULL;
+    }
+    audioif_feedback_delay_configure(&self->config,
+        (audioif_feedback_delay_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *feedback_delay_state_finish(
+    audioif_feedback_delay_object_t *self, PyObject *unused) {
+    audioif_feedback_delay_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *feedback_delay_state_reset(
+    audioif_feedback_delay_object_t *self, PyObject *unused) {
+    audioif_feedback_delay_reset(&self->state, &self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *feedback_delay_state_process(
+    audioif_feedback_delay_object_t *self, PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    if (input.len % 4) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole stereo 16-bit frames");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_feedback_delay_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / 4));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef feedback_delay_state_methods[] = {
+    {"configure", (PyCFunction)feedback_delay_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)feedback_delay_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)feedback_delay_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)feedback_delay_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot feedback_delay_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, feedback_delay_state_init},
+    {Py_tp_dealloc, feedback_delay_state_dealloc},
+    {Py_tp_methods, feedback_delay_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec feedback_delay_state_spec = {
+    .name = "_audioif.FeedbackDelayState",
+    .basicsize = sizeof(audioif_feedback_delay_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = feedback_delay_state_slots,
+};
+
 static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
     Py_buffer signal = {0};
     Py_buffer modulator = {0};
@@ -1301,6 +1456,13 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_DYNAMICS_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "MULTIPLY_FRAMES",
         AUDIOIF_MULTIPLY_FRAMES) < 0) return -1;
+    state->feedback_delay_state_type = PyType_FromModuleAndSpec(module,
+        &feedback_delay_state_spec, NULL);
+    if (state->feedback_delay_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "FeedbackDelayState",
+        state->feedback_delay_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "FEEDBACK_DELAY_FRAMES",
+        AUDIOIF_FEEDBACK_DELAY_FRAMES) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__",
     AUDIOIF_VERSION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
@@ -1316,6 +1478,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->biquad_state_type);
     Py_VISIT(state->dynamics_state_type);
     Py_VISIT(state->splitter_ring_type);
+    Py_VISIT(state->feedback_delay_state_type);
     return 0;
 }
 
@@ -1328,6 +1491,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->biquad_state_type);
     Py_CLEAR(state->dynamics_state_type);
     Py_CLEAR(state->splitter_ring_type);
+    Py_CLEAR(state->feedback_delay_state_type);
     return 0;
 }
 

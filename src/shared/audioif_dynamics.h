@@ -42,7 +42,15 @@ typedef enum {
     AUDIOIF_DYNAMICS_OPT_ATTACK_GAIN_DB,
     AUDIOIF_DYNAMICS_OPT_SUSTAIN_GAIN_DB,
     AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ,
+    AUDIOIF_DYNAMICS_OPT_LOOKAHEAD_MS,
+    AUDIOIF_DYNAMICS_OPT_TRUE_PEAK,
 } audioif_dynamics_option_t;
+
+//: How far ahead the detector may be allowed to look. A cap rather than a
+//: preference: the buffer is audio in flight, so it is latency the whole
+//: chain pays, and past a few milliseconds a limiter stops sounding like a
+//: limiter and starts sounding like it is ducking before the note.
+#define AUDIOIF_DYNAMICS_MAX_LOOKAHEAD_MS 50.0f
 
 //: Everything derived from the constructor/`set()` arguments. Held apart from
 //: the running state so `set()` can rewrite it mid-stream without disturbing
@@ -59,6 +67,10 @@ typedef struct {
     float attack_gain_db;   // transient mode
     float sustain_gain_db;
     float sidechain_coef;   // one-pole low-pass coefficient; 0 = full band
+    // Both default off, so a Dynamics built the way the original was is the
+    // original. See the process loop for what each costs.
+    uint32_t lookahead_frames;
+    bool true_peak;
 } audioif_dynamics_config_t;
 
 //: What the detector remembers between blocks.
@@ -68,6 +80,15 @@ typedef struct {
     float fast_env;         // transient mode detectors
     float slow_env;
     float gain_reduction_db;
+    // The audio held back while the detector reads ahead of it. The buffer
+    // belongs to the bindings, which allocate it only when someone asks for
+    // lookahead -- an unconditional 50 ms of stereo is 9.6 KB per instance,
+    // and audioeffects builds nine of these.
+    int16_t *lookahead;
+    uint32_t lookahead_capacity;
+    uint32_t lookahead_write;
+    // Three detector samples back per channel, for the half-sample estimate.
+    float peak_history[2][3];
 } audioif_dynamics_state_t;
 
 float audioif_dynamics_ms_to_coef(float ms, float sample_rate);
@@ -90,6 +111,15 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
     audioif_dynamics_option_t option, float value);
 
 void audioif_dynamics_state_init(audioif_dynamics_state_t *state);
+
+// How many frames of lookahead buffer the current config wants. Bindings call
+// this after applying options and hand back storage of at least that size;
+// the DSP uses whatever it has, so a binding that allocates nothing simply
+// gets no lookahead rather than reading off the end.
+uint32_t audioif_dynamics_lookahead_frames(
+    const audioif_dynamics_config_t *config);
+void audioif_dynamics_set_lookahead(audioif_dynamics_state_t *state,
+    int16_t *buffer, uint32_t frames);
 
 // What the audiosample protocol's reset_buffer does: drop the detector
 // envelopes but keep the sidechain filter's memory and the last reported gain

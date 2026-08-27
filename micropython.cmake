@@ -37,6 +37,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_dynamics.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multiply.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_feedback_delay.c
     ${MPAUDIO_SRC_DIR}/mpaudio_modules.c
     ${MPAUDIO_SRC_DIR}/audiocore/__init__.c
     ${MPAUDIO_SRC_DIR}/audiocore/RawSample.c
@@ -72,6 +73,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audioroute/module.c
     ${MPAUDIO_SRC_DIR}/audiomath/Multiply.c
     ${MPAUDIO_SRC_DIR}/audiomath/module.c
+    ${MPAUDIO_SRC_DIR}/audioecho/FeedbackDelay.c
+    ${MPAUDIO_SRC_DIR}/audioecho/module.c
 )
 
 target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})

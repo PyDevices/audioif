@@ -81,7 +81,7 @@ tier 3  audiomixer: Mixer, MixerVoice
 tier 4  effects: audiofilters, audiodelays, audiofreeverb, audiospeed
 tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
-tier 7  audiodynamics, audioroute, audiomath: native, NOT CircuitPython ports
+tier 7  audiodynamics, audioroute, audiomath, audioecho: native, NOT ports
 tier 8  lib/: pure-Python libraries built on the tiers above
         (audioinstruments, audioeffects, audiorender)
 dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
@@ -99,9 +99,11 @@ and their source is micropython-vst3 rather than CircuitPython:
   (multiply one stream by another). The first two lived in micropython-vst3's
   `vstaudio` usermod, which meant no application outside that plugin could use
   them and half of its own effects library could not be exercised offline at
-  all. `audiomath` has no ancestor at all: nothing upstream and nothing in the
-  engine multiplies two *streams*, which is what ring modulation needs and
-  what an LFO at block rate cannot reach. CircuitPython has no equivalent to
+  all. `audiomath` and `audioecho` have no ancestor at all: nothing upstream and
+  nothing in the engine multiplies two *streams*, which is what ring
+  modulation needs and what an LFO at block rate cannot reach, and nothing
+  puts a filter inside a delay's feedback loop, which is what separates a
+  tape echo from a delay with a tone control. CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —
   the only direction in this repo where CircuitPython is the recipient. See
   `docs/upstream-diff.md` for what changed in the moves and what was kept.
@@ -109,7 +111,7 @@ and their source is micropython-vst3 rather than CircuitPython:
   `<repo>/lib/<package>` and into the same wheel for CPython.
   `lib/audioinstruments/` is 53 classic synthesizers, keyboards and drum
   machines written entirely in `synthio` — no samples — and
-  `lib/audioeffects/` is 40 effect classes built on the tiers above, both
+  `lib/audioeffects/` is 41 effect classes built on the tiers above, both
   moved out of micropython-vst3 so they are not tied to a VST host.
   `lib/audiorender/` is the tier above those two: a composition — tracks, a
   tempo map, notes, automation, sections — rendered offline to a mixed

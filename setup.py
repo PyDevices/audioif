@@ -27,6 +27,7 @@ setup(
                 "src/shared/audioif_dynamics.c",
                 "src/shared/audioif_splitter.c",
                 "src/shared/audioif_multiply.c",
+                "src/shared/audioif_feedback_delay.c",
             ],
             include_dirs=["src"],
             define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION)],

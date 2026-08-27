@@ -189,9 +189,36 @@ def harmonic_db(build_chain, hz=1000.0, orders=(2, 3)):
     return out
 
 
+def burst(hz, on=2000, total=48000, level=9000, rate=SAMPLE_RATE):
+    """A short tone and then silence, so a delay's repeats arrive one at a
+    time and can be measured separately."""
+    values = array("h")
+    for frame in range(total):
+        value = int(level * math.sin(2.0 * math.pi * hz * frame / rate)) \
+            if frame < on else 0
+        values.append(value)
+        values.append(value)
+    return audiocore.RawSample(values, sample_rate=rate, channel_count=2)
+
+
+def channels(sample, blocks):
+    """Both channels of `blocks` buffers, as two lists of samples."""
+    left, right = [], []
+    for _ in range(blocks):
+        data = memoryview(bytes(audiocore.get_buffer(sample)[1])).cast("h")
+        left.extend(data[0::2])
+        right.extend(data[1::2])
+    return left, right
+
+
+def loudest_in(values, start, length):
+    window = values[start:start + length]
+    return max((-v if v < 0 else v) for v in window) if window else 0
+
+
 class EffectsLibraryTest(unittest.TestCase):
     def test_the_catalogue_is_all_there(self):
-        self.assertEqual(len(CLASSES), 40, CLASSES)
+        self.assertEqual(len(CLASSES), 41, CLASSES)
 
     def test_every_effect_builds_and_renders(self):
         for name in CLASSES:
@@ -451,6 +478,125 @@ class EffectsLibraryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             audioeffects.Octaver(source(), down=0.3, down2=0.3, up=0.3,
                                  up2=0.3)
+
+    def test_lookahead_stops_a_limiter_overshooting_the_transient(self):
+        # Without it the gain only starts coming down once the peak has
+        # already been through, so the first cycle of every transient goes
+        # over the ceiling. With it the detector is ahead of the audio.
+        def peak_over(lookahead_ms):
+            values = array("h")
+            for frame in range(24000):
+                loud = 1200 <= frame < 6000
+                value = 32000 if loud and frame % 2 else (
+                    -32000 if loud else 0)
+                values.append(value)
+                values.append(value)
+            source = audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                         channel_count=2)
+            limiter = audioeffects.Limiter(source, ceiling_db=-12.0,
+                                           release_ms=60.0,
+                                           lookahead_ms=lookahead_ms)
+            return peak(limiter.output, 60)
+
+        ceiling = 10.0 ** (-12.0 / 20.0)
+        self.assertGreater(peak_over(0.0), ceiling * 1.5)
+        self.assertLess(peak_over(5.0), ceiling * 1.2)
+
+    def test_true_peak_sees_the_level_between_the_samples(self):
+        # A quarter-rate sine offset by 45 degrees puts every sample at
+        # -3 dBFS and every actual peak, halfway between two of them, at 0.
+        # A sample-peak detector cannot see that at all.
+        def reduction(true_peak):
+            values = array("h")
+            for frame in range(12000):
+                value = int(32767.0 * math.sin(
+                    math.pi * frame / 2.0 + math.pi / 4.0))
+                values.append(value)
+                values.append(value)
+            source = audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                         channel_count=2)
+            limiter = audioeffects.Limiter(source, ceiling_db=-2.0,
+                                           true_peak=true_peak)
+            for _ in range(20):
+                audiocore.get_buffer(limiter.output)
+            return limiter.node.gain_reduction_db()
+
+        self.assertEqual(reduction(False), 0.0)
+        self.assertLess(reduction(True), -0.3)
+
+    def test_the_new_dynamics_options_are_off_by_default(self):
+        # Everything built before this phase has to render exactly as it did,
+        # which is why both are opt-in rather than sensible defaults.
+        plain = audioeffects.Limiter(source())
+        self.assertEqual(plain.macro(2), 0.0)
+        self.assertLess(plain.macro(3), 0.5)
+
+    def test_a_tape_delay_leaves_the_dry_path_alone(self):
+        # It used not to. The tone filter sat after the delay's own dry/wet
+        # blend, so at mix=0.14 a TapeDelay took 19 dB off 10 kHz and 33 dB
+        # off 16 kHz of the signal that was supposed to pass straight
+        # through. The filter is inside the feedback loop now.
+        def chain(source):
+            return audioeffects.TapeDelay(source, mix=0.14,
+                                          feedback=0.0).output
+
+        low = tone_gain_db(1000.0, chain)
+        high = tone_gain_db(10000.0, chain)
+        self.assertAlmostEqual(high, low, delta=0.5)
+
+    def test_a_tape_delay_darkens_each_repeat_more_than_the_last(self):
+        # The point of putting the filter in the loop: a repeat passes
+        # through it once per lap, so the third is darker than the first.
+        # Measured as how much of each tone survives three laps.
+        def survival(hz):
+            delay = audioeffects.TapeDelay(burst(hz), time_ms=100.0,
+                                           feedback=0.7, mix=1.0, wow=0.0,
+                                           tone_hz=3000.0, drive=0.0)
+            left, _ = channels(delay.output, 200)
+            step = int(0.1 * SAMPLE_RATE)
+            first = loudest_in(left, step, 2000)
+            third = loudest_in(left, step * 3, 2000)
+            self.assertGreater(first, 0)
+            return third / float(first)
+
+        self.assertLess(survival(8000.0), survival(500.0) * 0.5)
+
+    def test_ping_pong_repeats_alternate_between_the_channels(self):
+        # Two delays panned apart, which is what this used to be, puts a
+        # repeat on both sides at once. Alternation needs each channel's
+        # output in the other channel's line.
+        delay = audioeffects.PingPongDelay(burst(1000.0, on=400),
+                                           time_ms=100.0, feedback=0.7,
+                                           mix=1.0, tone_hz=16000.0)
+        left, right = channels(delay.output, 200)
+        step = int(0.1 * SAMPLE_RATE)
+        sides = [(loudest_in(left, step * n, 800),
+                  loudest_in(right, step * n, 800)) for n in range(1, 5)]
+        for index, (on_left, on_right) in enumerate(sides):
+            if index % 2 == 0:
+                self.assertGreater(on_left, on_right * 8 + 1, sides)
+            else:
+                self.assertGreater(on_right, on_left * 8 + 1, sides)
+
+    def test_an_older_analog_delay_is_darker_and_narrower(self):
+        # `age` is one knob over the loop's low-pass, its high-pass and its
+        # drift. Only the first two are measurable as a level.
+        def repeat_level(hz, age):
+            delay = audioeffects.AnalogDelay(burst(hz), time_ms=100.0,
+                                             feedback=0.6, mix=1.0, age=age,
+                                             drive=0.0)
+            left, _ = channels(delay.output, 200)
+            return loudest_in(left, int(0.2 * SAMPLE_RATE), 2000)
+
+        self.assertLess(repeat_level(6000.0, 1.0), repeat_level(6000.0, 0.0))
+        self.assertLess(repeat_level(80.0, 1.0), repeat_level(80.0, 0.0))
+
+    def test_a_delay_line_can_be_emptied(self):
+        delay = audioeffects.TapeDelay(burst(1000.0), time_ms=100.0,
+                                        feedback=0.8, mix=1.0)
+        channels(delay.output, 40)
+        delay.clear()
+        self.assertEqual(peak(delay.output, 4), 0.0)
 
     def test_a_ring_modulator_makes_sidebands_and_keeps_neither_original(
             self):

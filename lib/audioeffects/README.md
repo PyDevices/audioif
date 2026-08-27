@@ -1,6 +1,6 @@
 # audioeffects
 
-Forty effect classes built out of audioif's audio nodes, for any host
+Forty-one effect classes built out of audioif's audio nodes, for any host
 that can pull an audiosample:
 
 ```python
@@ -25,18 +25,21 @@ bind parameters straight to them; the classes with a natural swept control
 also expose `set_*` helpers (`LadderFilter.set_cutoff`,
 `DigitalDelay.set_time`, ...).
 
-Two nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
-envelope-follower gain computer with sidechain filtering) and
-`audioroute.Splitter` (fans one stream out to parallel branches that a Mixer
-then sums).
+Four nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
+envelope-follower gain computer with sidechain filtering, lookahead and
+true-peak detection), `audioroute.Splitter` (fans one stream out to parallel
+branches that a Mixer then sums), `audiomath.Multiply` (one stream times
+another, which is ring modulation) and `audioecho.FeedbackDelay` (a delay with
+a filter, a soft-clip and a cross-feed inside its loop). None of the four is
+CircuitPython's; a stock board does not have them.
 
 ## Catalogue
 
 ### Dynamic range - `dynamics.py`
 | Class | Notes |
 |---|---|
-| `Compressor` | `character="vca"/"fet"/"optical"/"varimu"` presets shape attack/release/knee |
-| `Limiter` | brickwall: instant attack against a hard ceiling |
+| `Compressor` | `character="vca"/"fet"/"optical"/"varimu"` presets shape attack/release/knee; **patches** |
+| `Limiter` | brickwall, with optional lookahead and true-peak detection; **patches** |
 | `Expander` | downward: below threshold, quiet gets quieter |
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
@@ -58,9 +61,19 @@ then sums).
 |---|---|
 | `Reverb` | presets `room` `chamber` `hall` `plate` `spring` (spring adds pre-flutter) |
 | `DigitalDelay` `SlapbackDelay` | clean repeats |
-| `TapeDelay` | LFO wow with doppler, darkening tone filter (post-chain, not per-repeat) |
-| `PingPongDelay` | L at t, R at 2t, hard-panned (no true cross-feedback) |
+| `TapeDelay` | in-loop low-pass, soft-clip and per-sample wow; **patches** |
+| `AnalogDelay` | BBD: band-limited both ends, `age` over the lot; **patches** |
+| `PingPongDelay` | true cross-feed - repeats alternate sides; **patches** |
 | `MultiTapDelay` | `(position, level)` tap patterns |
+
+The delays split two ways. `DigitalDelay`, `SlapbackDelay` and
+`MultiTapDelay` are clean and run on `audiodelays`, whose feedback path is
+the echo times a decay. The other three are named after something that
+happens *inside* that path - a filter taking a little more off each pass, a
+soft-clip rounding it, a cross-feed sending it to the other speaker - so they
+run on `audioecho.FeedbackDelay`, which is where audioif puts those. A
+coloured delay's `max_time_ms` sizes its line and cannot change afterwards;
+at 48 kHz a second of stereo line is 192 KB, so ask for what will be used.
 
 ### Modulation - `modulation.py`
 | Class | Notes |

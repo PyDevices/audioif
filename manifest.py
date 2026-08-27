@@ -24,7 +24,8 @@ offline with numpy and holds the finished song in memory, which is a
 desktop's job, not a board's - it ships in the wheel and stops there.
 
 The native modules are not affected either way. ``audiocore``, ``synthio``,
-``audiodynamics``, ``audioroute``, ``audiomath`` and the rest are compiled
+``audiodynamics``, ``audioroute``, ``audiomath``, ``audioecho`` and the
+rest are compiled
 into the firmware
 by ``micropython.mk`` / ``micropython.cmake`` (or, for CircuitPython, by
 ``apply_cp_patches.sh``); this file only concerns the Python on top of them.
