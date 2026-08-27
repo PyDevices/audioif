@@ -1,6 +1,25 @@
+# Shared minimum (PyDevices package / cmod repos)
+.venv/
 __pycache__/
+*.py[cod]
 *.egg-info/
+.eggs/
 build/
 dist/
 *.so
 *.pyd
+
+# Testing & Lint caches
+.pytest_cache/
+.ruff_cache/
+
+# Cursor IDE throwaways (do not ignore the whole .cursor/ tree)
+.cursor/debug*
+.cursor/plans/
+
+# Repo-specific: objects from hand-compiled probes. The packaged build puts
+# its own under build/, but the C in src/shared/ gets compiled by hand often
+# enough (cross-compiling it to count Cortex-M instructions, say) that a
+# stray .o next to the source is a normal thing to produce.
+*.o
+*.a
