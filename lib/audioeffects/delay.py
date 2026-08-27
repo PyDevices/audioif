@@ -49,7 +49,7 @@ class TapeDelay(_core.Effect):
         self.echo.play(source)
         self.tone = audiofilters.Filter(
             filter=synthio.Biquad(synthio.FilterMode.LOW_PASS,
-                                  _core.filter_hz(tone_hz), Q=0.707),
+                                  float(tone_hz), Q=0.707),
             **_core.pcm())
         self.tone.play(self.echo)
         self.output = self.tone

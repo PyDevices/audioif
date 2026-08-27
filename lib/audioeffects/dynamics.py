@@ -115,8 +115,8 @@ class MultibandCompressor(_core.Effect):
         def band(tap, biquads):
             return audiofilters.Filter(filter=biquads, **_core.pcm())
 
-        lo = _core.filter_hz(low_hz)
-        hi = _core.filter_hz(high_hz)
+        lo = float(low_hz)
+        hi = float(high_hz)
         low = band(0, [synthio.Biquad(FM.LOW_PASS, lo, Q=0.707),
                        synthio.Biquad(FM.LOW_PASS, lo, Q=0.707)])
         mid = band(1, [synthio.Biquad(FM.HIGH_PASS, lo, Q=0.707),

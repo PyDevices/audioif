@@ -48,7 +48,7 @@ then sums).
 |---|---|
 | `ParametricEQ` | peaking bands `(freq, gain_db, q)` plus optional shelves |
 | `GraphicEQ` | ten fixed ISO bands |
-| `DynamicEQ` | notch+band split, band compressed, summed (approximation) |
+| `DynamicEQ` | notch+band split, band compressed, summed (the split is exact) |
 | `LowPass` `HighPass` `BandPass` `Notch` | single swept biquads |
 | `LadderFilter` | Moog-style 4-stage cascade, 24 dB/oct, resonant |
 | `CombFilter` | tuned short feedback delay |
@@ -108,6 +108,29 @@ chain freely after one. On CircuitPython you cannot: its Mixer stops its
 voices when it is reset, and every effect resets its source when you
 `play()` it, so the chain goes silent. audioif fixes that for its own
 builds; see `docs/upstream-diff.md`, "Resetting a Mixer silenced it".
+
+## A note on filters off a stock CircuitPython board
+
+Every frequency in this library is the frequency you get - on audioif.
+On stock CircuitPython two engine bugs are still in the way, and they
+change what these classes sound like rather than breaking them, so they
+are worth knowing about:
+
+- A stereo `audiofilters.Filter` runs **one** biquad state across the
+  interleaved stream, so the recursion advances twice per frame and every
+  filter sits an **octave above** where it was asked to sit - and the
+  feedback path leaks each channel into the other. Fixed upstream after
+  10.2.1, so a current CircuitPython is fine; 10.2.1 itself is not.
+- `PEAKING_EQ` computes `b2` with the wrong sign, which costs the filter
+  its unity-outside-the-band property: a +6 dB bell at 1 kHz / Q 1 is
+  about **+21 dB at DC**, worse the lower the center. Still present
+  upstream. `ParametricEQ`, `GraphicEQ`, and every shelf-free bell here
+  depend on it.
+
+This library used to compensate for both - halving every frequency on the
+way in, and synthesizing bells out of notch and band-pass sections. It no
+longer does, because the engine is right. See `docs/upstream-diff.md` for
+the measurements and the one-line coefficient fix.
 
 ## Testing
 

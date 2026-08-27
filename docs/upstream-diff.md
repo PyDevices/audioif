@@ -745,9 +745,10 @@ return type, which the parity harness needs to compare like with like. Fixing
 DSP inside the oracle would erase the divergence this file exists to record.
 The consequence is real and worth stating: on CircuitPython, an effect chained
 directly after a Mixer is still silent. Anything in `audioeffects` that ends in
-a Mixer — `ParametricEQ` with boosts, `MultibandCompressor`, `Harmonizer`,
-`Octaver`, `StereoWidener`, `DynamicEQ`, `PingPongDelay`, `Exciter` — can be
-the last node in a chain there, but not the middle of one.
+a Mixer — `MultibandCompressor`, `Harmonizer`, `Octaver`, `StereoWidener`,
+`DynamicEQ`, `PingPongDelay`, `Exciter` — can be the last node in a chain
+there, but not the middle of one. (`ParametricEQ` was on that list until the
+peaking-EQ fix below let it drop the Mixer entirely.)
 
 ## Peaking EQ computed `b2` with the wrong sign (effects-extension tier)
 
@@ -778,7 +779,11 @@ identical lines at `shared-module/synthio/Biquad.c:157-159`. It survived
 because `PEAKING_EQ` is the one mode a synthesis library rarely reaches for —
 nothing in this repository, in `audioeffects`, or in micropython-vst3's
 instruments or soundtrack used it. `audioeffects.ParametricEQ` worked around
-it by synthesizing bells out of notch and band-pass sections instead.
+it by synthesizing bells out of notch and band-pass sections instead — cuts
+as notches blended to depth through the Filter's `mix`, boosts as band-passed
+Splitter branches summed back over the dry signal through a Mixer, which is
+why it was capped at three boosts (a Splitter has four taps). All of that is
+now one Biquad per band in a single Filter cascade.
 
 **Deviation**: fixed here, so `PEAKING_EQ` diverges from `bin/circuitpython`.
 Nothing else moves — no existing fixture reached mode 4, which is also why
@@ -844,3 +849,30 @@ its only two uses in the suite pass `channel_count=1` — which is how both of
 these survived. `tests/parity/biquad_component_probe.py` covers mono and stereo
 across all seven modes, and its golden is captured from this port rather than
 from CircuitPython, because of the two deviations above.
+
+### What the two fixes changed in `audioeffects`
+
+`SPECTRAL_SCALE` and `_core.filter_hz()` are deleted along with their thirteen
+call sites, so a frequency handed to any class in the library is now the
+frequency it filters at. `_core.check_hz()` replaces them: halving everything
+kept the library clear of Nyquist by accident, and a biquad configured above
+Nyquist folds its coefficients and produces noise silently, so the library now
+refuses instead. `GraphicEQ` drops ISO bands that a low configured rate puts
+out of range — the 16 kHz band needs better than 32 kHz to exist.
+
+`ParametricEQ` is one Biquad per band in one Filter cascade, bells and shelves
+alike; it no longer builds a Splitter or a Mixer, no longer caps boosts at
+three, and exposes the sections as `.biquads` for parameter binding. An EQ with
+every band flat returns its source untouched rather than a chain of unity
+sections. `GraphicEQ` inherits all of it. `DynamicEQ` keeps its topology but is
+no longer an approximation: RBJ's notch and 0 dB-peak band-pass share a
+denominator and their numerators sum to it, so with the compressor idle the
+split reconstructs the input — measured flat to 0.03 dB from 100 Hz to 8 kHz,
+where before the shared biquad state leaked each channel's band into the
+other's notch.
+
+Measured after the sweep at 48 kHz: a +6 dB / Q 2 bell at 1 kHz reads +5.98 dB
+at 1 kHz and ±0.1 dB two octaves out either way; a −9 dB / Q 1.4 cut at 500 Hz
+reads −9.05 dB; `LowPass` at 1 kHz reads −3.00 dB at cutoff and −12.33 dB an
+octave above. `tests/test_cpython_effects_library.py` pins the bell placement,
+the flat-EQ passthrough, and the Nyquist refusal.

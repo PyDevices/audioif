@@ -16,68 +16,42 @@ _FM = synthio.FilterMode
 
 
 class ParametricEQ(_core.Effect):
-    """bands: (frequency_hz, gain_db, q) bell sections, plus optional
+    """bands: (frequency_hz, gain_db, q) peaking bells, plus optional
     low_shelf/high_shelf as (frequency_hz, gain_db).
 
-    Bells are built without the (broken-upstream) peaking biquad: cuts
-    are notch sections blended to depth via the Filter's mix, boosts are
-    band-passed branches summed back over the dry signal. At most three
-    boost bands (the splitter has four taps); cuts are unlimited."""
+    Every section - bell, low shelf, high shelf - is one Biquad in a
+    single Filter's cascade, which is what a parametric EQ is. Boosts and
+    cuts cost exactly the same and there is no limit on how many of
+    either. The bells were previously synthesized from notch sections and
+    band-passed Splitter branches summed through a Mixer, because the
+    engine's peaking biquad computed b2 with the wrong sign; boosts were
+    capped at three because a Splitter has four taps. Both constraints are
+    gone.
+
+    ``biquads`` holds the sections in chain order, so an application can
+    bind a macro straight to ``eq.biquads[2].frequency`` or ``.A``."""
 
     def __init__(self, source, bands=(), low_shelf=None, high_shelf=None):
-        boosts = [b for b in bands if b[1] > 0.0]
-        cuts = [b for b in bands if b[1] <= 0.0]
-        if len(boosts) > 3:
-            raise ValueError("at most 3 boost bands")
-
-        chain = source
-        self.mixer = None
-        self.splitter = None
-        if boosts:
-            split = audioroute.Splitter(source, taps=len(boosts) + 1)
-            self.mixer = audiomixer.Mixer(voice_count=len(boosts) + 1,
-                                          **_core.pcm(1024))
-            self.mixer.voice[0].play(split.tap(0))
-            self.mixer.voice[0].level = 1.0
-            self.branches = []
-            for index, (frequency, gain_db, q) in enumerate(boosts):
-                band = audiofilters.Filter(
-                    filter=synthio.Biquad(_FM.BAND_PASS,
-                                          _core.filter_hz(frequency), Q=q),
-                    **_core.pcm())
-                band.play(split.tap(index + 1))
-                self.branches.append(band)
-                self.mixer.voice[index + 1].play(band)
-                self.mixer.voice[index + 1].level = min(
-                    1.0, _core.db_to_gain(gain_db) - 1.0)
-            self.splitter = split
-            chain = self.mixer
-
-        self.sections = []
-        for frequency, gain_db, q in cuts:
-            depth = 1.0 - _core.db_to_gain(gain_db)
-            section = audiofilters.Filter(
-                filter=synthio.Biquad(_FM.NOTCH,
-                                      _core.filter_hz(frequency), Q=q),
-                mix=depth, **_core.pcm())
-            section.play(chain)
-            self.sections.append(section)
-            chain = section
-        shelf_biquads = []
-        if low_shelf is not None:
-            shelf_biquads.append(synthio.Biquad(
-                _FM.LOW_SHELF, _core.filter_hz(low_shelf[0]), Q=0.707,
-                A=_core.db_to_amplitude(low_shelf[1])))
-        if high_shelf is not None:
-            shelf_biquads.append(synthio.Biquad(
-                _FM.HIGH_SHELF, _core.filter_hz(high_shelf[0]), Q=0.707,
-                A=_core.db_to_amplitude(high_shelf[1])))
-        if shelf_biquads:
-            shelf = audiofilters.Filter(filter=shelf_biquads, **_core.pcm())
-            shelf.play(chain)
-            self.sections.append(shelf)
-            chain = shelf
-        self.output = chain
+        self.biquads = []
+        for frequency, gain_db, q in bands:
+            self.biquads.append(synthio.Biquad(
+                _FM.PEAKING_EQ, _core.check_hz(frequency), Q=q,
+                A=_core.db_to_amplitude(gain_db)))
+        for shelf, mode in ((low_shelf, _FM.LOW_SHELF),
+                            (high_shelf, _FM.HIGH_SHELF)):
+            if shelf is not None:
+                self.biquads.append(synthio.Biquad(
+                    mode, _core.check_hz(shelf[0]), Q=0.707,
+                    A=_core.db_to_amplitude(shelf[1])))
+        if not self.biquads:
+            # An EQ asked for nothing is a wire, not a chain of no filters:
+            # every Filter stage costs a buffer and 16 bits of headroom.
+            self.node = None
+            self.output = source
+            return
+        self.node = audiofilters.Filter(filter=self.biquads, **_core.pcm())
+        self.node.play(source)
+        self.output = self.node
 
 
 ISO_BANDS = (31.5, 63.0, 125.0, 250.0, 500.0,
@@ -85,13 +59,16 @@ ISO_BANDS = (31.5, 63.0, 125.0, 250.0, 500.0,
 
 
 class GraphicEQ(ParametricEQ):
-    """Ten fixed ISO-centered bands; gains_db is one value per band.
-    Up to three of them may be boosts."""
+    """Ten fixed ISO-centered bands; gains_db is one value per band, any
+    mix of boosts and cuts. Bands left flat are dropped rather than built
+    as unity sections, and so are bands above Nyquist at the configured
+    rate - the top ISO band needs better than 32 kHz to exist at all."""
 
     def __init__(self, source, gains_db):
+        limit = _core.sample_rate() * 0.5
         ParametricEQ.__init__(self, source, bands=[
             (freq, gain, 1.4) for freq, gain in zip(ISO_BANDS, gains_db)
-            if abs(gain) > 0.01])
+            if abs(gain) > 0.01 and freq < limit])
 
 
 class _SingleFilter(_core.Effect):
@@ -99,7 +76,7 @@ class _SingleFilter(_core.Effect):
 
     def __init__(self, source, frequency=1000.0, q=0.707, mix=1.0):
         self.frequency = synthio.Math(synthio.MathOperation.SUM,
-                                      _core.filter_hz(frequency), 0.0, 0.0)
+                                      _core.check_hz(frequency), 0.0, 0.0)
         self.biquad = synthio.Biquad(self.MODE, self.frequency, Q=q)
         self.node = audiofilters.Filter(filter=self.biquad, mix=mix,
                                         **_core.pcm())
@@ -107,7 +84,7 @@ class _SingleFilter(_core.Effect):
         self.output = self.node
 
     def set_frequency(self, hz):
-        self.frequency.a = _core.filter_hz(hz)
+        self.frequency.a = _core.check_hz(hz)
 
 
 class LowPass(_SingleFilter):
@@ -133,7 +110,7 @@ class LadderFilter(_core.Effect):
 
     def __init__(self, source, cutoff=1200.0, resonance=0.4):
         self.cutoff = synthio.Math(synthio.MathOperation.SUM,
-                                   _core.filter_hz(cutoff), 0.0, 0.0)
+                                   _core.check_hz(cutoff), 0.0, 0.0)
         q = 0.55 + 6.0 * resonance
         self.stages = [
             synthio.Biquad(_FM.LOW_PASS, self.cutoff, Q=0.6),
@@ -146,7 +123,7 @@ class LadderFilter(_core.Effect):
         self.output = self.node
 
     def set_cutoff(self, hz):
-        self.cutoff.a = _core.filter_hz(hz)
+        self.cutoff.a = _core.check_hz(hz)
 
 
 class CombFilter(_core.Effect):
@@ -164,19 +141,27 @@ class CombFilter(_core.Effect):
 class DynamicEQ(_core.Effect):
     """One dynamic band: the signal splits into everything-but-the-band
     (a notch) and the band itself, the band alone is compressed, and the
-    two are summed. The band only comes down when it crosses the
-    threshold - an approximation of a dynamic bell cut."""
+    two are summed, so the band comes down only when it crosses the
+    threshold.
+
+    The split is exact, not an approximation. RBJ's notch and its
+    0 dB-peak band-pass share a denominator and their numerators sum to
+    it, so notch + band-pass is unity: with the compressor idle this
+    reconstructs the input. That was always the intent; it only became
+    true once a stereo Filter stopped sharing one biquad state between
+    the channels, which used to leak each channel's band into the other's
+    notch."""
 
     def __init__(self, source, frequency=3000.0, threshold_db=-30.0,
                  ratio=4.0, q=2.0):
+        frequency = _core.check_hz(frequency)
         split = audioroute.Splitter(source, taps=2)
         self.rest = audiofilters.Filter(
-            filter=synthio.Biquad(_FM.NOTCH, _core.filter_hz(frequency),
-                                  Q=q), **_core.pcm())
+            filter=synthio.Biquad(_FM.NOTCH, frequency, Q=q), **_core.pcm())
         self.rest.play(split.tap(0))
         self.band = audiofilters.Filter(
-            filter=synthio.Biquad(_FM.BAND_PASS, _core.filter_hz(frequency),
-                                  Q=q), **_core.pcm())
+            filter=synthio.Biquad(_FM.BAND_PASS, frequency, Q=q),
+            **_core.pcm())
         self.band.play(split.tap(1))
         self.dynamics = audiodynamics.Dynamics(
             audiodynamics.DYN_COMPRESS, threshold_db=threshold_db, ratio=ratio,

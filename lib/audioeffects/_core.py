@@ -67,18 +67,25 @@ class Effect:
     output = None
 
 
-# CircuitPython's audiofilters.Filter (and this engine's faithful port of
-# it) runs one biquad state across the interleaved stereo stream, which
-# halves every frequency the filter perceives: a biquad asked for f is
-# centered at 2f. Verified against the CircuitPython oracle - mono is
-# exact, stereo is shifted - so the library compensates here instead of
-# diverging from upstream. Peaking EQ is unusable at this pin (upstream
-# computes b2 with the wrong sign); ParametricEQ builds bells from notch
-# and band-pass sections instead.
-SPECTRAL_SCALE = 0.5
+# This library used to halve every frequency it handed a Biquad, and to
+# build bells out of notch and band-pass sections. Both were workarounds
+# for engine bugs that no longer exist: a stereo audiofilters.Filter now
+# keeps one biquad state per channel (so a filter asked for f is centered
+# at f, not 2f), and PEAKING_EQ computes b2 with the sign the RBJ cookbook
+# calls for. See docs/upstream-diff.md. Frequencies here are now just
+# frequencies. Note that a stock CircuitPython board still has both bugs -
+# see this package's README.
 
 
-def filter_hz(frequency):
-    """The value to hand a Biquad inside a stereo Filter so its true
-    center lands at `frequency`."""
-    return float(frequency) * SPECTRAL_SCALE
+def check_hz(frequency):
+    """A biquad's center must sit below Nyquist. Above it the coefficient
+    math folds over and the filter is noise rather than a filter, silently.
+    Halving every frequency used to keep the library clear of the edge by
+    accident; now that it doesn't, say so out loud instead."""
+    frequency = float(frequency)
+    limit = SAMPLE_RATE * 0.5
+    if not 0.0 < frequency < limit:
+        raise ValueError(
+            "filter frequency %g Hz is outside 0..%g Hz (Nyquist at the "
+            "configured %d Hz rate)" % (frequency, limit, SAMPLE_RATE))
+    return frequency

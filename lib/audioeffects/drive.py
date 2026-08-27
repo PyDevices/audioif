@@ -21,7 +21,7 @@ class Overdrive(_core.Effect):
         self.node.play(source)
         self.tone = audiofilters.Filter(
             filter=synthio.Biquad(synthio.FilterMode.LOW_PASS,
-                                  _core.filter_hz(tone_hz), Q=0.707),
+                                  float(tone_hz), Q=0.707),
             **_core.pcm())
         self.tone.play(self.node)
         self.output = self.tone
@@ -76,7 +76,7 @@ class Exciter(_core.Effect):
         split = audioroute.Splitter(source, taps=2)
         self.highs = audiofilters.Filter(
             filter=synthio.Biquad(synthio.FilterMode.HIGH_PASS,
-                                  _core.filter_hz(frequency), Q=0.707),
+                                  float(frequency), Q=0.707),
             **_core.pcm())
         self.highs.play(split.tap(1))
         self.harmonics = audiofilters.Distortion(

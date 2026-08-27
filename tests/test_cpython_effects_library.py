@@ -7,6 +7,7 @@ in a host. Now they are ordinary audioif nodes and the whole catalogue renders
 here.
 """
 
+import math
 import os
 import sys
 import unittest
@@ -69,6 +70,38 @@ def peak(sample, blocks, skip=0):
     return loudest / 32768.0
 
 
+def sine(hz, frames=40000, level=8000, rate=SAMPLE_RATE):
+    """A stereo sine, long enough to outlast the skip in `rms`."""
+    values = array("h")
+    for frame in range(frames):
+        value = int(level * math.sin(2.0 * math.pi * hz * frame / rate))
+        values.append(value)
+        values.append(value)
+    return audiocore.RawSample(values, sample_rate=rate, channel_count=2)
+
+
+def rms(sample, blocks=20, skip=8):
+    total = 0
+    count = 0
+    for _ in range(skip):
+        audiocore.get_buffer(sample)
+    for _ in range(blocks):
+        data = memoryview(bytes(audiocore.get_buffer(sample)[1])).cast("h")
+        for value in data:
+            total += value * value
+            count += 1
+    return math.sqrt(total / count) if count else 0.0
+
+
+def tone_gain_db(hz, build_chain):
+    """What `build_chain` does to a steady sine at `hz`, in dB. The dry
+    reference is a second copy of the same sine measured the same way, so
+    only the chain differs."""
+    wet = rms(build_chain(sine(hz)))
+    dry = rms(sine(hz))
+    return 20.0 * math.log10(wet / dry)
+
+
 class EffectsLibraryTest(unittest.TestCase):
     def test_the_catalogue_is_all_there(self):
         self.assertEqual(len(CLASSES), 39, CLASSES)
@@ -108,6 +141,47 @@ class EffectsLibraryTest(unittest.TestCase):
             audioeffects.configure(SAMPLE_RATE)
         self.assertEqual(audioeffects.LowPass(source()).output.sample_rate,
                          SAMPLE_RATE)
+
+    def test_a_bell_lands_where_it_was_asked_for(self):
+        # Pins both engine fixes at the library level. A peaking bell is
+        # only usable once PEAKING_EQ computes b2 with the RBJ sign, and it
+        # only lands on its own center once a stereo Filter stops sharing
+        # one biquad state between the channels - with that sharing the
+        # recursion advances twice per frame and every filter sits an
+        # octave high. Measured, not merely rendered.
+        for hz, expected in ((1000.0, 6.0), (250.0, 6.0)):
+            at_center = tone_gain_db(
+                hz, lambda s: audioeffects.ParametricEQ(
+                    s, bands=[(hz, expected, 2.0)]).output)
+            self.assertAlmostEqual(at_center, expected, delta=0.4,
+                                   msg="bell at %g Hz" % hz)
+            # Two octaves up the bell is over; a shared state would put the
+            # boost here instead.
+            away = tone_gain_db(
+                hz * 4.0, lambda s: audioeffects.ParametricEQ(
+                    s, bands=[(hz, expected, 2.0)]).output)
+            self.assertLess(abs(away), 0.5, "bell at %g Hz leaks" % hz)
+
+    def test_a_cut_and_a_boost_cost_the_same(self):
+        # The old ParametricEQ synthesized boosts from Splitter branches and
+        # capped them at three; cuts were notch sections. Now both are one
+        # biquad in one cascade, so ten boosts build as readily as ten cuts.
+        boosts = audioeffects.GraphicEQ(source(), gains_db=(6.0,) * 10)
+        self.assertEqual(len(boosts.biquads), 10)
+        self.assertFalse(hasattr(boosts, "splitter"))
+        self.assertGreater(peak(boosts.output, 8), 0.001)
+
+    def test_an_eq_with_nothing_to_do_is_a_wire(self):
+        src = source()
+        flat = audioeffects.GraphicEQ(src, gains_db=(0.0,) * 10)
+        self.assertEqual(flat.biquads, [])
+        self.assertIs(flat.output, src)
+
+    def test_a_filter_above_nyquist_is_refused(self):
+        # Silently folded coefficients used to be unreachable because every
+        # frequency was halved on the way in.
+        with self.assertRaises(ValueError):
+            audioeffects.LowPass(source(), frequency=SAMPLE_RATE * 0.75)
 
     def test_the_compressor_actually_compresses(self):
         # Not just "it renders". The comparison is against a Compressor whose
