@@ -112,11 +112,18 @@ def each_piece(args):
 
 
 def capture(args):
+    # Merge, never replace. `--pieces` narrows what gets rendered, and a
+    # capture that then wrote only those would quietly drop every piece it
+    # was not asked about - which is exactly when you would reach for it, to
+    # re-baseline one piece whose music deliberately changed.
     fixture = {
         "oracle": "micropython-vst3 tools/render_preview.py, before the "
                   "audioinstruments/audioeffects cutover",
         "pieces": {},
     }
+    if GOLDEN.exists():
+        fixture = json.loads(GOLDEN.read_text())
+        fixture.setdefault("pieces", {})
     for piece, report, digest, size in each_piece(args):
         fixture["pieces"][piece] = {
             "wav_sha256": digest,
