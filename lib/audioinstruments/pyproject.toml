@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pydevices-audioinstruments"
+dynamic = ["version"]
+description = "Classic synthesizers, electromechanical keyboards, and drum machines for PyDevices"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "PyDevices contributors"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+dependencies = ["pydevices-audioif"]
+
+[project.urls]
+Repository = "https://github.com/PyDevices/audioif"
+Issues = "https://github.com/PyDevices/audioif/issues"
+
+[tool.setuptools]
+packages = ["audioinstruments"]
+
+[tool.setuptools.package-dir]
+audioinstruments = "."
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
