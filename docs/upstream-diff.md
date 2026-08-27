@@ -784,6 +784,9 @@ it by synthesizing bells out of notch and band-pass sections instead.
 Nothing else moves — no existing fixture reached mode 4, which is also why
 `tests/parity/biquad_component_probe.py` now walks all seven modes.
 
+Still present in upstream `main` as of 2026-08-26, not just in the pinned
+10.2.1, so this one is worth reporting rather than waiting out.
+
 ## A stereo `Filter` shared one biquad state between the channels (effects-extension tier)
 
 A biquad is a recursion: each output sample is computed from the two input and
@@ -805,7 +808,19 @@ Two consequences, both measured:
   the right channel made. Identical input in both channels came out 3.3 dB
   apart at 3 kHz. No scale factor can correct this one.
 
-**Deviation**: one state per stage *per channel*, indexed
+**This one is a catch-up, not a divergence.** Upstream fixed it after 10.2.1:
+current `main` allocates through `audiofilters_assign_filter_chain(..., channel_count)`
+and indexes `filter.states[j * channel_count + k]` against a per-channel
+`filter_buffer + k * SYNTHIO_MAX_DUR`. Our CP tree is pinned at 10.2.1
+(`bcfcb51`), which still has the single interleaved state, so the port
+inherited it. The fix here was arrived at independently and lands on the same
+design, which is reassuring about both. **When the CP pin moves past that
+commit this entry stops describing a difference at all** — at which point
+prefer upstream's exact shape (one `SYNTHIO_MAX_DUR * channel_count` buffer
+deinterleaved in a single pass) over ours (one `SYNTHIO_MAX_DUR` buffer reused
+per channel) so the files converge and future pin bumps stay clean.
+
+**Change**: one state per stage *per channel*, indexed
 `[stage * channels + channel]`, with the buffer deinterleaved per channel and
 chunked in whole frames so the channels stay in lockstep across chunk
 boundaries. `filter_states_len` still counts stages, so callers are unchanged.
