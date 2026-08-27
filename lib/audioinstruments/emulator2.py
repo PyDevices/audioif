@@ -1,5 +1,10 @@
 """E-mu Emulator II."""
 
+NAME = 'Emulator II'
+CATEGORIES = ('Sampler',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Breath Noise", "Tone Brilliance", "Attack", "Decay",
     "Sustain", "Release", "Vibrato Rate", "Vibrato Depth", "Filter Env",

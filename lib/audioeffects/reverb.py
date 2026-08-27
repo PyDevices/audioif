@@ -8,6 +8,8 @@ rather than a plausible one -- and it costs, in both directions, roughly two
 orders of magnitude more. See its docstring before using it on a board.
 """
 
+VENDOR = "PyDevices"
+
 import audiodelays
 import audiofreeverb
 
@@ -29,6 +31,10 @@ _PRESETS = {
 
 
 class Reverb(_core.Effect):
+
+    NAME = 'Reverb'
+    CATEGORIES = ('Reverb',)
+    VERSION = '0.0.1'
     def __init__(self, source, preset="hall", mix=0.3):
         roomsize, damp = _PRESETS[preset]
         chain_source = source
@@ -77,6 +83,10 @@ class ConvolutionReverb(_core.Effect):
     The output trails the input by `audioconvolve.FRAMES` (5.3 ms at 48 kHz);
     see the audioconvolve docstring for why that is inherent here.
     """
+
+    NAME = 'Convolution Reverb'
+    CATEGORIES = ('Reverb',)
+    VERSION = '0.0.1'
 
     MACRO_LABELS = ("Decay", "Damping", "Predelay", "Diffusion", "Mix")
     MACRO_RANGES = (

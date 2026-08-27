@@ -1,5 +1,10 @@
 """Sequential Circuits Prophet VS vector synthesizer."""
 
+NAME = 'Prophet VS'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Joystick X", "Joystick Y", "Cutoff", "Resonance",
     "Env Amount", "Chorus", "Filter Attack", "Filter Decay",

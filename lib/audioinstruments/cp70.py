@@ -1,5 +1,10 @@
 """Yamaha CP-70 electric grand."""
 
+NAME = 'CP-70'
+CATEGORIES = ('Piano',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Hammer Strike", "String Body", "Tremolo Rate",
     "Tremolo Depth", "Chorus", "Decay", "Brilliance", "Master Tune",

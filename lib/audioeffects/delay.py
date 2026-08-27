@@ -14,6 +14,8 @@ there. See audioif's docs/upstream-diff.md.
 The three coloured ones carry patches; see this package's README.
 """
 
+VENDOR = "PyDevices"
+
 import audiodelays
 import audioecho
 
@@ -21,6 +23,10 @@ from . import _core
 
 
 class DigitalDelay(_core.Effect):
+
+    NAME = 'Digital Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
     def __init__(self, source, time_ms=350.0, feedback=0.4, mix=0.3):
         self.node = audiodelays.Echo(
             max_delay_ms=int(time_ms) + 100, delay_ms=time_ms,
@@ -37,6 +43,10 @@ class DigitalDelay(_core.Effect):
 
 class SlapbackDelay(DigitalDelay):
     """One short, single repeat - the rockabilly vocal trick."""
+
+    NAME = 'Slapback Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, time_ms=95.0, mix=0.4):
         DigitalDelay.__init__(self, source, time_ms=time_ms, feedback=0.0,
@@ -95,6 +105,10 @@ class TapeDelay(_LoopDelay):
     progressively and the dry path is untouched.
     """
 
+    NAME = 'Tape Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
+
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Wow", "Tone", "Drive")
     MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (800.0, 16000.0, "log"), (0.0, 1.0))
@@ -145,6 +159,10 @@ class AnalogDelay(_LoopDelay):
     down, its high-pass up, and the drift and softening up with them.
     """
 
+    NAME = 'Analog Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
+
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Age", "Drive")
     MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (0.0, 1.0))
@@ -193,6 +211,10 @@ class PingPongDelay(_LoopDelay):
     right side simply ran at half speed.
     """
 
+    NAME = 'Ping-Pong Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
+
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Spread", "Tone")
     MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (800.0, 16000.0, "log"))
@@ -227,6 +249,10 @@ class PingPongDelay(_LoopDelay):
 
 class MultiTapDelay(_core.Effect):
     """taps: (position 0..1 of time_ms, level) pairs."""
+
+    NAME = 'Multi-Tap Delay'
+    CATEGORIES = ('Delay',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, time_ms=500.0,
                  taps=((0.25, 0.8), (0.5, 0.6), (0.75, 0.4), (1.0, 0.3)),

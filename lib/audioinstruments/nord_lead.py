@@ -1,5 +1,10 @@
 """Clavia Nord Lead."""
 
+NAME = 'Nord Lead'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "FM Amount", "Osc Sync", "Morph 1",
     "Morph 2", "Morph 3", "Morph 4", "Amp Attack", "Amp Decay",

@@ -15,6 +15,8 @@ curve, because what a speaker does to a signal is a response, not a
 nonlinearity. It sits here because it belongs after the others in a chain.
 """
 
+VENDOR = "PyDevices"
+
 import array
 import math
 
@@ -55,6 +57,10 @@ class Overdrive(_core.Effect):
     volume. It used to do nothing at all; see the module docstring.
     """
 
+    NAME = 'Overdrive'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
+
     def __init__(self, source, drive=0.4, tone_hz=4500.0, mix=1.0):
         # OVERDRIVE ignores the node's own drive argument, so passing it
         # through - as this class used to - left the knob inert. Drive is
@@ -75,6 +81,10 @@ class Overdrive(_core.Effect):
 class Distortion(_core.Effect):
     """Hard clipping."""
 
+    NAME = 'Distortion'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
+
     def __init__(self, source, drive=0.7, mix=1.0):
         self.node = audiofilters.Distortion(
             drive=drive, mode=_DM.CLIP, soft_clip=False,
@@ -85,6 +95,10 @@ class Distortion(_core.Effect):
 
 class Fuzz(_core.Effect):
     """Everything into the ceiling: the waveform leaves as a square."""
+
+    NAME = 'Fuzz'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, drive=0.95, mix=1.0):
         self.node = audiofilters.Distortion(
@@ -137,6 +151,10 @@ class Saturation(_core.Effect):
     curve without changing the output level.
     """
 
+    NAME = 'Saturation'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
+
     def __init__(self, source, amount=0.25, character="tube", drive=0.35):
         try:
             mode, curve, makeup_db, shelves = _CHARACTERS[character]
@@ -174,6 +192,10 @@ class Bitcrusher(_core.Effect):
     decimation needs a sample-and-hold the palette does not have.
     """
 
+    NAME = 'Bitcrusher'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
+
     #: LOFI masks off `round(drive * 14)` of a sample's low bits, so the
     #: knob spans 16 bits down to 2 and no further.
     BIT_RANGE = (2, 16)
@@ -195,6 +217,10 @@ class Bitcrusher(_core.Effect):
 class Exciter(_core.Effect):
     """New highs synthesized from the source: a high-passed branch is
     overdriven (generating harmonics) and blended back in under the dry."""
+
+    NAME = 'Exciter'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, frequency=3000.0, amount=0.3):
         split = audioroute.Splitter(source, taps=2)
@@ -239,6 +265,10 @@ class CabinetSim(_core.Effect):
     Every knob but Mix rebuilds the impulse, which is a few thousand
     multiplies. Fine on a knob move, wrong to automate per block.
     """
+
+    NAME = 'Cabinet Sim'
+    CATEGORIES = ('Distortion',)
+    VERSION = '0.0.1'
 
     #: Taps in the impulse. 21 ms at 48 kHz, which is long enough for the low
     #: end to settle and short enough to stay cheap.

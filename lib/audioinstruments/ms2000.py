@@ -1,5 +1,10 @@
 """Korg MS2000."""
 
+NAME = 'MS2000'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Osc Waveform", "Cutoff", "Resonance", "Mod Seq Rate",
     "Mod Seq Depth", "Distortion", "Amp Attack", "Amp Decay", "Amp Sustain",

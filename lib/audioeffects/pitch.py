@@ -4,6 +4,8 @@ Pitch correction (Auto-Tune-style) is deliberately absent: it needs
 pitch detection, which the DSP palette does not provide.
 """
 
+VENDOR = "PyDevices"
+
 import audiodelays
 import audiomixer
 import audioroute
@@ -12,6 +14,10 @@ from . import _core
 
 
 class PitchShifter(_core.Effect):
+
+    NAME = 'Pitch Shifter'
+    CATEGORIES = ('Pitch Shift',)
+    VERSION = '0.0.1'
     def __init__(self, source, semitones=0.0, mix=1.0):
         self.node = audiodelays.PitchShift(
             semitones=semitones, mix=mix, window=2048, **_core.pcm())
@@ -24,6 +30,10 @@ class PitchShifter(_core.Effect):
 
 class Harmonizer(_core.Effect):
     """Dry plus up to three fixed-interval shifted copies."""
+
+    NAME = 'Harmonizer'
+    CATEGORIES = ('Pitch Shift',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, intervals=(4.0, 7.0), level=0.5):
         intervals = tuple(intervals)[:_core.SPLITTER_TAPS - 1]
@@ -53,6 +63,10 @@ class Octaver(_core.Effect):
     which leaves room for the dry plus any three octaves - ask for all four
     and it says so rather than dropping one quietly.
     """
+
+    NAME = 'Octaver'
+    CATEGORIES = ('Pitch Shift',)
+    VERSION = '0.0.1'
 
     #: (attribute, semitones, window) per octave, in the order they mix.
     #: Shorter windows track faster, which matters more the further up the
@@ -89,6 +103,10 @@ class Octaver(_core.Effect):
 class StereoWidener(_core.Effect):
     """Haas-effect width: the dry center plus a short-delayed copy pushed
     to one side and its source-panned opposite."""
+
+    NAME = 'Stereo Widener'
+    CATEGORIES = ('Spatial',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, delay_ms=14.0, width=0.7):
         split = audioroute.Splitter(source, taps=2)

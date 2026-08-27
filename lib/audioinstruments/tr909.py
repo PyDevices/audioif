@@ -1,5 +1,10 @@
 """Roland TR-909 Rhythm Composer."""
 
+NAME = 'TR-909'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "Accent", "BD Tune", "BD Attack", "BD Decay", "SD Tune",
     "SD Tone", "SD Snappy", "LT Tune", "MT Tune", "HT Tune", "Tom Decay",

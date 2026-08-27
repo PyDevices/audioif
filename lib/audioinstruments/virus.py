@@ -1,5 +1,10 @@
 """Access Virus."""
 
+NAME = 'Virus'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Hypersaw Detune", "Sub Osc", "Cutoff", "Resonance",
     "Distortion", "Env Depth", "Amp Attack", "Amp Decay", "Amp Sustain",

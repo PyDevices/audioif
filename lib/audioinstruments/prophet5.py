@@ -1,5 +1,10 @@
 """Sequential Circuits Prophet-5."""
 
+NAME = 'Prophet-5'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Env Amount", "Poly Mod",
     "Osc2 Detune", "Sync", "Release", "Amp Attack", "Amp Decay",

@@ -1,5 +1,10 @@
 """Wurlitzer 200A electric piano."""
 
+NAME = 'Wurlitzer 200A'
+CATEGORIES = ('Piano',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Bite", "Bark", "Tremolo Rate", "Tremolo Depth", "Amp Attack",
     "Amp Decay", "Amp Sustain", "Amp Release", "Master Tune",

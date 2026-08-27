@@ -1,5 +1,10 @@
 """E-mu SP-1200."""
 
+NAME = 'SP-1200'
+CATEGORIES = ('Sampler',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Kick Pitch", "Kick Ring", "Snare Pitch", "Snare Snap",
     "Hihat Pitch", "SP Crunch", "Master Tune",

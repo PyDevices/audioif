@@ -1,5 +1,10 @@
 """Hohner Clavinet D6."""
 
+NAME = 'Clavinet D6'
+CATEGORIES = ('Piano',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Pickup Mix", "Mute Level", "Wah Depth", "Wah Rate",
     "Brilliance", "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release",

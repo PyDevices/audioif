@@ -1,5 +1,10 @@
 """Waldorf Microwave."""
 
+NAME = 'Microwave'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Wavetable Pos", "Cutoff", "Resonance", "Env to WT",
     "Env to Filter", "Filter Attack", "Amp Attack", "Amp Decay",

@@ -1,5 +1,10 @@
 """Kurzweil K2600."""
 
+NAME = 'K2600'
+CATEGORIES = ('Sampler',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Layer 1 Mix", "Layer 2 Mix", "Layer 3 Mix", "Layer 4 Mix",
     "Shimmer Delay", "Master Cutoff", "Master Resonance", "Amp Attack",

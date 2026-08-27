@@ -1,5 +1,10 @@
 """Moog Minimoog Model D."""
 
+NAME = 'Minimoog'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Env Amount", "Glide", "Osc2 Detune",
     "Osc3 Detune", "Noise Mix", "Amp Attack", "Amp Decay", "Amp Sustain",

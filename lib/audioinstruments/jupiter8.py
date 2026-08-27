@@ -1,5 +1,10 @@
 """Roland Jupiter-8."""
 
+NAME = 'Jupiter-8'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Env Depth", "Cross Mod", "Unison",
     "LFO Rate", "Amp Release", "Amp Attack", "Amp Decay", "Amp Sustain",

@@ -1,5 +1,10 @@
 """Korg Polysix."""
 
+NAME = 'Polysix'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Sub-Osc Level", "Cutoff", "Resonance", "Ensemble Depth",
     "PWM Rate", "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release",

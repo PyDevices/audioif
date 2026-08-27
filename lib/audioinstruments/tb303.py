@@ -1,5 +1,10 @@
 """Roland TB-303 Bass Line."""
 
+NAME = 'TB-303'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent",
     "Overdrive", "Master Tune",

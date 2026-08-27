@@ -1,5 +1,10 @@
 """ARP 2600."""
 
+NAME = 'ARP 2600'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "VCF Cutoff", "Resonance", "FM Amount", "Reverb Mix",
     "Osc 2 Detune", "Osc 3 Detune", "Env 1 Attack", "Env 1 Release",

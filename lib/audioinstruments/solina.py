@@ -1,5 +1,10 @@
 """ARP/Eminent Solina String Ensemble."""
 
+NAME = 'Solina'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Violin Mix", "Viola Mix", "Cello Mix", "Chorus Depth",
     "Attack", "Release", "Crescendo", "Master Tune",

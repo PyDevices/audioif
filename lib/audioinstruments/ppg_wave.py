@@ -1,5 +1,10 @@
 """PPG Wave 2.2."""
 
+NAME = 'PPG Wave 2.2'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Wavetable Index", "Cutoff", "Resonance", "Env Amount",
     "Filter Attack", "Filter Decay", "Amp Attack", "Amp Sustain",

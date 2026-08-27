@@ -1,5 +1,10 @@
 """Casio CZ-101 phase distortion synthesizer."""
 
+NAME = 'CZ-101'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "PD Env Depth", "PD Attack", "PD Decay", "Resonance (Fake)",
     "Vibrato Rate", "Vibrato Depth", "Amp Attack", "Amp Decay",

@@ -1,5 +1,10 @@
 """Roland CR-78 CompuRhythm."""
 
+NAME = 'CR-78'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "Accent", "BD Decay", "BD Pitch", "SD Snappy", "SD Pitch",
     "Rim Level", "Bongo Hi", "Bongo Lo", "Claves Level", "Cowbell Level",

@@ -1,5 +1,10 @@
 """Moog Taurus bass pedals."""
 
+NAME = 'Taurus'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Osc B Detune", "Glide", "Cutoff", "Resonance", "Env Mod",
     "Beat Freq", "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release",

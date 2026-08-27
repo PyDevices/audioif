@@ -1,5 +1,10 @@
 """Fender Rhodes electric piano."""
 
+NAME = 'Rhodes'
+CATEGORIES = ('Piano',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Tine Level", "Body Level", "Tremolo Rate", "Tremolo Depth",
     "Overdrive", "Tone", "Amp Attack", "Amp Decay", "Amp Sustain",

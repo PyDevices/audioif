@@ -1,5 +1,10 @@
 """EDP Wasp."""
 
+NAME = 'Wasp'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Filter Mode", "Cutoff", "Resonance", "Noise Level",
     "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", "Master Tune",

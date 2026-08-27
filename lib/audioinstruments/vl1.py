@@ -1,5 +1,10 @@
 """Yamaha VL1 physical modelling synthesizer."""
 
+NAME = 'VL1'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Breath Pressure", "Embouchure", "Growl Rate", "Growl Depth",
     "Attack", "Decay", "Sustain", "Release", "Master Tune",

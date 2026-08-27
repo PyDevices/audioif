@@ -1,5 +1,10 @@
 """Roland TR-808 Rhythm Composer."""
 
+NAME = 'TR-808'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "Accent", "BD Tune", "BD Decay", "BD Tone", "SD Tune",
     "SD Snappy", "SD Tone", "Low Tom", "Mid Tom", "Hi Tom", "Clap Decay",

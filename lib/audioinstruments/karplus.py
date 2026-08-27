@@ -1,5 +1,10 @@
 """Plucked string, Karplus-Strong style."""
 
+NAME = 'Karplus-Strong'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Pluck Position", "String Damping", "Body Resonance",
     "Pick Hardness", "Decay", "Master Tune",

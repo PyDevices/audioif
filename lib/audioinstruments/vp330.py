@@ -1,5 +1,10 @@
 """Roland VP-330 Vocoder Plus."""
 
+NAME = 'VP-330'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Male Choir", "Female Choir", "Chorus Depth", "Attack",
     "Release", "Formant Shift", "Vibrato Rate", "Vibrato Depth",

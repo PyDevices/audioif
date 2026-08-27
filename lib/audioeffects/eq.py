@@ -3,6 +3,8 @@ audiofilters.Filter. Biquad frequencies and Qs accept synthio blocks, so
 every cutoff here can be swept smoothly from a macro via set_* methods.
 """
 
+VENDOR = "PyDevices"
+
 import audiodelays
 import audiodynamics
 import audiofilters
@@ -30,6 +32,10 @@ class ParametricEQ(_core.Effect):
 
     ``biquads`` holds the sections in chain order, so an application can
     bind a macro straight to ``eq.biquads[2].frequency`` or ``.A``."""
+
+    NAME = 'Parametric EQ'
+    CATEGORIES = ('EQ',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, bands=(), low_shelf=None, high_shelf=None):
         self.biquads = []
@@ -64,7 +70,17 @@ class GraphicEQ(ParametricEQ):
     as unity sections, and so are bands above Nyquist at the configured
     rate - the top ISO band needs better than 32 kHz to exist at all."""
 
-    def __init__(self, source, gains_db):
+    NAME = 'Graphic EQ'
+    CATEGORIES = ('EQ',)
+    VERSION = '0.0.1'
+
+    def __init__(self, source, gains_db=None):
+        # No curve means a flat one. Every other effect in this package is
+        # constructible from a source alone, and a graphic EQ that cannot be
+        # is a wart rather than a design: flat is precisely what it does
+        # before anyone moves a slider.
+        if gains_db is None:
+            gains_db = [0.0] * len(ISO_BANDS)
         limit = _core.sample_rate() * 0.5
         ParametricEQ.__init__(self, source, bands=[
             (freq, gain, 1.4) for freq, gain in zip(ISO_BANDS, gains_db)
@@ -88,18 +104,34 @@ class _SingleFilter(_core.Effect):
 
 
 class LowPass(_SingleFilter):
+
+    NAME = 'Low Pass'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
     MODE = _FM.LOW_PASS
 
 
 class HighPass(_SingleFilter):
+
+    NAME = 'High Pass'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
     MODE = _FM.HIGH_PASS
 
 
 class BandPass(_SingleFilter):
+
+    NAME = 'Band Pass'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
     MODE = _FM.BAND_PASS
 
 
 class Notch(_SingleFilter):
+
+    NAME = 'Notch'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
     MODE = _FM.NOTCH
 
 
@@ -107,6 +139,10 @@ class LadderFilter(_core.Effect):
     """Moog-style: four cascaded one-pole-pair low-passes sharing one
     cutoff, resonance concentrated in the last stages. 24 dB/octave slope
     with the familiar squelch when resonance is pushed."""
+
+    NAME = 'Ladder Filter'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, cutoff=1200.0, resonance=0.4):
         self.cutoff = synthio.Math(synthio.MathOperation.SUM,
@@ -128,6 +164,10 @@ class LadderFilter(_core.Effect):
 
 class CombFilter(_core.Effect):
     """A short feedback delay tuned to a frequency: 1/f seconds."""
+
+    NAME = 'Comb Filter'
+    CATEGORIES = ('Filter',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, frequency=440.0, feedback=0.7, mix=0.5):
         delay_ms = 1000.0 / float(frequency)
@@ -151,6 +191,10 @@ class DynamicEQ(_core.Effect):
     true once a stereo Filter stopped sharing one biquad state between
     the channels, which used to leak each channel's band into the other's
     notch."""
+
+    NAME = 'Dynamic EQ'
+    CATEGORIES = ('EQ',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, frequency=3000.0, threshold_db=-30.0,
                  ratio=4.0, q=2.0):

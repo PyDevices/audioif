@@ -1,5 +1,10 @@
 """Alesis Andromeda A6."""
 
+NAME = 'Andromeda A6'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Filter 1 Cutoff", "Filter 2 Cutoff", "Filter Mix",
     "Resonance 1", "Resonance 2", "Env 1 -> F1", "Env 1 -> F2",

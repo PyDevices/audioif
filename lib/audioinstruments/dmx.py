@@ -1,5 +1,10 @@
 """Oberheim DMX."""
 
+NAME = 'DMX'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "BD Pitch", "BD Decay", "SD Pitch", "SD Snappy", "Rim Pitch",
     "Clap Decay", "LT Pitch", "MT Pitch", "HT Pitch", "Tambourine",

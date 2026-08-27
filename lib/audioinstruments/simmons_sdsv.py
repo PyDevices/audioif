@@ -1,5 +1,10 @@
 """Simmons SDS-V."""
 
+NAME = 'Simmons SDS-V'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "Click Level", "BD Pitch", "BD Sweep", "BD Decay", "SD Pitch",
     "SD Sweep", "SD Decay", "LT Pitch", "MT Pitch", "HT Pitch", "Tom Sweep",

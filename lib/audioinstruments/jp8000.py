@@ -1,5 +1,10 @@
 """Roland JP-8000."""
 
+NAME = 'JP-8000'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Supersaw Detune", "Supersaw Mix",
     "Env Depth", "Chorus", "Amp Attack", "Amp Decay", "Amp Sustain",

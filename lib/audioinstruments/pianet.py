@@ -1,5 +1,10 @@
 """Hohner Pianet."""
 
+NAME = 'Pianet'
+CATEGORIES = ('Piano',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Pluck Attack", "Mellow Tone", "Decay Time", "Vibrato Rate",
     "Vibrato Depth", "Amp Attack", "Amp Sustain", "Amp Release",

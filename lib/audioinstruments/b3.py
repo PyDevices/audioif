@@ -1,5 +1,10 @@
 """Hammond B-3 tonewheel organ."""
 
+NAME = 'B-3'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Drawbar 16", "Drawbar 8", "Drawbar 4", "Drawbar 2",
     "Perc Level", "Perc Decay", "Key Click", "Leslie Fast", "Overdrive",

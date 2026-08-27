@@ -1,5 +1,10 @@
 """Yamaha FS1R formant synthesizer."""
 
+NAME = 'FS1R'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Vowel A", "Vowel B", "Morph Speed", "FM Index", "Brightness",
     "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release", "Master Tune",

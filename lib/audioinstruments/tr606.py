@@ -1,5 +1,10 @@
 """Roland TR-606 Drumatix."""
 
+NAME = 'TR-606'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Level", "Accent", "BD Level", "BD Decay", "BD Pitch", "SD Level",
     "SD Snappy", "SD Pitch", "LT Pitch", "HT Pitch", "Cym Level",

@@ -1,5 +1,10 @@
 """Yamaha CS-80."""
 
+NAME = 'CS-80'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "VCF Cutoff", "Resonance", "HPF Cutoff", "Ring Mod Speed",
     "Ring Mod Depth", "Layer II Mix", "Poly AT Depth", "Amp Attack",

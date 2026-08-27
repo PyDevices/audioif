@@ -1,5 +1,10 @@
 """Oberheim OB-Xa."""
 
+NAME = 'OB-Xa'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Detune Spread", "Cutoff", "Resonance", "Env Depth",
     "Brass Attack", "Brass Decay", "Amp Attack", "Amp Sustain",

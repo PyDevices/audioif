@@ -1,5 +1,10 @@
 """Sequential Circuits Drumtraks."""
 
+NAME = 'Drumtraks'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Kick Pitch", "Snare Pitch", "HiHat Pitch", "Tom Pitch",
     "Crunch Level", "Overall Decay", "Master Tune",

@@ -1,5 +1,10 @@
 """Yamaha DX7."""
 
+NAME = 'DX7'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "FM Amount", "Mod Ratio", "Feedback", "Env 1 Decay",
     "Env 2 Decay", "Env 3 Decay", "Release Time", "Alg Mix", "Attack Time",

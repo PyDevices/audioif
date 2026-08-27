@@ -1,5 +1,10 @@
 """Fairlight CMI."""
 
+NAME = 'Fairlight CMI'
+CATEGORIES = ('Sampler',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Patch Select", "Bitcrush Approx", "Attack", "Decay",
     "Sustain", "Release", "Pitch Env Depth", "Filter Env", "Master Tune",

@@ -1,5 +1,10 @@
 """ARP Odyssey."""
 
+NAME = 'Odyssey'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Ring Mod", "LFO Rate", "Env Sweep",
     "Osc 2 Detune", "Sync", "Attack", "Decay", "Sustain", "Release",

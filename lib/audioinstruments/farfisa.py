@@ -1,5 +1,10 @@
 """Farfisa Compact combo organ."""
 
+NAME = 'Farfisa Compact'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Bass", "Strings", "Flute", "Oboe", "Trumpet",
     "Multi-Tone Booster", "Vibrato Rate", "Vibrato Depth", "Master Tune",

@@ -1,5 +1,10 @@
 """Mellotron M400."""
 
+NAME = 'Mellotron M400'
+CATEGORIES = ('Sampler',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Tone", "Flutter Rate", "Flutter Depth", "Attack", "Release",
     "Tape Hiss", "Master Tune",

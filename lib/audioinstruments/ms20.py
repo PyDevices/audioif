@@ -1,5 +1,10 @@
 """Korg MS-20."""
 
+NAME = 'MS-20'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "HPF Cutoff", "HPF Peak", "LPF Cutoff", "LPF Peak",
     "Osc2 Pitch", "EG2 Sweep", "EG2 Attack", "EG2 Decay", "EG2 Sustain",

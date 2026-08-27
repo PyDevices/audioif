@@ -1,5 +1,10 @@
 """Roland SH-101."""
 
+NAME = 'SH-101'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Pulse Width", "Sub-Osc Level", "Cutoff", "Resonance",
     "Env Depth", "Fast Decay", "Master Tune",

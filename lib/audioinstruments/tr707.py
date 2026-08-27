@@ -1,5 +1,10 @@
 """Roland TR-707 Rhythm Composer."""
 
+NAME = 'TR-707'
+CATEGORIES = ('Drum',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Kick Level", "Snare Level", "Tom Level", "HiHat Level",
     "Crash Level", "Overall Decay", "Master Tune",

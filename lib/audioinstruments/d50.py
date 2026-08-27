@@ -1,5 +1,10 @@
 """Roland D-50 linear synthesizer."""
 
+NAME = 'D-50'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Transient Mix", "Synth Mix", "Transient Tune", "Cutoff",
     "Resonance", "Chorus", "Amp Attack", "Amp Decay", "Amp Sustain",

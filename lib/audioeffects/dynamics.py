@@ -7,6 +7,8 @@ Vari-Mu (slow and round). They shape *when* gain moves, which is most of
 what those circuits sound like at this level of modelling.
 """
 
+VENDOR = "PyDevices"
+
 import audiodynamics
 import audiofilters
 import audiomixer
@@ -26,6 +28,10 @@ _CHARACTERS = {
 class Compressor(_core.Effect):
     """`character` picks the envelope times; the macros then move whatever it
     resolved to, so a patch and a character are two ways at the same knobs."""
+
+    NAME = 'Compressor'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
 
     MACRO_LABELS = ("Threshold", "Ratio", "Attack", "Release", "Knee",
                     "Makeup")
@@ -76,6 +82,10 @@ class Limiter(_core.Effect):
     peak; sample-peak limiting cannot see it at all.
     """
 
+    NAME = 'Limiter'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
+
     MACRO_LABELS = ("Ceiling", "Release", "Lookahead", "True Peak")
     #: True Peak is a switch worn as a knob: anything at or above the middle
     #: turns it on. A macro surface has no room for a boolean, and pretending
@@ -114,6 +124,10 @@ class Limiter(_core.Effect):
 class Expander(_core.Effect):
     """Downward expander: below the threshold, quiet gets quieter."""
 
+    NAME = 'Expander'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
+
     def __init__(self, source, threshold_db=-40.0, ratio=2.0,
                  attack_ms=5.0, release_ms=150.0):
         self.node = audiodynamics.Dynamics(
@@ -125,6 +139,10 @@ class Expander(_core.Effect):
 
 
 class NoiseGate(_core.Effect):
+
+    NAME = 'Noise Gate'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
     def __init__(self, source, threshold_db=-50.0, attack_ms=1.5,
                  release_ms=80.0):
         self.node = audiodynamics.Dynamics(
@@ -138,6 +156,10 @@ class NoiseGate(_core.Effect):
 class DeEsser(_core.Effect):
     """Broadband de-esser: the detector hears only what is above
     `frequency`, so sibilance ducks the signal and lows never trigger it."""
+
+    NAME = 'De-Esser'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, threshold_db=-30.0, ratio=6.0,
                  frequency=5000.0, attack_ms=0.5, release_ms=60.0):
@@ -153,6 +175,10 @@ class TransientShaper(_core.Effect):
     """Positive attack_db pushes the hit forward, negative pulls it back;
     sustain_db does the same for what rings after it."""
 
+    NAME = 'Transient Shaper'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
+
     def __init__(self, source, attack_db=0.0, sustain_db=0.0):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_TRANSIENT, attack_gain_db=attack_db,
@@ -166,6 +192,10 @@ class MultibandCompressor(_core.Effect):
     independently, and summed. Linkwitz-Riley crossovers - two cascaded
     Butterworth sections a side - so the three bands recombine flat to a
     fraction of a decibel when none of them is working."""
+
+    NAME = 'Multiband Compressor'
+    CATEGORIES = ('Dynamics',)
+    VERSION = '0.0.1'
 
     def __init__(self, source, low_hz=200.0, high_hz=2000.0,
                  thresholds_db=(-28.0, -24.0, -24.0),

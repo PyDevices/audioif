@@ -1,5 +1,10 @@
 """Vox Continental combo organ."""
 
+NAME = 'Vox Continental'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Drawbar 16", "Drawbar 8", "Drawbar 4", "Drawbar IV",
     "Vibrato Rate", "Vibrato Depth", "Brilliance", "Master Tune",

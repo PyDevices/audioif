@@ -1,5 +1,10 @@
 """Roland Juno-106."""
 
+NAME = 'Juno-106'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Cutoff", "Resonance", "Sub Level", "Noise Level",
     "Chorus Depth", "Chorus Rate", "HPF", "PWM Amount", "LFO Rate",

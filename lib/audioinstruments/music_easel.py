@@ -1,5 +1,10 @@
 """Buchla Music Easel."""
 
+NAME = 'Music Easel'
+CATEGORIES = ('Synth',)
+VERSION = '0.0.1'
+VENDOR = "PyDevices"
+
 MACRO_LABELS = (
     "Volume", "Timbre Wavefold", "FM Index", "Mod Osc Freq", "LPG Strike",
     "LPG Decay", "Amp Attack", "Amp Sustain", "Amp Release", "Master Tune",
