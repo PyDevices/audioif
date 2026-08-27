@@ -5,6 +5,12 @@ CircuitPython's, or needed a workspace-side fix that isn't a plain port.
 Goal: keep this list short. Python-level API and behavior match CP unless
 noted here.
 
+Three of the entries below are upstream bugs rather than divergences, and
+have issue drafts ready to post in [upstream-reports/](upstream-reports/).
+None has been filed. **The numbers here were measured on this port and are
+not upstream's** -- the drafts carry figures measured on a build of upstream
+`main`, which differ.
+
 ## Property invocation needs an explicit `attr` slot (tier 0/1, all tiers after)
 
 CircuitPython's `MP_PROPERTY_GETTER`/`MP_PROPERTY_GETSET` (declared via
@@ -947,8 +953,9 @@ now one Biquad per band in a single Filter cascade.
 Nothing else moves — no existing fixture reached mode 4, which is also why
 `tests/parity/biquad_component_probe.py` now walks all seven modes.
 
-Still present in upstream `main` as of 2026-08-26, not just in the pinned
-10.2.1, so this one is worth reporting rather than waiting out.
+Still present in upstream `main` as of 2026-08-27, not just in the pinned
+10.2.1, so this one is worth reporting rather than waiting out. Drafted:
+`docs/upstream-reports/peaking-eq-sign.md`.
 
 ## A stereo `Filter` shared one biquad state between the channels (effects-extension tier)
 
@@ -1062,15 +1069,16 @@ approved with it. `fast_sincos()` fits one 5th-order polynomial to both sine
 and cosine over `[0, pi/2]`, and it is wrong at both ends of the audio band
 for two different reasons:
 
-- Its cosine carries about `5e-6` of absolute error. Every low-pass, notch and
-  shelf coefficient is built from `1 - cos W0`, which at 100 Hz / 48 kHz is
-  `8.6e-5` -- so that error is 6 percent of the answer, 13 percent at 50 Hz and
-  34 percent at 20 Hz. Widening the fixed-point format alone would have left
-  a 1 dB error at 50 Hz.
-- `pi/2` is only 12 kHz at 48 kHz, and above that the fit is **extrapolating**.
-  At 20 kHz its sine is off by 3 percent and `1 + cos W0` by 15 percent. This
-  half had never been noticed at all: a `HIGH_PASS` at 22 kHz passed its entire
-  stopband.
+- Its cosine carries up to `2.3e-5` of absolute error over the quarter it is
+  fitted to, and `5.4e-6` at the `W0` a 100 Hz corner uses. Every low-pass,
+  notch and shelf coefficient is built from `1 - cos W0`, which at 100 Hz /
+  48 kHz is `8.6e-5` -- so that error is 6 percent of the answer, 13 percent at
+  50 Hz and 34 percent at 20 Hz. Widening the fixed-point format alone would
+  have left a 1 dB error at 50 Hz.
+- `pi/2` in `W0` is only 12 kHz at 48 kHz, and above that the fit is
+  **extrapolating**. At 20 kHz its sine is off by 6.6 percent and `1 + cos W0`
+  by 15 percent; at 22 kHz, by 31 and 128. This half had never been noticed at
+  all: a `HIGH_PASS` at 22 kHz passed its entire stopband.
 
 ### What it measured, before and after
 
@@ -1092,6 +1100,16 @@ closed form:
 Everything from 50 Hz to 22 kHz now lands within 0.03 dB of the closed form.
 The old usable floor was about 300 Hz, and 400 Hz for anything under half a
 decibel of error.
+
+**That "before" column is this port's, not upstream's**, and the two do not
+match: measured on a build of upstream `main`, a `LOW_PASS` at 100 Hz reads
+-3.94 dB rather than silence and a `HIGH_PASS` at 30 Hz reads +9.03 rather
+than +21.6. Same two causes, same conclusion, different arithmetic on the way
+(this port had already moved to per-channel state and computes its
+coefficients in `double`, where `mp_float_t` on a board is `float`). The
+upstream numbers, and a repro that produces them, are in
+`docs/upstream-reports/biquad-band-edges.md`. **Do not quote this table
+upstream.**
 
 ### The fix
 
@@ -1183,6 +1201,42 @@ workaround moved them up out of the worst of it by accident.
   modules to a CP tree; `synthio` and `audiofilters` there are upstream's, so
   a CP board still cannot filter below a few hundred hertz. See the effects
   README, "A note on filters off a stock CircuitPython board".
+
+## A biquad reset clears half its state (kept, not fixed)
+
+Found while preparing the upstream drafts. `synthio_biquad_filter_reset()`
+does
+
+```c
+memset(&st->x, 0, 4 * sizeof(int16_t));
+```
+
+and `biquad_filter_state` is `int32_t x[2], y[2]` -- sixteen bytes, of which
+that clears eight. `x[0]` and `x[1]` go; **`y[0]` and `y[1]` keep the previous
+output history**, which is the filter's feedback memory. The `int16_t` looks
+like a leftover from a time when the state was 16-bit.
+
+Measured through `audiofilters.Filter`: fill the filter with a 200 Hz tone at
+30000, call `reset_buffer`, then feed pure silence, and the first block comes
+back with a peak of **28072** -- a clean exponential decay of the audio that
+was supposed to have been cleared, at -1.3 dBFS. Both callers mean a full
+reset (`audiofilters_filter_reset_buffer`, and `synthio.Note` when a note's
+filter is initialised).
+
+The fix is one line (`memset(st, 0, sizeof(*st))`), and it was verified here
+by applying it to this port's `audioif_biquad_reset()` and re-running that
+measurement: 28072 -> 0.
+
+**Kept anyway.** `audioif_biquad_reset()` preserves upstream's byte count
+deliberately, and correcting it would be a fifth deviation from the oracle
+where four are approved. Drafted for upstream instead --
+`docs/upstream-reports/biquad-reset.md` -- and worth revisiting here once
+that lands or is declined.
+
+Note that `common_hal_audiofilters_filter_play()` does *not* call
+`audiofilters_filter_reset_buffer()`; it resets the source only. So a plain
+`filter.play(other)` carrying filter memory over is by design, and is not this
+bug.
 
 ## `audioconvolve`: audioif's own, and the one thing the palette could not fake (phase 12)
 
