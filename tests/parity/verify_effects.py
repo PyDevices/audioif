@@ -13,7 +13,6 @@ ROOT = Path(__file__).resolve().parents[2]
 fixture_path = Path(__file__).parent / "golden" / "effects_component.json"
 fixture = json.loads(fixture_path.read_text())
 environment = os.environ.copy()
-environment["PYTHONPATH"] = str(ROOT)
 result = subprocess.run(
     [sys.executable, str(Path(__file__).parent / "effects_component_probe.py")],
     cwd=ROOT, env=environment, capture_output=True, check=False,

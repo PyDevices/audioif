@@ -84,8 +84,11 @@ def interpreter_table(args):
 def run_probe(argv_prefix, probe, probe_args):
     """Run a probe and return its normalized stdout, or raise with its output."""
     environment = os.environ.copy()
-    search = "%s%s%s" % (ROOT, os.pathsep, ROOT / "lib")
-    environment["PYTHONPATH"] = search
+    # The native modules come from the installed package on CPython and from
+    # firmware on the other two. lib/ is the pure-Python tier, which the board
+    # interpreters can only read out of the tree, so it stays a path entry --
+    # and stays one on CPython too, so all three run the same source.
+    environment["PYTHONPATH"] = str(ROOT / "lib")
     # MicroPython and CircuitPython read their search path from MICROPYPATH,
     # which is always colon-separated regardless of platform.
     environment["MICROPYPATH"] = "%s:%s" % (ROOT, ROOT / "lib")

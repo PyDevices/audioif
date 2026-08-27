@@ -89,7 +89,6 @@ def levels(report):
 
 def render(args, piece, destination):
     environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT)
     result = subprocess.run(
         [args.python, str(Path(args.vst3) / "tools" / "render_preview.py"),
          "--piece", piece, str(destination)],

@@ -27,12 +27,20 @@ Issues = "https://github.com/PyDevices/audioif/issues"
 
 [tool.setuptools]
 py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho", "audioconvolve"]
+# Keep py-modules explicit: src/cpython is the root package directory now, and
+# an automatic scan there would also pick up anything else that lands in it.
 packages = ["audioinstruments", "audioeffects", "audiorender"]
 
-# The CircuitPython-compatible modules sit at the repository root; the pure
-# Python library tiers live under lib/ so the MIP publisher, which expects
-# <repo>/lib/<package>, can ship them to boards as well as to PyPI.
+# The CPython target is one directory: src/cpython holds the extension source,
+# the extension built in place, and the twelve modules that wrap it. They are
+# top-level modules once installed -- `import audiocore` -- so the "" entry
+# below is what remaps the root package, and it is also what puts a
+# `build_ext --inplace` .so beside the wrappers instead of at the repo root.
+#
+# The pure Python library tiers live under lib/ so the MIP publisher, which
+# expects <repo>/lib/<package>, can ship them to boards as well as to PyPI.
 [tool.setuptools.package-dir]
+"" = "src/cpython"
 audioinstruments = "lib/audioinstruments"
 audioeffects = "lib/audioeffects"
 audiorender = "lib/audiorender"

@@ -14,7 +14,6 @@ PARITY = Path(__file__).parent
 fixture = json.loads(
     (PARITY / "golden" / "streaming_component.json").read_text())
 environment = os.environ.copy()
-environment["PYTHONPATH"] = str(ROOT)
 
 for name in ("streaming", "midi"):
     result = subprocess.run(

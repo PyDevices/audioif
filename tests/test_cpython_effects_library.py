@@ -8,15 +8,8 @@ here.
 """
 
 import math
-import os
-import sys
 import unittest
 from array import array
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for path in (ROOT, os.path.join(ROOT, "lib")):
-    if path not in sys.path:
-        sys.path.insert(0, path)
 
 import audiocore
 import audioeffects

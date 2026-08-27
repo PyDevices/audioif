@@ -1,15 +1,6 @@
 """The instrument library's public shape, and that its drum voices sound."""
 
-import os
-import sys
 import unittest
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-LIB = os.path.join(ROOT, "lib")
-if LIB not in sys.path:
-    sys.path.insert(0, LIB)
 
 import audiocore
 import audioinstruments

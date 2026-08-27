@@ -7,14 +7,8 @@ never accepted, the errors, and the source behaviours only a Python-defined
 audiosample can produce.
 """
 
-import os
-import sys
 import unittest
 from array import array
-
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
 
 import audiocore
 import audiodynamics

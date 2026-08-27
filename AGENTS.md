@@ -17,6 +17,11 @@ for source compatibility; only this repo's own name differs.
   individually verified against mainline MicroPython before use — not assumed
   missing) and `src/shared/` (runtime-neutral DSP the MicroPython usermod and
   the CPython extension both compile)
+- `src/cpython/` — the whole CPython target: `_audioif.c`, the extension built
+  in place, and the twelve modules that wrap it (`audiocore.py`, `synthio.py`,
+  …). They install as top-level modules, so it is `import audiocore` no matter
+  which of the three runtimes is underneath. Nothing puts this directory on
+  `sys.path`: audioif is a dependency, imported from wherever it is installed.
 - `lib/` — the pure-Python tiers, published to boards by MIP from
   `<repo>/lib/<package>` and to PyPI in the same wheel:
   `lib/audioinstruments/` (53 `synthio` instruments), `lib/audioeffects/`

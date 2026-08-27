@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 fixture_path = Path(__file__).parent / "golden" / "biquad_component.json"
 probe = Path(__file__).parent / "biquad_component_probe.py"
 environment = os.environ.copy()
-environment["PYTHONPATH"] = str(ROOT)
 result = subprocess.run(
     [sys.executable, str(probe)],
     cwd=ROOT, env=environment, capture_output=True, check=False,

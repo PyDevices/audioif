@@ -28,8 +28,11 @@ ROOT = Path(__file__).resolve().parents[2]
 fixture_path = Path(__file__).parent / "golden" / "synthtools_acceptance.json"
 fixture = json.loads(fixture_path.read_text())
 environment = os.environ.copy()
+# tests/support (the ulab shim) and tests/vendor (synthtools) are test-only and
+# ship in no wheel, so they still come from the tree. audioif itself is imported
+# from the installed package.
 environment["PYTHONPATH"] = os.pathsep.join(
-    (str(ROOT / "tests" / "support"), str(ROOT / "tests" / "vendor"), str(ROOT))
+    (str(ROOT / "tests" / "support"), str(ROOT / "tests" / "vendor"))
 )
 result = subprocess.run(
     [sys.executable, str(Path(__file__).parent / "synthtools_acceptance.py")],

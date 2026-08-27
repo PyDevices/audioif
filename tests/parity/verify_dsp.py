@@ -61,7 +61,9 @@ DEFAULT_ORACLE = (WORKSPACE / "cmods" / "micropython" / "ports" / "unix" /
 
 def run_probe(argv_prefix, probe, module):
     environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT)
+    # CPython imports audioif from the installed package. MicroPython and
+    # CircuitPython take these modules from their own firmware, so MICROPYPATH
+    # is only here for anything a probe loads out of the tree.
     environment["MICROPYPATH"] = str(ROOT)
     result = subprocess.run(
         argv_prefix + [str(HERE / probe), module],
