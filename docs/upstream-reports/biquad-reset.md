@@ -10,7 +10,9 @@ Suggested title:
 > `synthio_biquad_filter_reset()` only clears half the filter state
 
 Verified present on `main` 2026-08-27. The fix was verified by applying it to
-this port's copy of the same function: 28072 → 0.
+this port's copy of the same function: 28072 → 0, with every one of our
+parity fixtures still matching its recorded hash — so it is a small change in
+practice as well as in diff.
 
 ---
 

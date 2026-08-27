@@ -1237,7 +1237,7 @@ well be intentional, which is why the draft asks rather than patches.
 only way into that curve, with the level put back so the historical default
 stays bit-identical. See phase 8 in the plan, and the `drive.py` docstring.
 
-## A biquad reset clears half its state (kept, not fixed)
+## A biquad reset cleared half its state (fifth approved deviation)
 
 Found while preparing the upstream drafts. `synthio_biquad_filter_reset()`
 does
@@ -1262,11 +1262,22 @@ The fix is one line (`memset(st, 0, sizeof(*st))`), and it was verified here
 by applying it to this port's `audioif_biquad_reset()` and re-running that
 measurement: 28072 -> 0.
 
-**Kept anyway.** `audioif_biquad_reset()` preserves upstream's byte count
-deliberately, and correcting it would be a fifth deviation from the oracle
-where four are approved. Drafted for upstream instead --
-`docs/upstream-reports/biquad-reset.md` -- and worth revisiting here once
-that lands or is declined.
+**Fixed here** -- the fifth approved deviation, taken 2026-08-27 --
+and reported upstream as `docs/upstream-reports/biquad-reset.md`.
+
+**Nothing moved.** Every golden held without re-capture: `verify_biquad`,
+`verify_effects`, `verify_streaming`, `verify_acceptance`, `verify_dsp` on all
+three interpreters, and all 93 instrument comparisons. That is worth
+recording, because `synthio_note_start()` resets a note's filter on every
+press and the obvious worry was that a re-pressed voice inheriting the
+previous note's tail was baked into the fixtures. It was not: nowhere in the
+suite does a biquad get reset with a non-zero `y`. So this deviation changes
+what happens in the one case upstream leaves undefined and nothing else.
+
+**Stock CircuitPython does not get it**, same as the other four:
+`apply_cp_patches.sh` only *adds* modules, and `synthio`/`audiofilters` on a
+CP board are upstream's. `bin/circuitpython` therefore still exhibits the bug,
+which is correct -- it is the oracle.
 
 Note that `common_hal_audiofilters_filter_play()` does *not* call
 `audiofilters_filter_reset_buffer()`; it resets the source only. So a plain

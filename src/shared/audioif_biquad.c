@@ -131,9 +131,16 @@ void audioif_biquad_configure(audioif_biquad_coefficients_t *coefficients,
 }
 
 void audioif_biquad_reset(audioif_biquad_state_t *state) {
-    // Preserve CircuitPython's reset byte count exactly. This clears x[0],
-    // x[1], and no later fields on 32-bit int layouts.
-    memset(&state->x, 0, 4 * sizeof(int16_t));
+    // Upstream writes `memset(&st->x, 0, 4 * sizeof(int16_t))` over a struct
+    // of four int32_t -- eight bytes of sixteen. It clears `x` and leaves `y`,
+    // the feedback memory, so a filter that has been reset carries on
+    // recursing on the previous audio: fed silence, it plays a decaying burst
+    // of whatever was there before, at -1.3 dBFS for a low-pass. Both callers
+    // (a note starting, and a chain's reset_buffer) mean a full reset.
+    //
+    // The fifth approved deviation from the oracle. Reported upstream --
+    // docs/upstream-reports/biquad-reset.md.
+    memset(state, 0, sizeof(*state));
 }
 
 // The output memory keeps AUDIOIF_BIQUAD_STATE_SHIFT bits below the sample
