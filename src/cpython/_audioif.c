@@ -19,6 +19,7 @@
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
 #include "shared/audioif_multiply.h"
+#include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
@@ -36,6 +37,7 @@ typedef struct {
     PyObject *dynamics_state_type;
     PyObject *splitter_ring_type;
     PyObject *feedback_delay_state_type;
+    PyObject *convolver_state_type;
 } audioif_state_t;
 
 typedef struct {
@@ -842,12 +844,11 @@ static PyType_Spec splitter_ring_spec = {
     .slots = splitter_ring_slots,
 };
 
-// audiomath.Multiply's arithmetic. A plain function rather than a type
-// because the multiply carries no state at all: mix is the only setting, and
-// the Python side already holds it.
-// audioecho.FeedbackDelay's line and filters. Unlike the multiply above this
-// one is all state -- the delay line dwarfs everything else in the object --
-// so it is a type, the way DynamicsState is.
+// audioecho.FeedbackDelay's line and filters. Unlike multiply_s16() below --
+// which is a plain function, because the multiply carries no state at all and
+// the Python side already holds its one setting -- this one is all state: the
+// delay line dwarfs everything else in the object. So it is a type, the way
+// DynamicsState is.
 
 typedef struct {
     PyObject_HEAD
@@ -964,6 +965,172 @@ static PyType_Spec feedback_delay_state_spec = {
     .basicsize = sizeof(audioif_feedback_delay_object_t),
     .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
     .slots = feedback_delay_state_slots,
+};
+
+// audioconvolve.Convolver's transform tables, frequency-delay line and stored
+// impulse. All state, and a great deal of it -- one allocation carved up by
+// the DSP layer, exactly as in the MicroPython binding.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_convolve_config_t config;
+    audioif_convolve_state_t state;
+    float *storage;
+} audioif_convolver_object_t;
+
+static int convolver_state_init(audioif_convolver_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int partitions = 1;
+    unsigned int ir_channels = 1;
+    static char *keywords[] = {"sample_rate", "partitions", "ir_channels", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|III:ConvolverState",
+        keywords, &sample_rate, &partitions, &ir_channels)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (partitions < 1 || partitions > AUDIOIF_CONVOLVE_MAX_PARTITIONS) {
+        PyErr_SetString(PyExc_ValueError, "partitions out of range");
+        return -1;
+    }
+    if (ir_channels < 1 || ir_channels > 2) {
+        PyErr_SetString(PyExc_ValueError, "ir_channels must be 1 or 2");
+        return -1;
+    }
+    audioif_convolve_config_init(&self->config, sample_rate, partitions,
+        ir_channels);
+    float *storage = PyMem_Calloc(
+        audioif_convolve_float_count(&self->config), sizeof(float));
+    if (storage == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    PyMem_Free(self->storage);
+    self->storage = storage;
+    audioif_convolve_state_init(&self->state, &self->config, storage);
+    return 0;
+}
+
+static void convolver_state_dealloc(audioif_convolver_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->storage);
+    self->storage = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
+
+static PyObject *convolver_state_configure(audioif_convolver_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option != AUDIOIF_CONVOLVE_OPT_MIX) {
+        PyErr_SetString(PyExc_ValueError, "unknown convolver option");
+        return NULL;
+    }
+    audioif_convolve_configure(&self->config,
+        (audioif_convolve_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *convolver_state_load(audioif_convolver_object_t *self,
+    PyObject *args) {
+    Py_buffer taps = {0};
+    unsigned int channels = 1;
+    double gain = 1.0;
+    if (!PyArg_ParseTuple(args, "y*Id:load", &taps, &channels, &gain)) {
+        return NULL;
+    }
+    if (channels < 1 || channels > 2) {
+        PyBuffer_Release(&taps);
+        PyErr_SetString(PyExc_ValueError, "channels must be 1 or 2");
+        return NULL;
+    }
+    if (taps.len % (2 * (Py_ssize_t)channels)) {
+        PyBuffer_Release(&taps);
+        PyErr_SetString(PyExc_ValueError,
+            "impulse must be whole int16 frames");
+        return NULL;
+    }
+    uint32_t frames = (uint32_t)(taps.len / (2 * (Py_ssize_t)channels));
+    if (frames > self->config.partitions * AUDIOIF_CONVOLVE_FRAMES) {
+        PyBuffer_Release(&taps);
+        PyErr_SetString(PyExc_ValueError, "impulse is longer than max_taps");
+        return NULL;
+    }
+    audioif_convolve_load_s16(&self->state, &self->config,
+        (const int16_t *)taps.buf, frames, channels, (float)gain);
+    PyBuffer_Release(&taps);
+    Py_RETURN_NONE;
+}
+
+static PyObject *convolver_state_synthesize(audioif_convolver_object_t *self,
+    PyObject *args) {
+    double decay, damping, predelay, diffusion;
+    unsigned int seed;
+    if (!PyArg_ParseTuple(args, "ddddI:synthesize", &decay, &damping,
+        &predelay, &diffusion, &seed)) return NULL;
+    audioif_convolve_synthesize(&self->state, &self->config, (float)decay,
+        (float)damping, (float)predelay, (float)diffusion, seed);
+    Py_RETURN_NONE;
+}
+
+static PyObject *convolver_state_reset(audioif_convolver_object_t *self,
+    PyObject *unused) {
+    audioif_convolve_reset(&self->state, &self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *convolver_state_taps(audioif_convolver_object_t *self,
+    PyObject *unused) {
+    return PyLong_FromUnsignedLong(
+        (unsigned long)self->state.loaded * AUDIOIF_CONVOLVE_FRAMES);
+}
+
+static PyObject *convolver_state_process(audioif_convolver_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    if (input.len % 4) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole stereo 16-bit frames");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_convolve_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / 4));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef convolver_state_methods[] = {
+    {"configure", (PyCFunction)convolver_state_configure, METH_VARARGS, NULL},
+    {"load", (PyCFunction)convolver_state_load, METH_VARARGS, NULL},
+    {"synthesize", (PyCFunction)convolver_state_synthesize, METH_VARARGS, NULL},
+    {"reset", (PyCFunction)convolver_state_reset, METH_NOARGS, NULL},
+    {"taps", (PyCFunction)convolver_state_taps, METH_NOARGS, NULL},
+    {"process", (PyCFunction)convolver_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot convolver_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, convolver_state_init},
+    {Py_tp_dealloc, convolver_state_dealloc},
+    {Py_tp_methods, convolver_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec convolver_state_spec = {
+    .name = "_audioif.ConvolverState",
+    .basicsize = sizeof(audioif_convolver_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = convolver_state_slots,
 };
 
 static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
@@ -1463,6 +1630,15 @@ static int audioif_exec(PyObject *module) {
         state->feedback_delay_state_type) < 0) return -1;
     if (PyModule_AddIntConstant(module, "FEEDBACK_DELAY_FRAMES",
         AUDIOIF_FEEDBACK_DELAY_FRAMES) < 0) return -1;
+    state->convolver_state_type = PyType_FromModuleAndSpec(module,
+        &convolver_state_spec, NULL);
+    if (state->convolver_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "ConvolverState",
+        state->convolver_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "CONVOLVE_FRAMES",
+        AUDIOIF_CONVOLVE_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "CONVOLVE_MAX_PARTITIONS",
+        AUDIOIF_CONVOLVE_MAX_PARTITIONS) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__",
     AUDIOIF_VERSION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
@@ -1479,6 +1655,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->dynamics_state_type);
     Py_VISIT(state->splitter_ring_type);
     Py_VISIT(state->feedback_delay_state_type);
+    Py_VISIT(state->convolver_state_type);
     return 0;
 }
 
@@ -1492,6 +1669,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->dynamics_state_type);
     Py_CLEAR(state->splitter_ring_type);
     Py_CLEAR(state->feedback_delay_state_type);
+    Py_CLEAR(state->convolver_state_type);
     return 0;
 }
 

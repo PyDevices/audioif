@@ -34,8 +34,14 @@ CLASSES = tuple(sorted(
 ))
 
 
-#: The one class that cannot be built from a source alone.
-EXTRA_ARGUMENTS = {"GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)}}
+#: Arguments a class needs beyond a source. GraphicEQ cannot be built without
+#: its gains; ConvolutionReverb can, but its default second of stereo impulse
+#: is 1.5 MB and the patch tests walk it once per patch -- a quarter second
+#: proves the same things and keeps the suite quick.
+EXTRA_ARGUMENTS = {
+    "GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)},
+    "ConvolutionReverb": {"seconds": 0.25},
+}
 
 #: The classes that carry a patch surface. Optional, and most do not yet -
 #: see audioeffects._core.Effect.
@@ -218,7 +224,7 @@ def loudest_in(values, start, length):
 
 class EffectsLibraryTest(unittest.TestCase):
     def test_the_catalogue_is_all_there(self):
-        self.assertEqual(len(CLASSES), 41, CLASSES)
+        self.assertEqual(len(CLASSES), 43, CLASSES)
 
     def test_every_effect_builds_and_renders(self):
         for name in CLASSES:
@@ -704,6 +710,148 @@ class EffectsLibraryTest(unittest.TestCase):
                                           ratio=12.0, character="fet")
         self.assertLess(peak(working.output, 8, skip=4),
                         peak(idle.output, 8, skip=4) * 0.75)
+
+    # --- convolution -----------------------------------------------------
+
+    def test_a_convolver_actually_convolves(self):
+        # The claim is arithmetic, so check it against the arithmetic: a
+        # three-tap impulse against a sine has to give the sine plus two
+        # delayed, scaled copies of it, sample for sample.
+        import audioconvolve
+        taps = array("h", [0] * 700)
+        taps[0], taps[300], taps[650] = 32767, 16000, -8000
+        level, hz = 6000, 440.0
+        values = array("h")
+        for frame in range(4096):
+            value = int(level * math.sin(2.0 * math.pi * hz * frame
+                                         / SAMPLE_RATE))
+            values.append(value)
+            values.append(value)
+        node = audioconvolve.Convolver(impulse=taps, max_taps=1024, mix=1.0)
+        node.play(audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                      channel_count=2))
+        rendered = []
+        for _ in range(6):
+            rendered.extend(
+                memoryview(bytes(audiocore.get_buffer(node)[1])).cast("h")[0::2])
+
+        latency = audioconvolve.FRAMES
+        worst = 0.0
+        for index in range(latency, len(rendered)):
+            expected = 0.0
+            for offset, gain in ((0, 32767), (300, 16000), (650, -8000)):
+                position = index - latency - offset
+                if 0 <= position < len(values) // 2:
+                    expected += (level * math.sin(2.0 * math.pi * hz * position
+                                                  / SAMPLE_RATE)
+                                 * gain / 32768.0)
+            worst = max(worst, abs(rendered[index] - expected))
+        # The gains sum to 1.73, so a source quantized to whole int16 steps
+        # can be that far out on its own before the convolution adds anything.
+        self.assertLess(worst, 2.5)
+
+    def test_a_convolver_with_no_impulse_is_a_wire(self):
+        # And a wire with no latency: a chain built before its impulse
+        # arrives must not drift against its neighbours. Compared against the
+        # source's own values rather than a second RawSample, because a
+        # RawSample hands back its whole buffer per pull and the convolver
+        # hands back 256 frames.
+        import audioconvolve
+        node = audioconvolve.Convolver(max_taps=512)
+        node.play(source())
+        self.assertEqual(node.taps, 0)
+        rendered = []
+        for _ in range(4):
+            rendered.extend(
+                memoryview(bytes(audiocore.get_buffer(node)[1])).cast("h"))
+        expected = list(memoryview(
+            bytes(audiocore.get_buffer(source())[1])).cast("h"))
+        self.assertEqual(rendered, expected[:len(rendered)])
+
+    def test_an_impulse_longer_than_the_convolver_is_refused(self):
+        # Not truncated. The capacity was chosen at construction and
+        # something downstream may already be pulling.
+        import audioconvolve
+        node = audioconvolve.Convolver(max_taps=256)
+        with self.assertRaises(ValueError):
+            node.load(array("h", [0] * 4000), 1)
+
+    def test_a_synthesized_room_decays_at_the_time_it_was_asked_for(self):
+        verb = audioeffects.ConvolutionReverb(source(), seconds=0.5)
+        verb.set_macro(4, 127)          # full wet, so only the tail is measured
+        low, high = audioeffects.ConvolutionReverb.MACRO_RANGES[0][:2]
+        for knob in (127, 64, 0):
+            verb.set_macro(0, knob)
+            expected = 0.5 * (low + (high - low) * knob / 127.0)
+            self.assertAlmostEqual(verb.decay_seconds, expected, delta=1e-9)
+
+    def test_a_synthesized_room_is_not_the_same_noise_on_both_sides(self):
+        # A stereo impulse whose channels agreed would be a mono impulse, and
+        # the whole reason to spend twice the memory is that they do not.
+        verb = audioeffects.ConvolutionReverb(source(), seconds=0.25,
+                                              stereo=True)
+        verb.set_macro(4, 127)
+        left, right = [], []
+        for _ in range(12):
+            data = memoryview(bytes(audiocore.get_buffer(verb.output)[1])).cast("h")
+            left.extend(data[0::2])
+            right.extend(data[1::2])
+        window = slice(len(left) // 2, None)
+        a, b = left[window], right[window]
+        mean_a = sum(a) / len(a)
+        mean_b = sum(b) / len(b)
+        covariance = sum((x - mean_a) * (y - mean_b) for x, y in zip(a, b))
+        spread_a = math.sqrt(sum((x - mean_a) ** 2 for x in a))
+        spread_b = math.sqrt(sum((y - mean_b) ** 2 for y in b))
+        correlation = covariance / (spread_a * spread_b)
+        self.assertLess(abs(correlation), 0.25)
+
+    def test_a_synthesized_room_is_normalized_rather_than_clipped(self):
+        # An unnormalized tail of unit-amplitude noise is tens of thousands
+        # of times the input. This is the check that the energy scaling in
+        # audioif_convolve_synthesize is doing its job.
+        verb = audioeffects.ConvolutionReverb(source(), seconds=0.5)
+        verb.set_macro(4, 127)
+        self.assertLess(peak(verb.output, 12, skip=2), 0.95)
+
+    def test_a_cabinet_rolls_the_top_off_and_keeps_the_body(self):
+        cabinet = lambda s: audioeffects.CabinetSim(s, patch=1).output
+        body = tone_gain_db(100.0, cabinet)
+        middle = tone_gain_db(1000.0, cabinet)
+        top = tone_gain_db(10000.0, cabinet)
+        # The bump is real, and the roll-off above the cone's limit is steep.
+        self.assertGreater(body, middle + 2.0)
+        self.assertLess(top, middle - 20.0)
+
+    def test_a_cabinet_does_not_amplify(self):
+        # It is normalized by what it does to a signal, not by its tallest
+        # tap: three filter sections with two peaking boosts have a peak gain
+        # of several, and a cabinet that multiplies by several clips.
+        for index in sorted(audioeffects.CabinetSim.PATCHES):
+            cabinet = audioeffects.CabinetSim(source(), patch=index)
+            self.assertLess(peak(cabinet.output, 8, skip=2), 0.95, index)
+
+    def test_the_transform_inverts_itself(self):
+        # The FFT underneath all of this is not exposed, so it is exercised
+        # here: a convolver loaded with a unit impulse is a forward transform
+        # and an inverse transform with a multiply by one in between, and has
+        # to hand back exactly what it was given.
+        import audioconvolve
+        unit = array("h", [0] * 256)
+        unit[0] = 32767
+        node = audioconvolve.Convolver(impulse=unit, max_taps=256, mix=1.0)
+        node.play(source())
+        latency = audioconvolve.FRAMES
+        rendered = []
+        for _ in range(5):
+            rendered.extend(
+                memoryview(bytes(audiocore.get_buffer(node)[1])).cast("h"))
+        expected = list(memoryview(
+            bytes(audiocore.get_buffer(source())[1])).cast("h"))
+        worst = max(abs(a - b) for a, b in
+                    zip(rendered[latency * 2:], expected))
+        # 32767/32768 of the input, plus rounding: one step, never two.
+        self.assertLessEqual(worst, 1)
 
 
 if __name__ == "__main__":

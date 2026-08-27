@@ -26,7 +26,7 @@ Repository = "https://github.com/PyDevices/audioif"
 Issues = "https://github.com/PyDevices/audioif/issues"
 
 [tool.setuptools]
-py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho"]
+py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho", "audioconvolve"]
 packages = ["audioinstruments", "audioeffects", "audiorender"]
 
 # The CircuitPython-compatible modules sit at the repository root; the pure

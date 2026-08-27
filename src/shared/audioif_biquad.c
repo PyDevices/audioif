@@ -2,6 +2,8 @@
 
 #include "shared/audioif_biquad.h"
 
+#include "shared/audioif_trig.h"
+
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,9 +22,6 @@
 // what overflows: `a1` approaches -2, and in any format worth using its
 // product with a full-scale sample is already most of an int32_t on its own.
 #define AUDIOIF_BIQUAD_MAX_SHIFT 30
-#define AUDIOIF_PI 3.14159265358979323846
-
-typedef struct { double s, c; } sincos_result_t;
 
 static double fast_sqrt(double input) {
     float number = (float)input;
@@ -32,48 +31,11 @@ static double fast_sqrt(double input) {
     return input * (double)value.f;
 }
 
-// Upstream fits one 5th-order polynomial to both sine and cosine across
-// [0, pi/2]. It is cheap and it is not accurate enough for this job at either
-// end of the audio band:
-//
-//   * Its cosine carries about 5e-6 of absolute error. Every low-pass and
-//     high-shelf coefficient is built from `1 - cos W0`, which at 100 Hz /
-//     48 kHz is 8.6e-5 - so a 5e-6 error there is 6 percent of the answer,
-//     and 34 percent by 20 Hz. Widening the fixed-point format below buys
-//     nothing if the doubles going into it are already wrong.
-//   * pi/2 is only 12 kHz at 48 kHz, and above that the fit is extrapolating.
-//     At 20 kHz its sine is off by 3 percent and `1 + cos W0` by 15, which
-//     is why a 22 kHz high-pass used to pass its whole stopband.
-//
-// So: reflect into [0, pi/2] - sin(pi - t) = sin t and cos(pi - t) = -cos t,
-// which also keeps a frequency asked for above Nyquist merely wrong rather
-// than absurd - and evaluate the two Taylor series properly. Seven terms
-// apiece hold both to 7e-9 across the band, a thousandfold improvement, for
-// about ten extra multiplies. They are paid once per coefficient update, at
-// block rate, not once per sample.
-//
-// Deliberately not libm: glibc, newlib and MicroPython's own sin/cos differ
-// in the last place, and a hash of the same probe is supposed to match across
-// every interpreter. A polynomial is the same function everywhere.
-static void sine_and_cosine(double theta, sincos_result_t *result) {
-    static const double sine_terms[7] = {
-        1.0, -1.0 / 6, 1.0 / 120, -1.0 / 5040,
-        1.0 / 362880, -1.0 / 39916800, 1.0 / 6227020800.0,
-    };
-    static const double cosine_terms[7] = {
-        1.0, -1.0 / 2, 1.0 / 24, -1.0 / 720,
-        1.0 / 40320, -1.0 / 3628800, 1.0 / 479001600.0,
-    };
-    bool reflected = theta > AUDIOIF_PI / 2;
-    double x = reflected ? AUDIOIF_PI - theta : theta;
-    double x2 = x * x, s = 0.0, c = 0.0;
-    for (int term = 6; term >= 0; term--) {
-        s = s * x2 + sine_terms[term];
-        c = c * x2 + cosine_terms[term];
-    }
-    result->s = s * x;
-    result->c = reflected ? -c : c;
-}
+// The deterministic sine and cosine this needs -- and why they are not
+// libm's, and why the reflection stops at pi rather than going all the way
+// round -- now live in shared/audioif_trig.c, where the FFT can reach them
+// too. audioif_sincos_reflect() is the arithmetic that used to be here,
+// unchanged: the coefficient goldens are pinned to it.
 
 static int32_t scale(double value, int shift) {
     double scaled = round(ldexp(value, shift));
@@ -107,8 +69,8 @@ static int choose_shift(const double *values, size_t count) {
 
 void audioif_biquad_configure_w0(audioif_biquad_coefficients_t *coefficients,
     int mode, double W0, double Q, double A) {
-    sincos_result_t sc;
-    sine_and_cosine(W0, &sc);
+    audioif_sincos_t sc;
+    audioif_sincos_reflect(W0, &sc);
     double alpha = sc.s / (2 * Q);
     double a0, a1, a2, b0, b1, b2;
     if (mode < 4) {

@@ -1,4 +1,4 @@
-"""Forty-one effect classes built out of audioif's audio nodes.
+"""Forty-three effect classes built out of audioif's audio nodes.
 
 Every class wires itself from an audio source - a synthesizer, an
 instrument's `output`, a host input, or a previous effect's `output` - and
@@ -22,13 +22,13 @@ from .dynamics import (Compressor, Limiter, Expander, NoiseGate, DeEsser,
                        TransientShaper, MultibandCompressor)
 from .eq import (ParametricEQ, GraphicEQ, LowPass, HighPass, BandPass,
                  Notch, LadderFilter, CombFilter, DynamicEQ)
-from .reverb import Reverb
+from .reverb import Reverb, ConvolutionReverb
 from .delay import (DigitalDelay, SlapbackDelay, TapeDelay, AnalogDelay,
                     PingPongDelay, MultiTapDelay)
 from .modulation import (Chorus, Flanger, Phaser, Tremolo, AutoPan,
                          Vibrato, Rotary, RingMod)
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
-                    Exciter)
+                    Exciter, CabinetSim)
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
 
 #: The package's whole surface, grouped as the modules above are. Every
@@ -42,7 +42,7 @@ __all__ = [
     "ParametricEQ", "GraphicEQ", "LowPass", "HighPass", "BandPass",
     "Notch", "LadderFilter", "CombFilter", "DynamicEQ",
     # reverb
-    "Reverb",
+    "Reverb", "ConvolutionReverb",
     # delay
     "DigitalDelay", "SlapbackDelay", "TapeDelay", "AnalogDelay",
     "PingPongDelay", "MultiTapDelay",
@@ -51,6 +51,7 @@ __all__ = [
     "RingMod",
     # drive
     "Overdrive", "Distortion", "Fuzz", "Saturation", "Bitcrusher", "Exciter",
+    "CabinetSim",
     # pitch and stereo
     "PitchShifter", "Harmonizer", "Octaver", "StereoWidener",
 ]

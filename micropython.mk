@@ -40,6 +40,9 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
 
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
@@ -138,13 +141,16 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/PitchShift.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
-# --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter) and
-#     audiomath (Multiply) ---
+# --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter),
+#     audiomath (Multiply), audioecho (FeedbackDelay) and audioconvolve
+#     (Convolver) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
-# library; audiomath is audioif's own, and is the only way to modulate a
-# stream at audio rate. See docs/upstream-diff.md.
+# library; the rest are audioif's own -- audiomath is the only way to modulate
+# a stream at audio rate, audioecho puts a filter inside a delay's feedback
+# loop, and audioconvolve applies a measured impulse response rather than
+# imitating one. See docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
     $(MPAUDIO_SRC_DIR)/audiodynamics/module.c
@@ -158,6 +164,9 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioecho/FeedbackDelay.c \
     $(MPAUDIO_SRC_DIR)/audioecho/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audioconvolve/Convolver.c \
+    $(MPAUDIO_SRC_DIR)/audioconvolve/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #

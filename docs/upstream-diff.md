@@ -1183,3 +1183,126 @@ workaround moved them up out of the worst of it by accident.
   modules to a CP tree; `synthio` and `audiofilters` there are upstream's, so
   a CP board still cannot filter below a few hundred hertz. See the effects
   README, "A note on filters off a stock CircuitPython board".
+
+## `audioconvolve`: audioif's own, and the one thing the palette could not fake (phase 12)
+
+Nothing in CircuitPython transforms anything, and neither did
+micropython-vst3's engine. `audioconvolve.Convolver` applies an impulse
+response by uniform-partitioned overlap-save FFT convolution:
+`shared/audioif_convolve.c` over `shared/audioif_fft.c`, `float` throughout.
+
+**Why it is not a preset over the existing reverb.** `audiofreeverb` is a
+fixed network of delay lines. It sounds like a room, and with the right
+settings it sounds like a plausible room, but it cannot sound like a
+*particular* one. Convolving with a plate's recorded impulse *is* that plate,
+and the same node is then a hall, a guitar cabinet, a spring tank or a
+telephone depending only on which impulse it was handed. That is a different
+kind of thing from a preset, and it is the last entry on the catalogue that
+the rest of the library genuinely could not approximate.
+
+### The transform
+
+`shared/audioif_fft.c` is a radix-2 Cooley-Tukey with a bit-reversal pass,
+wrapped in the usual real-input packing: an N-point real transform runs on an
+N/2-point complex one, so it costs half of what a naive complex transform of
+the same block would. There is no split-radix and no hand-unrolled first
+stage, because the honest bottleneck in a convolver is the pointwise multiply
+across the partitions, not the two transforms either side of it.
+
+Two decisions worth recording:
+
+- **`float`, not `double`.** A double transform doubles the memory of every
+  stored partition, and memory is what decides whether an impulse fits on a
+  board at all. float32 gives ~7 digits and the transform's error grows as
+  sqrt(log2 N), so a 512-point transform of int16 audio lands ~1e-3 out of a
+  full-scale 32768 -- five orders of magnitude below the samples it is made
+  of. Measured against numpy's `rfft`: 1.1e-7 relative at N=512.
+- **The twiddles come from a series, not libm.** Same rule as the biquad's
+  (see "The biquads are Q15" above): a golden hash of one probe has to match
+  on CPython, MicroPython and CircuitPython, and three libms agree to within
+  an ulp and differ in the last place. That is what
+  `shared/audioif_trig.c` is for.
+
+### `shared/audioif_trig.c` — extracted, not changed
+
+The deterministic sine and cosine used to be `static` inside
+`audioif_biquad.c`. The FFT needs the same guarantee for the same reason, so
+they moved to a file of their own. **The biquad's arithmetic is unchanged**:
+`audioif_sincos_reflect()` is the old function operation for operation,
+reflecting about pi/2 only, and it is deliberately *not* "fixed" to
+full-circle reduction -- a frequency above Nyquist would then get a different
+wrong answer, and several goldens are pinned to this one. `audioif_sincos()`
+is the new full-circle entry point, used only by the twiddle tables.
+`verify_biquad`, `verify_effects`, `verify_acceptance` and all four
+`instruments_*.json` were unchanged by the extraction, which is the check
+that says so.
+
+### Design decisions in the convolver
+
+- **One partition of latency, accepted.** A block cannot be transformed until
+  it is complete, so the output trails the input by 256 frames (5.3 ms at
+  48 kHz). Removing that means a non-uniform partitioning scheme -- a few
+  direct taps, then small partitions, then large -- which is roughly triple
+  the code for a saving that matters only when monitoring a live player. A
+  convolver with **no impulse loaded is a bypass with no latency at all**:
+  an impulse that has not arrived is a missing setting, not a null room, and
+  a chain built before its impulse arrives must not drift against its
+  neighbours.
+- **`mix` follows `audiofreeverb`, not `audiodelays`.** 0..1 with the dry at
+  unity until halfway, rather than `Echo`'s 0..2. This is a reverb; matching
+  the other reverb matters more than matching the delays.
+- **The synthesized room is normalized to unit energy, in two passes.** A
+  tail of unit-amplitude noise convolved with anything is enormous -- 48000
+  taps near full scale sum to tens of thousands of times the input -- so an
+  unnormalized synthetic room is not a quiet room, it is a clipped one. The
+  partitions are transformed as they are generated and there is nowhere to
+  keep the taps, so the deterministic generator simply runs twice: once to
+  measure the energy, once to write it scaled. The second pass costs only the
+  noise, not the transforms.
+- **The noise is xorshift32 and the exponentials are a series**, for the
+  determinism reason again. A room that is not bit-identical between builds
+  is not a room, it is three rooms.
+- **`reset_buffer` drops the history and keeps the impulse.** One is audio in
+  flight; the other is a setting, and reloading a room because playback
+  restarted would be both wrong and expensive.
+
+### What it costs, which is the whole story on a board
+
+Each partition holds 257 complex floats, about 2 KB, and there is one
+frequency-delay line per audio channel plus one stored impulse per impulse
+channel. So:
+
+| impulse | partitions | memory | arithmetic |
+|---|---|---|---|
+| 1024 taps (21 ms) — a cabinet | 4 | ~25 KB | ~3 MFLOPS |
+| 4096 taps (85 ms) | 16 | ~100 KB | ~12 MFLOPS |
+| 1 second, stereo | 188 | ~1.5 MB | ~150 MFLOPS |
+
+A cabinet is comfortable on a microcontroller. A second of stereo reverb is a
+desktop or a render, or a board with PSRAM and nothing else to do. Both are
+in `audioeffects`: `drive.CabinetSim` and `reverb.ConvolutionReverb`, and
+each says so in its docstring.
+
+### `audioeffects.CabinetSim` builds a filter's impulse, not a bell's
+
+Worth recording because the first cut got it wrong. A cabinet's response was
+modelled as a sum of damped sinusoids -- box resonance, presence peak, top
+roll-off -- with decay times chosen by ear from the description. That gives
+resonances of Q 17 and a peak gain of **818** at the box frequency: a bell,
+not a box. Rebuilt as the impulse response of the filter cascade the
+description actually names (a high-pass under the resonance, two peaking
+bells, and two cascaded low-passes for the 24 dB/octave a cone rolls off at),
+run over a unit impulse in float.
+
+And the normalizer has to be the *response*, not the tallest tap: the cascade
+sits several dB above unity at its bump, and a cabinet that multiplies
+everything by four is a cabinet that clips. `_peak_response` sweeps the
+cascade's magnitude at 48 log-spaced frequencies and normalizes by the
+largest. Measured, `4x12 Stack`: +0 dB at 100 Hz, -3.9 at 1 kHz, -10.9 at
+5 kHz, -27.0 at 8 kHz, -45.7 at 12 kHz.
+
+Verified by `tests/parity/convolve_probe.py` through `verify_dsp.py`, with no
+oracle -- the golden is captured from the port. It is the most
+float-dependent fixture in the suite: every output sample is a sum of
+hundreds of float products routed through two transforms. All three
+interpreters render it identically, synthesized rooms included.

@@ -7,14 +7,15 @@ and CircuitPython `play()`/`stop()`/`pause()`/`resume()` output semantics.
 Import names stay `audiocore`/`synthio`/etc., matching CircuitPython for
 source compatibility.
 
-Three things here are not CircuitPython's. `audiodynamics` (compression,
+Five things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute` (fan one
 stream out to parallel branches) come from micropython-vst3's audio engine,
 which had them and CircuitPython does not; `audiomath` (multiply one stream by
-another — ring and amplitude modulation) and `audioecho` (a delay with a
-filter, a soft-clip and a cross-feed inside its feedback loop) have no
-ancestor anywhere and are audioif's own. `apply_cp_patches.sh` adds all four
-to a CircuitPython tree too. And `lib/audioinstruments/` is a pure-Python library of
+another — ring and amplitude modulation), `audioecho` (a delay with a
+filter, a soft-clip and a cross-feed inside its feedback loop) and
+`audioconvolve` (apply a measured or synthesized impulse response, by
+partitioned FFT) have no ancestor anywhere and are audioif's own.
+`apply_cp_patches.sh` adds all five to a CircuitPython tree too. And `lib/audioinstruments/` is a pure-Python library of
 53 classic synthesizers, keyboards and drum machines built entirely out of
 `synthio` — no samples — with a MIDI-shaped API:
 
@@ -26,7 +27,7 @@ inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
 audio_out.play(inst.output)
 ```
 
-Two more pure-Python tiers sit on top of it. `lib/audioeffects/` is 41 effect
+Two more pure-Python tiers sit on top of it. `lib/audioeffects/` is 43 effect
 classes — compressors, delays, reverbs, EQ, modulation, pitch — each taking a
 source and exposing its chain tail as `.output`. `lib/audiorender/` renders a
 whole composition offline: tracks, tempo map, notes and automation in, a mixed
@@ -45,7 +46,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 The CPython distribution contains `audiocore`, `synthio`, `audiomixer`,
 `audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`,
-`audioroute`, `audiomath`, `audioecho`, and the `audioinstruments`,
+`audioroute`, `audiomath`, `audioecho`, `audioconvolve`, and the
+`audioinstruments`,
 `audioeffects` and `audiorender` packages. `audiomp3` remains
 firmware-only. The distribution has no runtime dependencies and does not
 publish an `audioif` import; its version is the `VERSION` file, which is also

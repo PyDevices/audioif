@@ -50,6 +50,7 @@ PROBES = (
     ("multiply_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
+    ("convolve_probe.py", "audioconvolve", None, {}),
 )
 
 DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Add audioif's audiodynamics, audioroute, audiomath and audioecho modules
+# Add audioif's audiodynamics, audioroute, audiomath, audioecho and
+# audioconvolve modules
 # to a CircuitPython tree.
 #
 #   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
@@ -235,8 +236,11 @@ if [[ "$MODE" == "--status" ]]; then
                 shared-bindings/audioroute/__init__.c \
                 shared-bindings/audiomath/__init__.c \
                 shared-bindings/audioecho/__init__.c \
+                shared-bindings/audioconvolve/__init__.c \
                 shared/audioif_dynamics.c shared/audioif_splitter.c \
-                shared/audioif_multiply.c shared/audioif_feedback_delay.c; do
+                shared/audioif_multiply.c shared/audioif_feedback_delay.c \
+                shared/audioif_trig.c shared/audioif_fft.c \
+                shared/audioif_convolve.c; do
         [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
     done
     python3 "$REPLACEMENTS" "$CP_DIR" status
@@ -263,7 +267,9 @@ CFLAGS += -DCIRCUITPY_AUDIOROUTE=\$(CIRCUITPY_AUDIOROUTE)
 CIRCUITPY_AUDIOMATH ?= 0
 CFLAGS += -DCIRCUITPY_AUDIOMATH=\$(CIRCUITPY_AUDIOMATH)
 CIRCUITPY_AUDIOECHO ?= 0
-CFLAGS += -DCIRCUITPY_AUDIOECHO=\$(CIRCUITPY_AUDIOECHO)"
+CFLAGS += -DCIRCUITPY_AUDIOECHO=\$(CIRCUITPY_AUDIOECHO)
+CIRCUITPY_AUDIOCONVOLVE ?= 0
+CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=\$(CIRCUITPY_AUDIOCONVOLVE)"
 echo
 
 echo "==> py/circuitpy_defns.mk (source patterns)"
@@ -282,6 +288,9 @@ SRC_PATTERNS += audiomath/%
 endif
 ifeq (\$(CIRCUITPY_AUDIOECHO),1)
 SRC_PATTERNS += audioecho/%
+endif
+ifeq (\$(CIRCUITPY_AUDIOCONVOLVE),1)
+SRC_PATTERNS += audioconvolve/%
 endif" "SRC_PATTERNS += audiodynamics/%"
 echo
 
@@ -299,7 +308,9 @@ CFLAGS += -DCIRCUITPY_AUDIOROUTE=1
 CIRCUITPY_AUDIOMATH = 1
 CFLAGS += -DCIRCUITPY_AUDIOMATH=1
 CIRCUITPY_AUDIOECHO = 1
-CFLAGS += -DCIRCUITPY_AUDIOECHO=1"
+CFLAGS += -DCIRCUITPY_AUDIOECHO=1
+CIRCUITPY_AUDIOCONVOLVE = 1
+CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1"
 echo
 
 echo "==> Unix variant: source list"
@@ -316,15 +327,21 @@ insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiomath/
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiomath/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioecho/FeedbackDelay.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioecho/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/Convolver.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/Splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/SplitterTap.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiomath/Multiply.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioecho/FeedbackDelay.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioconvolve/Convolver.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_multiply.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_feedback_delay.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_trig.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_fft.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_convolve.c \\'
 echo
 
 echo "==> Unix variant: mpconfigvariant.h guards"
@@ -345,6 +362,9 @@ if [ -f "$VARIANT_H" ]; then
 #endif
 #ifndef CIRCUITPY_AUDIOECHO
 #define CIRCUITPY_AUDIOECHO (0)
+#endif
+#ifndef CIRCUITPY_AUDIOCONVOLVE
+#define CIRCUITPY_AUDIOCONVOLVE (0)
 #endif"
 fi
 echo

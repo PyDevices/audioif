@@ -1,6 +1,6 @@
 # audioeffects
 
-Forty-one effect classes built out of audioif's audio nodes, for any host
+Forty-three effect classes built out of audioif's audio nodes, for any host
 that can pull an audiosample:
 
 ```python
@@ -25,13 +25,14 @@ bind parameters straight to them; the classes with a natural swept control
 also expose `set_*` helpers (`LadderFilter.set_cutoff`,
 `DigitalDelay.set_time`, ...).
 
-Four nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
+Five nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
 envelope-follower gain computer with sidechain filtering, lookahead and
 true-peak detection), `audioroute.Splitter` (fans one stream out to parallel
 branches that a Mixer then sums), `audiomath.Multiply` (one stream times
-another, which is ring modulation) and `audioecho.FeedbackDelay` (a delay with
-a filter, a soft-clip and a cross-feed inside its loop). None of the four is
-CircuitPython's; a stock board does not have them.
+another, which is ring modulation), `audioecho.FeedbackDelay` (a delay with
+a filter, a soft-clip and a cross-feed inside its loop) and
+`audioconvolve.Convolver` (an impulse response applied by partitioned FFT).
+None of the five is CircuitPython's; a stock board does not have them.
 
 ## Catalogue
 
@@ -60,6 +61,7 @@ CircuitPython's; a stock board does not have them.
 | Class | Notes |
 |---|---|
 | `Reverb` | presets `room` `chamber` `hall` `plate` `spring` (spring adds pre-flutter) |
+| `ConvolutionReverb` | a real impulse response, measured or synthesized; **patches** |
 | `DigitalDelay` `SlapbackDelay` | clean repeats |
 | `TapeDelay` | in-loop low-pass, soft-clip and per-sample wow; **patches** |
 | `AnalogDelay` | BBD: band-limited both ends, `age` over the lot; **patches** |
@@ -74,6 +76,22 @@ soft-clip rounding it, a cross-feed sending it to the other speaker - so they
 run on `audioecho.FeedbackDelay`, which is where audioif puts those. A
 coloured delay's `max_time_ms` sizes its line and cannot change afterwards;
 at 48 kHz a second of stereo line is 192 KB, so ask for what will be used.
+
+The two reverbs are not the same kind of thing. `Reverb` is `audiofreeverb`:
+a fixed network of delay lines that costs the same on a Cortex-M0 as on a
+workstation, and that sounds like a plausible room. `ConvolutionReverb` is
+`audioconvolve`: it applies an actual impulse response, so it sounds like a
+*particular* room - and one second of stereo impulse is about 1.5 MB and
+~150 MFLOPS, which is a desktop or an offline render. Reach for `Reverb`
+first. The microcontroller-scale use of convolution is a **short** impulse:
+`CabinetSim` is 1024 taps and about 3 MFLOPS.
+
+`ConvolutionReverb`'s `seconds` is an allocation, not a setting - it fixes how
+long an impulse that instance can ever hold, because the storage is carved
+once and the audio path may already be pulling. Its Decay macro then works
+within that allocation, which is why it is a proportion rather than a time.
+Both convolution classes trail their input by `audioconvolve.FRAMES` (5.3 ms
+at 48 kHz) once an impulse is loaded, and by nothing at all before one is.
 
 ### Modulation - `modulation.py`
 | Class | Notes |
@@ -96,6 +114,7 @@ at 48 kHz a second of stereo line is 192 KB, so ask for what will be used.
 | `Saturation` | `character="tube"/"tape"/"console"`, mostly dry |
 | `Bitcrusher` | bit-depth reduction, by `bits` (2..16) or `crush` |
 | `Exciter` | overdriven high-passed branch blended under the dry |
+| `CabinetSim` | speaker cabinet by convolution with a short designed impulse; **patches** |
 
 The three saturation characters are different curves, not one curve with
 presets. `tube` runs the engine's asymmetric OVERDRIVE, so it generates a
@@ -119,8 +138,10 @@ scales the whole character, tone shaping included.
 
 ## Deliberately absent
 
-- **Convolution reverb** - no impulse-response engine in the palette.
-- **Pitch correction** - needs pitch detection the engine does not have.
+- **Pitch correction** - needs pitch detection (YIN or autocorrelation), and
+  that is off the roadmap for good rather than pending. `PitchShifter` will
+  shift by an interval you name; nothing here works out what interval to ask
+  for.
 - **Sample-rate reduction** - the other half of a lo-fi box. The engine's
   LOFI mode masks low bits and nothing else; decimation needs a
   sample-and-hold that is not in the palette. `Bitcrusher` does the bit

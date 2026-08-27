@@ -22,8 +22,14 @@ import audioeffects
 SAMPLE_RATE = 48000
 audioeffects.configure(SAMPLE_RATE)
 
-#: The one class that cannot be built from a source alone.
-EXTRA_ARGUMENTS = {"GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)}}
+#: Arguments a class needs beyond a source. GraphicEQ cannot be built without
+#: its gains; ConvolutionReverb can, but its default second of stereo impulse
+#: is 1.5 MB and this walks it once per patch -- a quarter second proves the
+#: same thing on a board with a small heap.
+EXTRA_ARGUMENTS = {
+    "GraphicEQ": {"gains_db": (3.0, -2.0, 4.0, -1.0, 2.0)},
+    "ConvolutionReverb": {"seconds": 0.25},
+}
 
 
 def source(frames=4096, level=11000):

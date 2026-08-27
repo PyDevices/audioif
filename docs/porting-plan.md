@@ -81,7 +81,8 @@ tier 3  audiomixer: Mixer, MixerVoice
 tier 4  effects: audiofilters, audiodelays, audiofreeverb, audiospeed
 tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
-tier 7  audiodynamics, audioroute, audiomath, audioecho: native, NOT ports
+tier 7  audiodynamics, audioroute, audiomath, audioecho, audioconvolve:
+        native, NOT ports
 tier 8  lib/: pure-Python libraries built on the tiers above
         (audioinstruments, audioeffects, audiorender)
 dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
@@ -94,16 +95,22 @@ MicroPython and CPython do not". Tiers 7 and 8 answer the opposite question,
 and their source is micropython-vst3 rather than CircuitPython:
 
 - **tier 7** is `audiodynamics` (compressor, limiter, downward expander, gate,
-  transient shaper, with a high-passed detector for de-essing), `audioroute`
-  (fan one stream out to parallel branches over a shared ring) and `audiomath`
-  (multiply one stream by another). The first two lived in micropython-vst3's
-  `vstaudio` usermod, which meant no application outside that plugin could use
-  them and half of its own effects library could not be exercised offline at
-  all. `audiomath` and `audioecho` have no ancestor at all: nothing upstream and
-  nothing in the engine multiplies two *streams*, which is what ring
-  modulation needs and what an LFO at block rate cannot reach, and nothing
-  puts a filter inside a delay's feedback loop, which is what separates a
-  tape echo from a delay with a tone control. CircuitPython has no equivalent to
+  transient shaper, with a high-passed detector for de-essing) and
+  `audioroute` (fan one stream out to parallel branches over a shared ring).
+  Both lived in micropython-vst3's `vstaudio` usermod, which meant no
+  application outside that plugin could use them and half of its own effects
+  library could not be exercised offline at all.
+
+  `audiomath`, `audioecho` and `audioconvolve` have no ancestor at all —
+  nothing upstream and nothing in the engine does any of the three. Nothing
+  multiplies two *streams*, which is what ring modulation needs and what an
+  LFO at block rate cannot reach. Nothing puts a filter inside a delay's
+  feedback loop, which is what separates a tape echo from a delay with a tone
+  control. And nothing transforms anything at all, so nothing can apply a
+  measured impulse response — the one effect on the catalogue the rest of the
+  palette genuinely cannot approximate.
+
+  CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —
   the only direction in this repo where CircuitPython is the recipient. See
   `docs/upstream-diff.md` for what changed in the moves and what was kept.

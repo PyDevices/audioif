@@ -2,6 +2,7 @@
   "no_oracle": "audiomath and audioecho are audioif's own; their probes are captured from the port under CPython",
   "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, compiled unmodified (see build_vstaudio_oracle.sh)",
   "probes": {
+    "convolve_probe.py": "01bcfa5ba4ca884d3ee64e4e170fe64e9ff5c40b43d901fc23f03057e6f776c1",
     "dynamics_extras_probe.py": "6ecf79ce2342a635a7b1fdd3ce29e8d15240a55511722439734c6f3edf364cd6",
     "dynamics_probe.py": "3e5462291e2a38ed8e3061c43c22d312ff0d967b803e7e2a39d08a45595efc7d",
     "feedback_delay_probe.py": "a5ecffab77c60ff4888afb69a30f5185b67c543d1d77dfbe4ee3bd904f89da99",
