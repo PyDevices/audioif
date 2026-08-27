@@ -20,6 +20,8 @@ for path in (ROOT, os.path.join(ROOT, "lib")):
 
 import audiocore
 import audioeffects
+import audiofilters
+import synthio
 import audioinstruments
 
 SAMPLE_RATE = 48000
@@ -263,6 +265,77 @@ class EffectsLibraryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             audioeffects.LowPass(source(), frequency=SAMPLE_RATE * 0.75)
 
+    def test_a_filter_sits_at_its_corner_across_the_whole_band(self):
+        # Nothing pinned this, which is how the biquads got away with being
+        # unusable at both ends of the band for as long as they were. Q 0.707
+        # is -3.01 dB at the corner by definition, so the assertion needs no
+        # reference implementation to compare against.
+        for hz in (50.0, 100.0, 200.0, 400.0, 1000.0, 4000.0, 12000.0,
+                   18000.0, 22000.0):
+            for name in ("LowPass", "HighPass"):
+                with self.subTest(filter=name, hz=hz):
+                    at_corner = tone_gain_db(
+                        hz, lambda s, n=name, f=hz:
+                        getattr(audioeffects, n)(s, frequency=f).output)
+                    self.assertAlmostEqual(at_corner, -3.01, delta=0.25)
+
+    def test_a_low_filter_passes_what_it_should_and_stops_what_it_should(self):
+        # The failure this replaces was silent and total: coefficients in Q15
+        # quantize to nonsense below a few hundred hertz, and a LowPass at
+        # 100 Hz returned silence while a HighPass at 30 Hz returned about
+        # 21 dB of noise. See docs/upstream-diff.md.
+        passband = tone_gain_db(
+            25.0, lambda s: audioeffects.LowPass(s, frequency=100.0).output)
+        self.assertAlmostEqual(passband, 0.0, delta=0.25)
+        stopband = tone_gain_db(
+            800.0, lambda s: audioeffects.LowPass(s, frequency=100.0).output)
+        self.assertLess(stopband, -30.0)
+        for hz in (30.0, 60.0):
+            with self.subTest(hz=hz):
+                passband = tone_gain_db(
+                    hz * 8.0,
+                    lambda s, f=hz: audioeffects.HighPass(s, frequency=f).output)
+                self.assertAlmostEqual(passband, 0.0, delta=0.25)
+
+    def test_a_low_shelf_lifts_its_shelf_and_not_the_whole_band(self):
+        # An 80 Hz LOW_SHELF asked for +1.5 dB used to lift everything below
+        # it by +13.4 - the coefficients had nowhere near enough resolution to
+        # describe a gentle shelf that low.
+        def shelf(source_sample):
+            node = audiofilters.Filter(
+                filter=synthio.Biquad(
+                    synthio.FilterMode.LOW_SHELF, 80.0, Q=0.707,
+                    A=audioeffects._core.db_to_amplitude(1.5)),
+                **audioeffects._core.pcm())
+            node.play(source_sample)
+            return node
+
+        self.assertAlmostEqual(tone_gain_db(20.0, shelf), 1.5, delta=0.25)
+        self.assertAlmostEqual(tone_gain_db(2000.0, shelf), 0.0, delta=0.25)
+
+    def test_every_graphic_eq_band_lands_on_its_own_iso_centre(self):
+        # The bottom three were the visible casualty of the Q15 floor: a +6 dB
+        # request read +12.14, +6.96 and +3.07 dB at 31.5, 63 and 125 Hz.
+        for index, band in enumerate(audioeffects.eq.ISO_BANDS):
+            gains = [0.0] * len(audioeffects.eq.ISO_BANDS)
+            gains[index] = 6.0
+            with self.subTest(band=band):
+                self.assertAlmostEqual(
+                    tone_gain_db(band, lambda s, g=gains:
+                                 audioeffects.GraphicEQ(s, g).output),
+                    6.0, delta=0.25)
+
+    def test_the_multiband_bands_add_back_up_to_a_wire(self):
+        # Below every threshold none of the three compressors is doing
+        # anything, so what comes out is purely the crossover sum.
+        def idle(source_sample):
+            return audioeffects.MultibandCompressor(
+                source_sample, thresholds_db=(6.0, 6.0, 6.0)).output
+
+        for hz in (40.0, 100.0, 200.0, 1000.0, 2000.0, 8000.0):
+            with self.subTest(hz=hz):
+                self.assertAlmostEqual(tone_gain_db(hz, idle), 0.0, delta=0.4)
+
     def test_the_saturation_characters_are_different_curves(self):
         # The three are not presets over one curve: tube runs the engine's
         # asymmetric OVERDRIVE, which generates even harmonics, and the
@@ -309,6 +382,18 @@ class EffectsLibraryTest(unittest.TestCase):
         self.assertAlmostEqual(
             tilt_db(lambda s: audioeffects.Saturation(
                 s, amount=1.0, character="tube").output), 0.0, delta=0.2)
+
+    def test_tape_has_a_head_bump_and_the_other_two_do_not(self):
+        # The low end is the half of the tape character that only became
+        # possible once the biquads could describe an 80 Hz shelf at all.
+        for character, expected in (("tape", 1.43), ("tube", 0.0),
+                                    ("console", 0.0)):
+            with self.subTest(character=character):
+                self.assertAlmostEqual(
+                    tilt_db(lambda s, c=character: audioeffects.Saturation(
+                        s, amount=1.0, character=c).output,
+                        high=40.0, reference=1000.0),
+                    expected, delta=0.2)
 
     def test_an_unknown_character_is_refused(self):
         with self.assertRaises(ValueError):

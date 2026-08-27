@@ -103,8 +103,9 @@ class TransientShaper(_core.Effect):
 
 class MultibandCompressor(_core.Effect):
     """Three bands split at the two crossover frequencies, compressed
-    independently, and summed. Second-order crossovers, so the recombined
-    response is close to - not perfectly - flat."""
+    independently, and summed. Linkwitz-Riley crossovers - two cascaded
+    Butterworth sections a side - so the three bands recombine flat to a
+    fraction of a decibel when none of them is working."""
 
     def __init__(self, source, low_hz=200.0, high_hz=2000.0,
                  thresholds_db=(-28.0, -24.0, -24.0),
@@ -115,14 +116,18 @@ class MultibandCompressor(_core.Effect):
         def band(tap, biquads):
             return audiofilters.Filter(filter=biquads, **_core.pcm())
 
-        lo = float(low_hz)
-        hi = float(high_hz)
-        low = band(0, [synthio.Biquad(FM.LOW_PASS, lo, Q=0.707),
-                       synthio.Biquad(FM.LOW_PASS, lo, Q=0.707)])
-        mid = band(1, [synthio.Biquad(FM.HIGH_PASS, lo, Q=0.707),
-                       synthio.Biquad(FM.LOW_PASS, hi, Q=0.707)])
-        high = band(2, [synthio.Biquad(FM.HIGH_PASS, hi, Q=0.707),
-                        synthio.Biquad(FM.HIGH_PASS, hi, Q=0.707)])
+        def pair(mode, hz):
+            # Both halves of a crossover have to be the same order or the sum
+            # dips at the crossing. The mid band used to take a single
+            # high-pass against the low band's cascaded pair, which cost 3.4 dB
+            # at 200 Hz - invisible while the filters themselves were wrong.
+            return [synthio.Biquad(mode, hz, Q=0.707) for _ in range(2)]
+
+        lo = _core.check_hz(low_hz)
+        hi = _core.check_hz(high_hz)
+        low = band(0, pair(FM.LOW_PASS, lo))
+        mid = band(1, pair(FM.HIGH_PASS, lo) + pair(FM.LOW_PASS, hi))
+        high = band(2, pair(FM.HIGH_PASS, hi))
         low.play(split.tap(0))
         mid.play(split.tap(1))
         high.play(split.tap(2))

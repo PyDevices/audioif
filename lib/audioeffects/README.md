@@ -41,7 +41,7 @@ then sums).
 | `NoiseGate` | mutes below threshold |
 | `DeEsser` | detector high-passed at `frequency`, so only sibilance ducks the signal |
 | `TransientShaper` | independent attack/sustain gain, level-independent |
-| `MultibandCompressor` | 3 bands split/compressed/summed (2nd-order crossovers: near-flat recombine) |
+| `MultibandCompressor` | 3 bands split/compressed/summed (Linkwitz-Riley crossovers: flat recombine) |
 
 ### Frequency and EQ - `eq.py`
 | Class | Notes |
@@ -87,9 +87,11 @@ The three saturation characters are different curves, not one curve with
 presets. `tube` runs the engine's asymmetric OVERDRIVE, so it generates a
 2nd harmonic level with the 3rd; `tape` and `console` run its
 odd-symmetric WAVESHAPE, whose 2nd harmonic measures 66 dB lower - the
-numerical floor. On top of that `tape` loses 2.6 dB by 16 kHz and
-`console` gains half a decibel there, and `console` is the gentlest of the
-three by about 4 dB of THD. All three are level-matched to within 0.3 dB,
+numerical floor. On top of that `tape` has the head bump and the gap loss
+that come with the medium (+1.4 dB at 40 Hz, −2.9 dB at 16 kHz) while
+`console` gains a little air on top and nothing at the bottom, and
+`console` is the gentlest of the three by about 4 dB of THD. All three are
+level-matched at 1 kHz to within 0.3 dB,
 so auditioning one against another does not mean re-balancing. `amount`
 scales the whole character, tone shaping included.
 
@@ -116,25 +118,34 @@ scales the whole character, tone shaping included.
 
 ## A note on how low a filter can go
 
-Every biquad in the engine keeps its coefficients as Q15 integers, which
-is the right trade on a microcontroller and costs low frequencies. Below
-about 300 Hz the coefficients quantize into something that is no longer
-the filter you asked for, and it fails quietly rather than loudly: a
-`LowPass` at 100 Hz returns **silence**, a `HighPass` at 30 Hz returns
-**+20 dB of noise**, and a low shelf at 80 Hz lifts the whole band by 13
-dB instead of its 1.5. From 400 Hz up everything is accurate to a fraction
-of a decibel.
+Anywhere in the band, is the short answer - but it is worth knowing that
+this was not always true, because the failure was silent and you may still
+meet it on a stock CircuitPython board (below).
 
-So: keep `LowPass`, `HighPass`, `BandPass`, `Notch`, `LadderFilter`, and
-`ParametricEQ` bands at 400 Hz or above, and expect a swept filter to stop
-behaving as it goes under that. Two classes here carry the consequence in
-their defaults - `GraphicEQ`'s bottom three ISO bands (31.5, 63, 125 Hz)
-are wrong by +6.1, +1.0 and −2.9 dB on a +6 dB request, and
-`MultibandCompressor`'s default `low_hz=200` leaves a +5 dB bump under 100
-Hz. Nothing refuses a low frequency, because a `LadderFilter` sweeping
-down through it is a legitimate thing to do; the failure is graceless, not
-fatal. `docs/upstream-diff.md`, "The biquads are Q15, so they cannot go
-low", has the coefficient arithmetic and the full measurement table.
+Every biquad in the engine used to keep its coefficients as Q15 integers,
+which is the right trade on a microcontroller and costs low frequencies.
+Below about 300 Hz they quantized into something that was no longer the
+filter you asked for: a `LowPass` at 100 Hz returned **silence**, a
+`HighPass` at 30 Hz returned **+21 dB of noise**, and a low shelf at 80 Hz
+lifted the whole band by 13.4 dB instead of its 1.5. A second, unrelated
+shortcut in the same file - one polynomial fitted to sine and cosine over
+[0, π/2], which is only 12 kHz at 48 kHz - broke the *top* of the band too,
+badly enough that a `HighPass` at 22 kHz passed its entire stopband.
+
+Both are fixed. Coefficients now get as many fractional bits as each
+individual filter has room for, the recursion accumulates in 64 bits and
+keeps its feedback below the sample grid, and the trigonometry is a proper
+series. Measured against the closed-form response, every mode lands within
+**0.03 dB from 50 Hz to 22 kHz**. `GraphicEQ`'s ten ISO bands all read
++6.01 dB or better on a +6 dB request; `MultibandCompressor`'s three bands
+recombine flat to 0.23 dB from 30 Hz to 8 kHz. `docs/upstream-diff.md`,
+"The biquads were Q15, so they could not go low", has the arithmetic, the
+before-and-after table, and what it cost in instructions on an M0.
+
+Nothing refuses a low frequency and nothing ever did, because a
+`LadderFilter` sweeping down through 40 Hz is a legitimate thing to do.
+The only remaining rule is the one that was always real: stay below
+Nyquist, which `check_hz` enforces.
 
 ## A note on chaining after a Mixer
 
@@ -162,6 +173,11 @@ are worth knowing about:
   about **+21 dB at DC**, worse the lower the center. Still present
   upstream. `ParametricEQ`, `GraphicEQ`, and every shelf-free bell here
   depend on it.
+- Biquad coefficients are Q15 and the recursion accumulates in 32 bits, so
+  nothing below roughly 300 Hz is the filter it was asked to be, and one
+  polynomial covers sine and cosine only as far as π/2 - 12 kHz at 48 kHz -
+  so nothing near Nyquist is either. Both ends fail quietly. Still present
+  upstream, and the section above is what a filter does here instead.
 
 This library used to compensate for both - halving every frequency on the
 way in, and synthesizing bells out of notch and band-pass sections. It no

@@ -89,21 +89,23 @@ class Fuzz(_core.Effect):
 #: gain. `shelves` is the tone shaping that comes with the medium, as
 #: (filter mode, frequency, gain at full amount).
 #:
-#: Nothing here models a tape head bump or a transformer's low-end
-#: rolloff, and not for want of trying: the engine's biquads are Q15 fixed
-#: point, and below roughly 300 Hz the coefficients quantize into nonsense
-#: - a low-pass at 100 Hz returns silence. See README, "A note on how low a
-#: filter can go". The characters are told apart by their harmonics and by
-#: what they do above 10 kHz, both of which the engine renders honestly.
+#: The low shelves here would have been meaningless a phase ago: the
+#: engine's biquads were Q15 and anything below roughly 300 Hz quantized
+#: into nonsense, so "tape" had a top octave and no head bump. They are
+#: accurate to a hundredth of a decibel now - see README, "A note on how
+#: low a filter can go" - which is what lets the two mediums differ at both
+#: ends rather than only above 10 kHz.
 _CHARACTERS = {
     # Asymmetric, so a 2nd harmonic level with the 3rd: the valve
     # signature. This is also the chain this class has always built, which
     # is why it is the default and why its makeup is zero - existing mixes
     # keep their sound, and the other two are matched to it.
     "tube": (_DM.OVERDRIVE, None, 0.0, ()),
-    # Odd-symmetric curve for 3rd-harmonic thickening, plus the gap loss
-    # that costs a tape machine its top octave.
-    "tape": (_DM.WAVESHAPE, 0.18, -2.6, ((_FM.HIGH_SHELF, 10000.0, -3.0),)),
+    # Odd-symmetric curve for 3rd-harmonic thickening, the head bump a tape
+    # machine gets from its own record/replay geometry, and the gap loss
+    # that costs it the top octave.
+    "tape": (_DM.WAVESHAPE, 0.18, -2.6, ((_FM.LOW_SHELF, 80.0, 1.5),
+                                         (_FM.HIGH_SHELF, 10000.0, -3.0))),
     # The gentlest of the three - a desk sums through iron without
     # announcing it - with a touch of air on top.
     "console": (_DM.WAVESHAPE, 0.05, -1.06,

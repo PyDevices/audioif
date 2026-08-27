@@ -3,57 +3,57 @@
     "andromeda": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "500e1de8f91b4f33821e11e0f7efd769e26b7fa52e9005ac69e4b86ee8bc8567",
-        "micropython": "f636751eaf8f3787397e375e2a992b248ef7cba77cbf832430fb6077094a349f"
+        "cpython": "36cebf74733b9aaa0a032db8e84c6f67434b12265bd80670f1e3f75517fb5f05",
+        "micropython": "be74bd785c1404216678e4cbf6e0366a9c5c74d464207328ea9e1067da605a3f"
       }
     },
     "arp2600": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b7a97f6c7ef0329f7b0da371762c648ff6926fd368215177f49fa97b935ec9bb",
-        "micropython": "2011103969c416523407d26cb299b3169c17552b3321c27a1a0d58e503ae91a0"
+        "cpython": "d3c26a0a3fbed5b1b5436cb2e8658ef3f1624f0a3b3cba663bf4ee210a175b2e",
+        "micropython": "66f83d4ec733b3b14f46a0951ad96320766502682dc0338d71f626e9b09d87a4"
       }
     },
     "b3": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "8ca0cbfd4f7d5f8aea812be40a9a88b61405afec1384e6b921214f43c075bc78",
-        "micropython": "eda00e01687ca6bafc832f5218672cc1e7d71772bc8acf4f246d8badc95b142e"
+        "cpython": "b6fb0f94ca79b11f88b0fefeb867fcc547cd2cb60a5f85ce17ee4040f11806a1",
+        "micropython": "52529889274bd740909156737709dfdd632364e63bd3aee5225df1812cab9dac"
       }
     },
     "clavinet": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "9a2a4ccb38d88cdd660a9f86533405292ddc3e571ccddd4a7d5c7f3566cb2f51",
-        "micropython": "b127745eefe80eba16cda6d36776f455c1e3c69a9632ddde6bbfef9fd53d5d1a"
+        "cpython": "600abbadbe0f4ff20425b6f5dbbbe7880a13d165ebdb370746ac5a4e38203ab9",
+        "micropython": "ffadbf9d890ad514f6f2ede0ce8e403110b65b0f227f8b68cb4bd345f8f4e890"
       }
     },
     "cp70": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "bedfb10bfb645b3bbbb20cfd9d667fc188569600ee95858ab6c856c83e895b51",
-        "micropython": "dd69780371a7aedc9bf8c1259a9e0eb5643025ba5cd12e9947cc668194871ead"
+        "cpython": "5577eaa6afce62599b4ae8c32e11992cc263b49a52c3776433bdd9c69d57deca",
+        "micropython": "32ea2b78b2dc29d3730ab092b134a4fc71a6a05cfd9d7633cecaff4c996dca3b"
       }
     },
     "cs80": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "14a8e475b4519c5f31a8145a229c4bb962b480b6648b8f720fac5fe5a2f0abce",
-        "micropython": "386dd5d0bbf7fec19fa34534cb0383656003e9c9269304a77893833e39924375"
+        "cpython": "4b64c08b38ee7639d984a893b29ae322884f786ae795baa0b18273c95bb58f78",
+        "micropython": "f86377f883efdca05fb8034e31304544f6accbf0ed2f8019dc25fbd8eb11b611"
       }
     },
     "cz101": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "23fbd8747d0e6660dded59879d3bc95dfee198ffe36a0ccec8889d927e387321",
-        "micropython": "2031d8a5cfa126647adf2da6c22c6778d2e6b1bd6fa4392c23d7d8c5ae2a5cb3"
+        "cpython": "d1a408d9d8b340e8ab6bdc775b4c144e26984e0a59389b6ec9b4616ed1130c18",
+        "micropython": "5e92ea2498d8c81c36db5dc0f1eae2b16d3872fb49018780ef8e3c3101dd0443"
       }
     },
     "d50": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b3fad27a8fd62e0b2036dd7ab66b832cb25c457cf4105b2e0078eb3c47e68cea",
-        "micropython": "5c6a5cbe029163b86ed9c6f896793a2166ae845f627333001b95e4e76d7e1527"
+        "cpython": "985166f8fa677b46f226c6a9da20638b7542a185c092d403893740f55ba2c253",
+        "micropython": "6463c6206825ee056f9f5bff2fa000bbe883c9a35599a4f7f9e8fd4bf67cba17"
       }
     },
     "dx7": {
@@ -66,239 +66,239 @@
     "emulator2": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "6be569bf7d83ee03582414d4036a9eca3d523addf5dd4e641d2e4053c9057c4d",
-        "micropython": "097b2eb5a80f19105f5f058bbd022415cfbe1e49c6c510e60ee9267d4eec02fd"
+        "cpython": "7cd4775aba93d5e5aeabd4091db6b9945e363158ad32e5707e39d25e0dea7958",
+        "micropython": "a37ff052d01479d073fcae56d840b9e89e0b9f32e2005e6706600658aeeda00d"
       }
     },
     "fairlight": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "2d2cf11e576fe1521b503dd9bedc77ab28cad9191600df3f2dbbc7cc37fd0d0e",
-        "micropython": "2d2cf11e576fe1521b503dd9bedc77ab28cad9191600df3f2dbbc7cc37fd0d0e"
+        "cpython": "e214e44cddd1e94c2d26257c3d77511dc4ed578badd5130365635e927f094645",
+        "micropython": "e214e44cddd1e94c2d26257c3d77511dc4ed578badd5130365635e927f094645"
       }
     },
     "farfisa": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "00859124eda0719f51b2ff0d86853e245214ee823a037b554f9f979f86c41174",
-        "micropython": "47c2f661dd14159ee5f3a23a480e0bbba3f8acefa3b485bd782cade73eebaf49"
+        "cpython": "18bc76d4b93e933612221470047ee0db0b932ae5aa9b6dee926034addfb89f7f",
+        "micropython": "57645f34bd28d93beee85aa620b70f8531278bd56a0c18e21a88be832363305b"
       }
     },
     "fs1r": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "0fc67ca14ffe1710463c647b1f38e7993840a37eb6adef2f1e781e74b78dcd60",
-        "micropython": "55baf49f29a46392a35c64b771cd29b2a05f75bc096e017d0d3cf39f4fe79f21"
+        "cpython": "dbf9bb29cf6f096a9bab377d2ba69a6d7162ab4bd39680d80d6bbe5224d2a4bf",
+        "micropython": "9782ea583cafa0c009c7f4dc177bb4a3e4bfe31253604e170b0f76a67a7bae50"
       }
     },
     "jp8000": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "bd5f27960f24f42aa4eff5686621fb1523f891b25f5704e4195d9fdaf38f3747",
-        "micropython": "bd249e6165f2f8ac54b556f7f012d79ff76c268a5cfc0b443b29bbbe7c5cff7e"
+        "cpython": "9ddab3970d1729b2af87dfdc99ae52f3f71754b7ca486c5a64d729e9d68d1d3c",
+        "micropython": "0fed1ab938de50e0a86d8ba579426d40f46c13dd6778033307450095f9cb1d68"
       }
     },
     "juno106": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "00748a9639c355672b1a26224a634036ac518b40f53e1ccd4397daa05e547be6",
-        "micropython": "3c92586447142c3852fcbb329c7a27a40aa02257f86b5ab1fbd1d815b08eca03"
+        "cpython": "846b5f32edd204b7dc3483778503e9a069b918f2ae2918f7fc305dc82bd0e36c",
+        "micropython": "5acd14c688f762049e3d70aea6acc5f4ce3b36d2b8213b2eb62c4dd34ae563dc"
       }
     },
     "jupiter8": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "2ffc7ec655cdd6dbf134aa165c3006b3488dfc3d3e1455eecba44f50b477708d",
-        "micropython": "8a6f87877df4e1a3f7be17e96395fbca7cf1538aa5a3bbc25f518f8de7917f03"
+        "cpython": "c3dbdbeb4ef2ee440c0b2eb15d7b265259c2036b378eb5bca1b2186a97c02c16",
+        "micropython": "c4d1aa89d17b2dcc4bd6c5f1712d1e1a7824fbeba6034bf618720f88aca39f1d"
       }
     },
     "k2600": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "10ffa3ad9592b9d066ed786bfe9603878b599b7f27cdb950c34fae8f81723997",
-        "micropython": "3bd431943db6f0c3185b1d6109434c01e80f98351e7164f0bfa91200a6d08baf"
+        "cpython": "39e50569c53e215275acb2ae36e7686fec2ac5f58472dd650f00b29310ae9991",
+        "micropython": "5c11d1521e989e4f4859b1250d06df59cd97a9a3ba40dc6aa25c929ecd3d69f8"
       }
     },
     "karplus": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "082728ea28ad14f632ac4f5c622fd1e54eae86979f501485bf3f6d64d1ac14e5",
-        "micropython": "b6d62950d938106059c6a824b9e34d55d79655041f66b4e3551508a859ded03f"
+        "cpython": "030dfa7aab0d529bbe8528a9fe2d3d3fe7ddb4f0f0c7baa2a23b35caecbfdcf7",
+        "micropython": "65873f7891a70c29dd0e88ff5d74f6a9ca1d31bd28b44aa8f3c3dd04951dbeda"
       }
     },
     "mellotron": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "78444abda0bf088ab8b40ce6ad64f0a8a9caadbb0a86e9bb849c44f47ea1b1fa",
-        "micropython": "78444abda0bf088ab8b40ce6ad64f0a8a9caadbb0a86e9bb849c44f47ea1b1fa"
+        "cpython": "f8c0362b39c6f280bbd79640ed768621e29853f147e4ae445493f9311f83f3ab",
+        "micropython": "f8c0362b39c6f280bbd79640ed768621e29853f147e4ae445493f9311f83f3ab"
       }
     },
     "microwave": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "caee84292622ae6587ae67d1af859e01b31dc26503618b62f42d9b6bddc24a58",
-        "micropython": "06111ce0d756b863604426fa5a4f9f21246e9891e4a16c4e88e539a2870c2175"
+        "cpython": "9fe140b2419d927d9bc1bf4dcdbdac8a2be0d9ee4d2f1006374f6a8ba88c7bc8",
+        "micropython": "3d7c71d9d15eb8856c8fdb0b007f97bd2ee030642e7808885d754e3c40ed7b64"
       }
     },
     "minimoog": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "add759487824226663b584d5f5958ec0482f973c968be7eeaa283a1ba7b13224",
-        "micropython": "055ff5e06dd05c23ded4dd9922ca917cf19f432c2ee95152af63e373f59b0384"
+        "cpython": "19cd1f25857bc66e438f69ee55d192b12577835c507a1b735f09816c6bb602dd",
+        "micropython": "f12729624852eed8e90317ddcbfb5af0574d8cdf3ae58967d376a1a98720aaa9"
       }
     },
     "ms20": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "cd541a1754aef70ee69e29d5cec9441b709d0d29a240f22b4c494ed8117f2ada",
-        "micropython": "305c8ac20f38c0f39769e6f39180b9a3a391df1eff7796df960e117985f57717"
+        "cpython": "91363bf9df1925cc0ed57706a869a516952dd351a3d6118eb5432895dc7dd94e",
+        "micropython": "e2aa9d9c297f545aa147a4d0c47967f138261f019b76d2d3447a7ea6a6a44f85"
       }
     },
     "ms2000": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "d5e9d861dff59bc307faf3b152dffccbdfc0bb3c28e4b46e0e89c93527891021",
-        "micropython": "b8cf76c71098f984f458403cc698ed25184d9167c9c398c525f8d2d5fdf64a0d"
+        "cpython": "ba0e94d5c5a63d6e8f96502a1f1415a865c33204388b4d6a8f6d9189f8e54820",
+        "micropython": "fb9d3c47d6e1e88950af925d3f545d73d9920a7ab39054c77e282b61ad1f5520"
       }
     },
     "music_easel": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b3c6e236634d3921bb93f5497c89f93e7109d3304821f34ce841f1937739a2dd",
-        "micropython": "cfc292fb67ff16763d6a26f1102e5368951500e0baeaa55ebfbd0264cc05f60b"
+        "cpython": "b5b28df0ac16516813225a766fde64653551a39e4700009da38f3c3828bf80a2",
+        "micropython": "11273f302635cfca9e8faf69d58b22f511366713fa44b02127dc1ce66d384d53"
       }
     },
     "nord_lead": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "677ddf77536535e73afe17230deb062924dc930617dbf5c66c4b4bfabbed864a",
-        "micropython": "a9f51c4e6fde28b16c44efd9183ec1c70286a3061b331d4deb243460c35f20f1"
+        "cpython": "07b7b90e23716cefe911ea01c0005050e9f33f8ec40ff639f668110f075ed520",
+        "micropython": "9bb1c435a673a978668416cb9bdb9075936be27fb06f04ccc842331bd3240156"
       }
     },
     "obxa": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "8581bc6358fbe9114c934100a58864c6b94f57557c22f3cd3259f0b8340dfb03",
-        "micropython": "4b54d9e2eb547e5dd03b537199e4be33cac5f35a20424e462b4164eef208141c"
+        "cpython": "49c9705c24827422e8265b9e2f0480f51d43ca7230695259137c9b8951cf6b1a",
+        "micropython": "6edcd521982076f0b96413e41a5419fac9159870b67315caad31a8644f81420a"
       }
     },
     "odyssey": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "0f7f1952c8beda05aee5b2b0d17d460302432e8aae504839b7fdf98cd5deb35d",
-        "micropython": "4eea856ca0533988bda8733633c515eb40f4b7d9ce4cb387da2b756f5ab4a2db"
+        "cpython": "dc8e569ab094366b064eba07c201057c2f5dc547927afad1de5610d6af04b015",
+        "micropython": "19cc1096b54bfda90f0d3571f19e0bcc1672cec3537aba440dd9f88d4ade5b1f"
       }
     },
     "pianet": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "d1431c799583024ba5eeb357f464296d2ee1ae30fe31dc10d9b9aad12f5046b6",
-        "micropython": "c0759eba88f45db7d3a18ad7845606a8851aaef8aa4bd44627982cd36dab386a"
+        "cpython": "9433d9f2163e7d4984271eca53918a585130a841dbba4bb0e8876c563fe35c12",
+        "micropython": "16f3057e74c05a1f4908855a6899a4857af472d128c1bf67d18074b39565f37f"
       }
     },
     "polysix": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "dd52b3459cacf5e2c1ff1f6564c32c418e26c4193697b123db9bc7a41fffc708",
-        "micropython": "747d68c1af2667264e5e70778a5bba2ec4107037f306d4d308c5ed91ae0e7f88"
+        "cpython": "934eb6357674176e17a01cc5db7af610914e277d802313ec97de83676b72f7e2",
+        "micropython": "14ff5f72eddac53c7a28a3ed639656f2e8be39fe70d86d3725f754f3a3de9860"
       }
     },
     "ppg_wave": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "d803245dcc4837ff6ab654750d4a442528b05648f5629fac88261aeb11102b3c",
-        "micropython": "aee5c14293183f043deffb6bfcc39fbee2634028b5b0151ad520c831aaba2a48"
+        "cpython": "2500683fab02624f6129d3e088dc974adacb049df6db2071e55e93d82b7b8a92",
+        "micropython": "d134a8fdc9b16c23d71b03335f9f6c75f2ca1f95a84b3c83c3ac10e741b532d9"
       }
     },
     "prophet5": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "c8f3a111a3f34e4d609a64b88fcac7d6f660288a10957a1b7a14939b7bb7b0cf",
-        "micropython": "c6b35f1a10bbf4fb7e08abb82c75fd8dfc092a2dad531a900c68de12cd098a3b"
+        "cpython": "5714730a0c664f35920cc6f229da81d358d6bed64ecd3477326b114505418e73",
+        "micropython": "d291f8f427cc45cbf2b91be7fe8551a28bdb01356c65d006f5038e62ac8a6331"
       }
     },
     "prophet_vs": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b60134e5fe4b1f664179e56748b03f04153522b129587cd6c77f5a3757e9c290",
-        "micropython": "2359d7a1bd6de2ef95e16567b5b8db68336d813a79bf70877ccb109b7550db31"
+        "cpython": "886e27461da79c021b3dadef420cdccf725fc930f7f267ea25f51728071f46e7",
+        "micropython": "df6fc3b8ab0d0bdb19c5a86546d30a870fe50b1704e3475d3ae034e1fed3bc7a"
       }
     },
     "rhodes": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "1aa190a6893378c315ca8e0f88f4051fc615740d3b72f723c0a57b6d5b365fa0",
-        "micropython": "6cdea12c42cf1bc433f15f70fe5ee5f5830fad31688a28006ead68752e091d4b"
+        "cpython": "ff372d43ffb0c86069ff9e6a028454512b675a4f34942f6407e7c47df9c99726",
+        "micropython": "c653bf73ec4f67823aa98c4ee2dd8da7cc19034b568b4bbdd106b29da9ccd01f"
       }
     },
     "sh101": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "f48d4ca04bdbcd22e0afa9eb46bdf5df9db134df1d07b7a39d31dad8cdfd914d",
-        "micropython": "5ecd829453f6d0a504cf1a1e57ae5c70a4b57e489cabd856420324258186c155"
+        "cpython": "29e1c081e9e1f84257d5dc64837b0cd349c10127648cc7ca6262fec7d3821d07",
+        "micropython": "a952c0ff6651f07d90e40fced99bdac94e2aef2367df11d5275da399c7a27df9"
       }
     },
     "solina": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "5735ae8cf3006cf00b33f9ca2794bcabf5411647c69d6af754f32e0d8dfb9940",
-        "micropython": "4ea642d1072af9fe507a9b76a4d8a0f201a9b1ad4ecb7b4781c76247aef6cef3"
+        "cpython": "1d146934be0137ae9c5bcc00e5f01ff290f88eb4ce98c5f1a115ba6bbcaa857a",
+        "micropython": "a40a5bc7af8d57f30e268091d2afba3633fa18cce3cd8dbe7557a6c5469e0ef0"
       }
     },
     "taurus": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "9ceabd6252a0208f5d13868f0e7bfa52b928223f669add6c52c9dd9de196cac3",
-        "micropython": "1a41372499fe273bc0d554c8f59fbcb500206c5a906fc0a0e8f055f6b48f42eb"
+        "cpython": "6d2e114eb01ea6db42d770a2dbc7d658211774d75e0caf9c392c73020cbcadd0",
+        "micropython": "a833bbe2e1e71cf2a7dca5b3915aef9f56c5ca1d80c2cf566a853fc0578650c4"
       }
     },
     "tb303": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "b651fd80b41ac77ec32ab9f0f411c94bea13a122dcd990e56d1980678fc3f3f7",
-        "micropython": "1a2691782d72d4a933f9a1b1722b72b019cd992dde1a1146093a39427c9188e2"
+        "cpython": "22cd0c392704b2fad31842722ea1767d8c5a22b385432426d89f66e1c5b39b10",
+        "micropython": "a9a28559ad59f02930bf7cca1f4b42a6ef7ae4a7397a4e72e3e9c96500223359"
       }
     },
     "virus": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "e8a67fb3d6dc91b837b05141d9125a7860c6580f4ade665ca44e94a42227154a",
-        "micropython": "505c0ba15aac848896abc8f4f254ade5f11dc6e703519e708e05c3d1ba70cb12"
+        "cpython": "fc9a5cb11c4582ef26314f6d8bb874095a940f2fe6078319644e153161f27e7f",
+        "micropython": "774028f95bfa2bbc59dc11d3b25d72e9956b53849a77924989001f0361b25f10"
       }
     },
     "vl1": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "c0f08944bda6ac1b4044498ffdfe642a2fd7ac1eb89cc382f1d31c5740096955",
-        "micropython": "c0f08944bda6ac1b4044498ffdfe642a2fd7ac1eb89cc382f1d31c5740096955"
+        "cpython": "e5fa59d6d0ec4be3869d8866a5dce8129ba836dec5fe95f724cc4c1c709aea26",
+        "micropython": "e5fa59d6d0ec4be3869d8866a5dce8129ba836dec5fe95f724cc4c1c709aea26"
       }
     },
     "vox_continental": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "5a789a86b5f8cf7f5b2b1ca1c87cda5f09051f017fa49127c6a1ec7440d28c2f",
-        "micropython": "b4d1296b1753c366213c7b953fedf8c273a8c84b12c3bf0501494eb6476d959f"
+        "cpython": "5e5f424dbae4d5cae0b5a717f544301671bb9685557b0f3f41eb63f5d6d8a695",
+        "micropython": "705dde35d9fea22086ffef236454a1786a3a21e9a9d89d3d61c1aaa7991905d5"
       }
     },
     "vp330": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "ce730403fa38feba7e4d00ca580496953e31326b29307b034cd048b4de7501e0",
-        "micropython": "dafaa2f172df93e60be6fa881f00f4e4721cbe9641da2cfda6d0c355a0de462b"
+        "cpython": "129e23227a24bd8c22e007479af5241d334b7041470a938198504b5d61fd2ee2",
+        "micropython": "4c457b19208b553bcf6fafe8bcb14fb75a7ee770c18d93135f1b730d411d38a7"
       }
     },
     "wasp": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "8ac83f85f0e3d7f0f57f6e931ef87714150702bac027547ae9b4ec6ac2693f17",
-        "micropython": "e363dbd4a3aaac63dbacd04bb7eb6cbc8bd1089e17a542971a8a51461d56564c"
+        "cpython": "f75f907e1f05db5c373da465c55363f30f10f46df4987dd0af97b2e016401c22",
+        "micropython": "658c08ae5eee0884f238c3e4351006ab72ed858b1d0b41f130e6c7ac96c2899d"
       }
     },
     "wurlitzer": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "173d925294a4e67147939ba7427a3104f8d85951492334331c96e28389a7374f",
-        "micropython": "3380de1bbbc60e028ee14a8fcac572053d67f59c1bc3a971404ca7b2f114bc59"
+        "cpython": "d44a0241f19996bb9f6fdaf07a7aea0b64f7af278702de9c6fcc70822cceb6fc",
+        "micropython": "1d35fb9130117205a5518c2ba736c4809d0b5a763521765b3e3d08e633636921"
       }
     }
   },

@@ -2,10 +2,11 @@
 
 The rest of the parity suite only ever builds LOW_PASS filters, which is how
 the peaking-EQ sign error in `audioif_biquad.c` survived: no fixture reached
-mode 4. This probe walks all seven modes in mono and stereo so both of the
-deliberate deviations recorded in docs/upstream-diff.md ("Peaking EQ computed
-b2 with the wrong sign" and "A stereo Filter shared one biquad state") are
-pinned by something that fails when they regress.
+mode 4. This probe walks all seven modes in mono and stereo, and then all seven
+again across the band, so the three deliberate deviations recorded in
+docs/upstream-diff.md ("Peaking EQ computed b2 with the wrong sign", "A stereo
+Filter shared one biquad state" and "The biquads are Q15, so they cannot go
+low") are each pinned by something that fails when they regress.
 
 Running this against `bin/circuitpython` is expected to differ. That is the
 point of it; see docs/upstream-diff.md for the direction of each difference.
@@ -72,3 +73,24 @@ for name, mode in MODES:
                                 for word in words)
                 print("biquad_samples", name, channels, decoded)
             print("biquad", name, channels, index, len(data), sum(data))
+
+
+#: Centers spanning the usable band at RATE (Nyquist 4000). The middle two are
+#: unremarkable; the outer two are the whole point. 60 Hz is where Q15
+#: coefficients used to collapse - a low-pass there returned silence - and
+#: 3600 Hz is past pi/2 in W0, where the old sine/cosine fit was extrapolating
+#: and a high-pass passed its own stopband. Neither end was pinned by anything
+#: before the biquads were widened; see docs/upstream-diff.md.
+EDGE_CENTERS = (60, 200, 1200, 3600)
+
+for name, mode in MODES:
+    for center in EDGE_CENTERS:
+        biquad = synthio.Biquad(mode, center, Q, A=GAIN_A)
+        effect = audiofilters.Filter(
+            filter=biquad, mix=1.0, buffer_size=512, sample_rate=RATE,
+            bits_per_sample=16, samples_signed=True, channel_count=2,
+        )
+        effect.play(source(2))
+        for index in range(4):
+            data = bytes(audiocore.get_buffer(effect)[1])
+            print("biquad_edge", name, center, index, len(data), sum(data))

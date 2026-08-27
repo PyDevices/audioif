@@ -2,7 +2,7 @@
 """Verify biquad PCM across every FilterMode against committed metadata.
 
 Unlike the other verifies here, the golden is captured from *this* port and
-not from CircuitPython: two deliberate deviations live in this path. See
+not from CircuitPython: three deliberate deviations live in this path. See
 docs/upstream-diff.md. Pass --capture to re-record after an intended change.
 """
 

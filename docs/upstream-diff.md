@@ -877,61 +877,151 @@ reads −9.05 dB; `LowPass` at 1 kHz reads −3.00 dB at cutoff and −12.33 dB 
 octave above. `tests/test_cpython_effects_library.py` pins the bell placement,
 the flat-EQ passthrough, and the Nyquist refusal.
 
-## The biquads are Q15, so they cannot go low (kept, not fixed; breadth tier)
+## The biquads were Q15, so they could not go low (third approved deviation)
 
-Not a divergence -- a limit audioif inherits from upstream unchanged, found
-while looking for somewhere to put a tape head bump. It is recorded here
-because it is invisible from the Python side and fails silently, and because
-nothing else documents it.
+Found while looking for somewhere to put a tape head bump, recorded as a
+limitation, and then fixed one phase later once the user approved a third
+deviation from the oracle. The section keeps its original measurements as the
+"before" column, because the failure was silent and worth being able to
+recognise again.
 
-`audioif_biquad_configure_w0()` stores its five coefficients as Q15 integers
-(`AUDIOIF_BIQUAD_SHIFT = 15`, `scale()` rounds `value * 32768` to an
-`int32_t`), and `audioif_biquad_process()` accumulates the five products in
-`int32_t`. Both come straight from CircuitPython's
-`shared-module/synthio/Biquad.c`, and both are the right call for a
+### What was wrong
+
+`audioif_biquad_configure_w0()` stored its five coefficients as Q15 integers
+(`AUDIOIF_BIQUAD_SHIFT = 15`, `scale()` rounding `value * 32768` to an
+`int32_t`), and `audioif_biquad_process()` accumulated the five products in
+`int32_t`. Both came straight from CircuitPython's
+`shared-module/synthio/Biquad.c`, and both are defensible on a
 microcontroller. The cost is that low-frequency sections are unrepresentable:
 as `W0` goes to zero a low-pass's `b0 = (1 - cos W0) / 2` goes with it, and at
 100 Hz / 48 kHz it is `4.3e-5`, which is 1.4 in Q15 and rounds to 1. Meanwhile
 `a1` approaches `-2` and its product with a full-scale sample approaches
-`INT32_MAX`, so the accumulator has nothing left for the other four terms.
+`INT32_MAX` on its own, so the accumulator has nothing left for the other four
+terms.
 
-Measured at 48 kHz, one biquad, full-scale-ish input:
+There was a **second, independent** cause, found while fixing the first and
+approved with it. `fast_sincos()` fits one 5th-order polynomial to both sine
+and cosine over `[0, pi/2]`, and it is wrong at both ends of the audio band
+for two different reasons:
 
-| asked for | got |
-|---|---|
-| `LOW_PASS` at 100 Hz | silence |
-| `LOW_PASS` at 200 Hz | −2.69 dB at cutoff, **+1.25 dB** two octaves below |
-| `LOW_PASS` at 400 Hz and above | −3.08 dB at cutoff, flat below (correct) |
-| `HIGH_PASS` at 30 Hz | **+21.6 dB** at 50 Hz, +19.8 dB at 8 kHz -- noise |
-| `HIGH_PASS` at 100 Hz | **+6.24 dB** at cutoff |
-| `HIGH_PASS` at 500 Hz and above | −3.05 dB at cutoff (correct) |
-| `LOW_SHELF` 80 Hz / +1.5 dB | **+13.4 dB**, and across the whole band |
-| `PEAKING_EQ` 100 Hz / +3 dB | +7.8 dB at center, +4.4 dB at 4 kHz |
+- Its cosine carries about `5e-6` of absolute error. Every low-pass, notch and
+  shelf coefficient is built from `1 - cos W0`, which at 100 Hz / 48 kHz is
+  `8.6e-5` -- so that error is 6 percent of the answer, 13 percent at 50 Hz and
+  34 percent at 20 Hz. Widening the fixed-point format alone would have left
+  a 1 dB error at 50 Hz.
+- `pi/2` is only 12 kHz at 48 kHz, and above that the fit is **extrapolating**.
+  At 20 kHz its sine is off by 3 percent and `1 + cos W0` by 15 percent. This
+  half had never been noticed at all: a `HIGH_PASS` at 22 kHz passed its entire
+  stopband.
 
-The usable floor is about 300 Hz, and 400 Hz for anything under half a decibel
-of error. Above it the sections are accurate to the numbers in the peaking-EQ
-section above.
+### What it measured, before and after
 
-Two consequences inside `audioeffects`, both measured, neither previously
-known:
+At 48 kHz, one biquad, Q 0.707 unless stated, against the double-precision
+closed form:
 
-- `GraphicEQ`'s bottom three ISO bands are wrong. Asked for +6 dB and measured
-  at its own center, the 31.5 Hz band gives **+12.14 dB**, 63 Hz gives +6.96,
-  125 Hz gives +3.07. From 250 Hz up it is +5.76 dB or better, and from 500 Hz
-  up it is within 0.12 dB.
-- `MultibandCompressor`'s default `low_hz=200.0` crossover mis-splits, leaving
-  a **+5.2 dB** bump below 100 Hz on a recombine that should be near flat.
+| asked for | before | after | ideal |
+|---|---|---|---|
+| `LOW_PASS` 50 Hz, at cutoff | -- | −2.99 | −3.01 |
+| `LOW_PASS` 100 Hz, at cutoff | **silence** | −3.02 | −3.01 |
+| `LOW_PASS` 200 Hz, two octaves below | **+1.25** | −0.03 | −0.02 |
+| `HIGH_PASS` 30 Hz, at cutoff | **+21.6** | −3.04 | −3.01 |
+| `HIGH_PASS` 100 Hz, at cutoff | **+6.24** | −3.02 | −3.01 |
+| `LOW_SHELF` 80 Hz / +1.5 dB, at 20 Hz | **+13.4** | +1.50 | +1.49 |
+| `LOW_PASS` 20 kHz, at cutoff | −3.71 | −3.01 | −3.01 |
+| `LOW_PASS` 22 kHz, at cutoff | **−7.29** | −3.01 | −3.01 |
+| `HIGH_PASS` 22 kHz, at cutoff | **+0.06** | −3.01 | −3.01 |
 
-Worth noting on the timing: before the effects-extension tier, `_core.filter_hz`
-halved every frequency on the way in, so *both* of those ran an octave lower
-still -- `GraphicEQ`'s 63 Hz band was configured at 31.5 Hz, and the multiband
-low band was a 100 Hz low-pass, i.e. silent. Removing that workaround moved
-them up out of the worst of it by accident.
+Everything from 50 Hz to 22 kHz now lands within 0.03 dB of the closed form.
+The old usable floor was about 300 Hz, and 400 Hz for anything under half a
+decibel of error.
 
-Nothing in the soundtrack is affected: its one and only filtered rack is
-Perihelion's `LowPass(frequency=4200)`.
+### The fix
 
-Fixing this means widening the coefficient format (Q28 or so) and accumulating
-in `int64_t`, which is a third deviation from the oracle and has not been
-approved. Until then the floor is a documented property; see the effects
-library README, "A note on how low a filter can go".
+`src/shared/audioif_biquad.c`, three changes:
+
+1. **Per-filter coefficient format instead of a fixed Q15.**
+   `choose_shift()` takes the largest of the five normalised coefficients and
+   gives them all as many fractional bits as that one has room for in an
+   `int32_t`, capped at 30. A plain low-pass tops out near 2 (that is `a1`)
+   and gets 29 bits; a 20 dB shelf reaches ~200 and gets 23. Fixing one
+   format for every filter would mean giving them all the shelf's. The chosen
+   shift travels with the coefficients, so `synthio_biquad_t` caches it
+   alongside `a1..b2` -- they are meaningless apart.
+2. **`int64_t` accumulator, and a feedback state with 12 fractional bits below
+   the sample grid** (`AUDIOIF_BIQUAD_STATE_SHIFT`). The second half matters
+   more than it looks: a biquad low down has both poles close to the unit
+   circle, and `1/A(z)` -- the gain the loop applies to whatever error is fed
+   back into it -- is 4000 at DC for a 100 Hz low-pass and 43000 for a 30 Hz
+   high-pass. Rounding the feedback to whole samples, as upstream does, hands
+   that gain half an LSB of error to amplify.
+3. **`fast_sincos()` replaced by `sine_and_cosine()`**: reflect into
+   `[0, pi/2]` (`sin(pi - t) = sin t`, `cos(pi - t) = -cos t`) and evaluate
+   the two Taylor series properly, seven terms each. Worst error across
+   20 Hz -- 24 kHz falls from `5.4e-6` to `6.3e-9`, and it stays accurate past
+   Nyquist, so a frequency asked for above Nyquist is now merely wrong rather
+   than absurd. Deliberately **not** libm: glibc, newlib and MicroPython's own
+   `sin`/`cos` differ in the last place, and `verify_dsp`'s one-hash-covers-
+   every-interpreter rule depends on this being the same function everywhere.
+
+### What it cost
+
+Measured by cross-compiling `audioif_biquad.c` at `-Os` and counting
+`audioif_biquad_process()`:
+
+| core | before | after | note |
+|---|---|---|---|
+| Cortex-M4 / M7 | 37 instructions | 76 | no library calls -- `SMULL`/`SMLAL` |
+| Cortex-M0+ | 55 instructions | 154 | 5 `__aeabi_lmul` + 1 `__aeabi_lasr` |
+
+So roughly 2x on anything with a long multiply, and closer to 4x on
+Cortex-M0+, which has none -- one stereo biquad at 22050 Hz goes from about
+5 percent of a 48 MHz M0+ to about 17. That is the trade upstream made when it
+chose Q15, and it is a real one on an RP2040. It is accepted here rather than
+made conditional: a filter that sounds different on a Pico than on an ESP32-S3
+would be worse than either. If it ever needs clawing back, the products are
+32x32 into 64 and could be hand-written for M0 rather than going through
+`__aeabi_lmul`.
+
+### Consequences inside `audioeffects`
+
+- `GraphicEQ`'s bottom three ISO bands were wrong. Asked for +6 dB and
+  measured at its own center, the 31.5 Hz band gave **+12.14 dB**, 63 Hz
+  +6.96, 125 Hz +3.07. All ten bands now read **+6.01 dB or better**.
+- `MultibandCompressor`'s default `low_hz=200.0` crossover mis-split, leaving
+  a **+5.2 dB** bump below 100 Hz. That is gone -- and with the filters
+  working it exposed a separate defect underneath, a **3.4 dB dip** at the
+  crossover, because the low band cascaded two Butterworth low-passes against
+  the mid band's single high-pass. Both sides are Linkwitz-Riley pairs now and
+  the three bands recombine flat to 0.23 dB from 30 Hz to 8 kHz.
+
+Worth noting on the timing: before the effects-extension tier,
+`_core.filter_hz` halved every frequency on the way in, so *both* of those ran
+an octave lower still -- `GraphicEQ`'s 63 Hz band was configured at 31.5 Hz,
+and the multiband low band was a 100 Hz low-pass, i.e. silent. Removing that
+workaround moved them up out of the worst of it by accident.
+
+### What moved, and what did not
+
+- `golden/biquad_component.json` re-captured. The probe gained `biquad_edge`,
+  seven modes across four centers from 60 Hz to 3600 Hz at an 8 kHz rate, so
+  both ends are pinned by a fixture for the first time. Every one of the 28
+  mode/center pairs moved.
+- `golden/synthtools_acceptance.json` re-captured, and **it is no longer a
+  byte-for-byte CircuitPython match** -- the first fixture in the suite to
+  lose that. Three checksums moved: lead +0.020 percent, bend +0.24, bass
+  **+1.50**. The bass is the tell: it is a Q 6.0 low-pass sweeping downward
+  from 300 Hz at 22050 Hz, which is precisely the case that could not be
+  represented before. `verify_acceptance.py` now keeps the oracle's own
+  answer beside the port's under `circuitpython_stdout` rather than
+  discarding it.
+- All four `golden/instruments_*.json` re-captured, all 93 instruments. Every
+  one of them builds a `synthio.Biquad`, so every one moved -- but both sides
+  of that comparison run through the same engine, so the property the fixture
+  exists to prove is untouched: **186 comparisons, 0 failures** after
+  re-capture.
+- **Not** `verify_dsp`, `verify_effects` or `verify_streaming`: no filter in
+  any of their probes.
+- Stock CircuitPython does not get this. `apply_cp_patches.sh` only *adds*
+  modules to a CP tree; `synthio` and `audiofilters` there are upstream's, so
+  a CP board still cannot filter below a few hundred hertz. See the effects
+  README, "A note on filters off a stock CircuitPython board".

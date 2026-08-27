@@ -1,13 +1,25 @@
 // SPDX-License-Identifier: MIT
 
 #include "shared/audioif_biquad.h"
-#include "shared/audioif_synth_dsp.h"
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 
-#define AUDIOIF_BIQUAD_SHIFT 15
+// Upstream CircuitPython keeps every coefficient in Q15 and accumulates the
+// five products in an int32_t. That is the right trade on a microcontroller
+// and it costs low frequencies, badly and silently: `b0` for a low-pass is
+// (1 - cos W0)/2, which at 100 Hz / 48 kHz is 4.3e-5, or 1.4 in Q15 - so it
+// rounds to 1 and the filter is no longer the one that was asked for. A
+// LOW_PASS at 100 Hz used to return silence. See docs/upstream-diff.md.
+//
+// Two things are widened here, for two different reasons. The coefficients get
+// as many fractional bits as they individually have room for (below), because
+// they are what quantizes. The accumulator becomes an int64_t because it is
+// what overflows: `a1` approaches -2, and in any format worth using its
+// product with a full-scale sample is already most of an int32_t on its own.
+#define AUDIOIF_BIQUAD_MAX_SHIFT 30
 #define AUDIOIF_PI 3.14159265358979323846
 
 typedef struct { double s, c; } sincos_result_t;
@@ -20,29 +32,83 @@ static double fast_sqrt(double input) {
     return input * (double)value.f;
 }
 
-static void fast_sincos(double theta, sincos_result_t *result) {
-    double x = theta * (4.0 / AUDIOIF_PI) - 1;
-    double x2 = x * x, x3 = x2 * x, x4 = x2 * x2, x5 = x2 * x3;
-    double c0 = 0.70708592,
-          c1x = -0.55535724 * x,
-          c2x2 = -0.21798592 * x2,
-          c3x3 = 0.05707685 * x3,
-          c4x4 = 0.0109 * x4,
-          c5x5 = -0.00171961 * x5;
-    double evens = c4x4 + c2x2 + c0;
-    double odds = c5x5 + c3x3 + c1x;
-    result->c = evens + odds;
-    result->s = evens - odds;
+// Upstream fits one 5th-order polynomial to both sine and cosine across
+// [0, pi/2]. It is cheap and it is not accurate enough for this job at either
+// end of the audio band:
+//
+//   * Its cosine carries about 5e-6 of absolute error. Every low-pass and
+//     high-shelf coefficient is built from `1 - cos W0`, which at 100 Hz /
+//     48 kHz is 8.6e-5 - so a 5e-6 error there is 6 percent of the answer,
+//     and 34 percent by 20 Hz. Widening the fixed-point format below buys
+//     nothing if the doubles going into it are already wrong.
+//   * pi/2 is only 12 kHz at 48 kHz, and above that the fit is extrapolating.
+//     At 20 kHz its sine is off by 3 percent and `1 + cos W0` by 15, which
+//     is why a 22 kHz high-pass used to pass its whole stopband.
+//
+// So: reflect into [0, pi/2] - sin(pi - t) = sin t and cos(pi - t) = -cos t,
+// which also keeps a frequency asked for above Nyquist merely wrong rather
+// than absurd - and evaluate the two Taylor series properly. Seven terms
+// apiece hold both to 7e-9 across the band, a thousandfold improvement, for
+// about ten extra multiplies. They are paid once per coefficient update, at
+// block rate, not once per sample.
+//
+// Deliberately not libm: glibc, newlib and MicroPython's own sin/cos differ
+// in the last place, and a hash of the same probe is supposed to match across
+// every interpreter. A polynomial is the same function everywhere.
+static void sine_and_cosine(double theta, sincos_result_t *result) {
+    static const double sine_terms[7] = {
+        1.0, -1.0 / 6, 1.0 / 120, -1.0 / 5040,
+        1.0 / 362880, -1.0 / 39916800, 1.0 / 6227020800.0,
+    };
+    static const double cosine_terms[7] = {
+        1.0, -1.0 / 2, 1.0 / 24, -1.0 / 720,
+        1.0 / 40320, -1.0 / 3628800, 1.0 / 479001600.0,
+    };
+    bool reflected = theta > AUDIOIF_PI / 2;
+    double x = reflected ? AUDIOIF_PI - theta : theta;
+    double x2 = x * x, s = 0.0, c = 0.0;
+    for (int term = 6; term >= 0; term--) {
+        s = s * x2 + sine_terms[term];
+        c = c * x2 + cosine_terms[term];
+    }
+    result->s = s * x;
+    result->c = reflected ? -c : c;
 }
 
-static int32_t scale(double value) {
-    return (int32_t)round(ldexp(value, AUDIOIF_BIQUAD_SHIFT));
+static int32_t scale(double value, int shift) {
+    double scaled = round(ldexp(value, shift));
+    // choose_shift() leaves room for this by construction; the clamp is here
+    // so a rounding tick at the very top of the range cannot wrap the sign.
+    if (scaled > 2147483647.0) return INT32_MAX;
+    if (scaled < -2147483648.0) return INT32_MIN;
+    return (int32_t)scaled;
+}
+
+// The most fractional bits all five coefficients can share and still fit an
+// int32_t. A plain low-pass tops out near 2 (that is `a1`) and so gets 29 of
+// them; a 20 dB shelf reaches ~200 and gets 23. Fixing one format for every
+// filter would mean giving them all the shelf's, which is where the precision
+// that matters at low frequencies goes.
+static int choose_shift(const double *values, size_t count) {
+    double largest = 1.0;
+    for (size_t i = 0; i < count; i++) {
+        double magnitude = fabs(values[i]);
+        if (magnitude > largest) largest = magnitude;
+    }
+    int exponent;
+    frexp(largest, &exponent);  // largest < 2^exponent, and largest >= 1
+    int shift = 31 - exponent;
+    if (shift > AUDIOIF_BIQUAD_MAX_SHIFT) shift = AUDIOIF_BIQUAD_MAX_SHIFT;
+    // Absurd A values could in principle ask for more than 31 integer bits;
+    // the coefficients saturate rather than wrap, and the rounding term below
+    // needs a shift of at least one.
+    return shift < 1 ? 1 : shift;
 }
 
 void audioif_biquad_configure_w0(audioif_biquad_coefficients_t *coefficients,
     int mode, double W0, double Q, double A) {
     sincos_result_t sc;
-    fast_sincos(W0, &sc);
+    sine_and_cosine(W0, &sc);
     double alpha = sc.s / (2 * Q);
     double a0, a1, a2, b0, b1, b2;
     if (mode < 4) {
@@ -85,11 +151,15 @@ void audioif_biquad_configure_w0(audioif_biquad_coefficients_t *coefficients,
         }
     }
     double reciprocal = 1 / a0;
-    coefficients->a1 = scale(a1 * reciprocal);
-    coefficients->a2 = scale(a2 * reciprocal);
-    coefficients->b0 = scale(b0 * reciprocal);
-    coefficients->b1 = scale(b1 * reciprocal);
-    coefficients->b2 = scale(b2 * reciprocal);
+    double values[5] = {a1 * reciprocal, a2 * reciprocal, b0 * reciprocal,
+                        b1 * reciprocal, b2 * reciprocal};
+    int shift = choose_shift(values, 5);
+    coefficients->shift = shift;
+    coefficients->a1 = scale(values[0], shift);
+    coefficients->a2 = scale(values[1], shift);
+    coefficients->b0 = scale(values[2], shift);
+    coefficients->b1 = scale(values[3], shift);
+    coefficients->b2 = scale(values[4], shift);
 }
 
 void audioif_biquad_configure(audioif_biquad_coefficients_t *coefficients,
@@ -104,16 +174,39 @@ void audioif_biquad_reset(audioif_biquad_state_t *state) {
     memset(&state->x, 0, 4 * sizeof(int16_t));
 }
 
+// The output memory keeps AUDIOIF_BIQUAD_STATE_SHIFT bits below the sample
+// grid, which matters more than it looks. A biquad low down has both poles
+// close to the unit circle, and 1/A(z) - the gain the loop applies to whatever
+// error is fed back into it - runs to four or five figures at DC: 4000 for a
+// 100 Hz low-pass, 43000 for a 30 Hz high-pass. Rounding the feedback to whole
+// samples, as upstream does, hands that gain a half-LSB of error to amplify.
+//
+// On the accumulator's headroom: a coefficient is under 2^31 by construction,
+// `buffer` carries sample-range values (both callers feed it int16 material),
+// and `y` is clamped to the sample range plus its extra bits - so the five
+// terms come to about 2^60.4 worst case, six bits inside an int64_t. Stressed
+// with rail-to-rail input across 315 mode/frequency/Q/A combinations, nothing
+// wrapped.
 void audioif_biquad_process(const audioif_biquad_coefficients_t *c,
     audioif_biquad_state_t *state, int32_t *buffer, size_t sample_count) {
+    const int shift = c->shift;
+    const int64_t rounding = (int64_t)1 << (shift - 1);
+    const int64_t ceiling = (int64_t)32767 << AUDIOIF_BIQUAD_STATE_SHIFT;
+    const int64_t floor_level = -((int64_t)32768 << AUDIOIF_BIQUAD_STATE_SHIFT);
     int32_t x0 = state->x[0], x1 = state->x[1];
     int32_t y0 = state->y[0], y1 = state->y[1];
     for (size_t i = 0; i < sample_count; i++) {
         int32_t input = buffer[i];
-        int32_t output = audioif_sat16(c->b0 * input + c->b1 * x0 +
-            c->b2 * x1 - c->a1 * y0 - c->a2 * y1 +
-            (1 << (AUDIOIF_BIQUAD_SHIFT - 1)), AUDIOIF_BIQUAD_SHIFT);
-        x1 = x0; x0 = input; y1 = y0; y0 = output; buffer[i] = output;
+        int64_t accumulator =
+            (((int64_t)c->b0 * input + (int64_t)c->b1 * x0 +
+              (int64_t)c->b2 * x1) << AUDIOIF_BIQUAD_STATE_SHIFT) -
+            (int64_t)c->a1 * y0 - (int64_t)c->a2 * y1;
+        int64_t output = (accumulator + rounding) >> shift;
+        if (output > ceiling) output = ceiling;
+        else if (output < floor_level) output = floor_level;
+        x1 = x0; x0 = input; y1 = y0; y0 = (int32_t)output;
+        buffer[i] = (int32_t)((output + (1 << (AUDIOIF_BIQUAD_STATE_SHIFT - 1)))
+            >> AUDIOIF_BIQUAD_STATE_SHIFT);
     }
     state->x[0] = x0; state->x[1] = x1;
     state->y[0] = y0; state->y[1] = y1;

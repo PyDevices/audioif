@@ -21,14 +21,15 @@ typedef enum {
     SYNTHIO_PEAKING_EQ, SYNTHIO_LOW_SHELF, SYNTHIO_HIGH_SHELF
 } synthio_filter_mode;
 
-#define BIQUAD_SHIFT (15)
-
 struct synthio_biquad {
     mp_obj_base_t base;
     synthio_filter_mode mode;
     synthio_block_slot_t f0, Q, A;
     mp_float_t cached_W0, cached_Q, cached_A;
-    int32_t a1, a2, b0, b1, b2;
+    // `shift` is the coefficients' fixed-point format, which audioif picks per
+    // filter rather than fixing at Q15 the way upstream does. Cache it with
+    // them: they are meaningless apart.
+    int32_t a1, a2, b0, b1, b2, shift;
 };
 
 typedef audioif_biquad_state_t biquad_filter_state;

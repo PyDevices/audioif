@@ -23,6 +23,12 @@
 mp_obj_t common_hal_synthio_biquad_new(synthio_filter_mode mode) {
     synthio_biquad_t *self = mp_obj_malloc(synthio_biquad_t, &synthio_biquad_type_obj);
     self->mode = mode;
+    // Every path into the filter ticks first, which fills these in; a Biquad
+    // that somehow reaches the DSP untouched should be a pass-through rather
+    // than a shift of zero.
+    self->a1 = self->a2 = self->b1 = self->b2 = 0;
+    self->shift = 1;
+    self->b0 = 1 << self->shift;
     return MP_OBJ_FROM_PTR(self);
 }
 
@@ -89,6 +95,7 @@ void common_hal_synthio_biquad_tick(mp_obj_t self_in) {
     self->b0 = coefficients.b0;
     self->b1 = coefficients.b1;
     self->b2 = coefficients.b2;
+    self->shift = coefficients.shift;
 }
 
 void synthio_biquad_filter_reset(biquad_filter_state *st) {
@@ -101,6 +108,7 @@ void synthio_biquad_filter_samples(mp_obj_t self_in, biquad_filter_state *st, in
     audioif_biquad_coefficients_t coefficients = {
         .a1 = self->a1, .a2 = self->a2,
         .b0 = self->b0, .b1 = self->b1, .b2 = self->b2,
+        .shift = self->shift,
     };
     audioif_biquad_process(&coefficients, st, buffer, n_samples);
 }

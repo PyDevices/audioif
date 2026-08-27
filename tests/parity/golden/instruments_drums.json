@@ -3,71 +3,71 @@
     "cr78": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "39101ae33ef26ae07f31292bbf5680d1655e0176063229923d4b6dd1995d6e7f",
-        "micropython": "39101ae33ef26ae07f31292bbf5680d1655e0176063229923d4b6dd1995d6e7f"
+        "cpython": "4edb9ec13a8f259113b73327ef95b785e0960d255c76908033795b31f57a9c3f",
+        "micropython": "4edb9ec13a8f259113b73327ef95b785e0960d255c76908033795b31f57a9c3f"
       }
     },
     "dmx": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "fea0f39bbac35541812ca8ed033e1cf8600e19a18488f62bceee8184379d0a4f",
-        "micropython": "fea0f39bbac35541812ca8ed033e1cf8600e19a18488f62bceee8184379d0a4f"
+        "cpython": "db419b564010fd1f55aa087ac8beed07cfe49c89e751bc7a016d27b49614ffe0",
+        "micropython": "db419b564010fd1f55aa087ac8beed07cfe49c89e751bc7a016d27b49614ffe0"
       }
     },
     "drumtraks": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "c9a7929eba9e61367c1ac44f98252a11416749c6a709267ee8143f0ac6366bdb",
-        "micropython": "5427a5c05f049258b40516cab451111078bd8261b817f0cbd39a1ba26352f70f"
+        "cpython": "8598c128d2228d98077a11c11ea00185ee2b95dd7cb5aba562708548150833c9",
+        "micropython": "d25d5622adcec2a0d03d69a66e0a1cfbf376bbeb0041b5947914151ba70877a1"
       }
     },
     "linndrum": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "ea4d420c41a62343383d65c6f038884ff520ac07725812f1056d0ecd530513fc",
-        "micropython": "4dbfa39cabf36df63772a77478230fc359f1bd316efb7b46615f1417150c0224"
+        "cpython": "4542dea78fbd4b10f3e7a22173b6849cdc4f131624e0fb4fe0ad9eb4410f4c1b",
+        "micropython": "9a78ecfb93828b016341675fa197b2abba808772884aa415c354d4ed3a72558c"
       }
     },
     "simmons_sdsv": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "c1cf3b6859353b46f6b300fdf43393d94245c4fff9bdd20f592c625393fdaa82",
-        "micropython": "c1cf3b6859353b46f6b300fdf43393d94245c4fff9bdd20f592c625393fdaa82"
+        "cpython": "b058a0d6c2b42c864aac259e3b909d7dc883b5ab3802aebd6916003bdcf73fc1",
+        "micropython": "b058a0d6c2b42c864aac259e3b909d7dc883b5ab3802aebd6916003bdcf73fc1"
       }
     },
     "sp1200": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "08a302775a091f6354c99cee24538ab89e3112704b3adf91e858da9aed25ca6e",
-        "micropython": "3fa997e5542a9d6ce08ac3a19ee622202bb2ceabe972a30ae34d47a12eb98a48"
+        "cpython": "2517df986123229acd3a59ac9bdc573c9bcafa773db50d0953ff507ac0246ee8",
+        "micropython": "76ec9f9ae2eaac9fb42f2cbba38594aa89675d482c0ec47db6d20b41d8bfc518"
       }
     },
     "tr606": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "8e1761aebbcaa58e77424f1d7c07a3ef585fcfd76728a203b356c612855c43bf",
-        "micropython": "8e1761aebbcaa58e77424f1d7c07a3ef585fcfd76728a203b356c612855c43bf"
+        "cpython": "966ce1f0f1ae0a71bb7ccb6339840c9e5c06c3baabfcc0de530ec7a637a7fecc",
+        "micropython": "966ce1f0f1ae0a71bb7ccb6339840c9e5c06c3baabfcc0de530ec7a637a7fecc"
       }
     },
     "tr707": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "ae7acfaad64f351e234203e22b89d40b92fce29d4a346ec8b0842e3953e180e2",
-        "micropython": "ae7acfaad64f351e234203e22b89d40b92fce29d4a346ec8b0842e3953e180e2"
+        "cpython": "a80d3a1931ff5f8a4fa80866f824cab8cb18b8ffdd101d25e0b1713005c6a25a",
+        "micropython": "a80d3a1931ff5f8a4fa80866f824cab8cb18b8ffdd101d25e0b1713005c6a25a"
       }
     },
     "tr808": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "c064bc128fdd1b96cc260a4970b9da02ea6b7c989a250a9fef3c1ea402ea8035",
-        "micropython": "c064bc128fdd1b96cc260a4970b9da02ea6b7c989a250a9fef3c1ea402ea8035"
+        "cpython": "f3cff2b8a8d0673d9e46dac686e269e17baded1b055ba63928e0d665ef4cffdd",
+        "micropython": "f3cff2b8a8d0673d9e46dac686e269e17baded1b055ba63928e0d665ef4cffdd"
       }
     },
     "tr909": {
       "cross_interpreter_equal": true,
       "old": {
-        "cpython": "db230cab98e36f70c62fbcbee3a20790dd794eb177d23145e0d8247094d48e1b",
-        "micropython": "db230cab98e36f70c62fbcbee3a20790dd794eb177d23145e0d8247094d48e1b"
+        "cpython": "34bcda5b5f887caa917c17965cae2cfdbcb80a76191b32457da74daec8afde42",
+        "micropython": "34bcda5b5f887caa917c17965cae2cfdbcb80a76191b32457da74daec8afde42"
       }
     }
   },
