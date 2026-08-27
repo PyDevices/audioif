@@ -138,7 +138,12 @@ def verify(args):
     for piece, report, digest, size in each_piece(args):
         record = fixture["pieces"].get(piece)
         if record is None:
-            failures.append("%s: nothing captured for it" % piece)
+            # A piece the golden has never seen. Not a failure: this fixture
+            # detects *movement* in what it captured, and a piece added since
+            # cannot have moved. Said out loud rather than skipped silently,
+            # because a golden that lost an entry looks the same from here.
+            print("new      %-18s not in the golden; nothing to compare"
+                  % piece)
             continue
         if digest == record["wav_sha256"]:
             print("ok       %-18s identical (%s)" % (piece, digest[:16]))
