@@ -748,3 +748,38 @@ directly after a Mixer is still silent. Anything in `audioeffects` that ends in
 a Mixer — `ParametricEQ` with boosts, `MultibandCompressor`, `Harmonizer`,
 `Octaver`, `StereoWidener`, `DynamicEQ`, `PingPongDelay`, `Exciter` — can be
 the last node in a chain there, but not the middle of one.
+
+## Peaking EQ computed `b2` with the wrong sign (effects-extension tier)
+
+`audioif_biquad_configure_w0()` builds a peaking bell (mode 4) from the RBJ
+cookbook. Upstream computes
+
+```c
+b0 = 1 + alpha * A; b1 = -2 * cos; b2 = 1 + alpha * A;
+a0 = 1 + alpha / A; a1 = -2 * cos; a2 = 1 - alpha / A;
+```
+
+`b2` is `1 - alpha * A`. The sign is not cosmetic: it is what makes numerator
+and denominator sum to the same value at DC and again at Nyquist, which is the
+entire premise of a peaking filter — unity everywhere except the band around
+`f0`. With the plus, the numerator picks up `2 * alpha * A` at DC that the
+denominator does not, and since `1 - cos(W0)` is very small at low
+frequencies, that term dominates. The DC gain becomes
+`1 + alpha * A / (1 - cos(W0))`, so a +6 dB bell at 1 kHz with Q of 1 at
+48 kHz arrives as roughly **+21 dB at DC**, and it worsens as `f0` drops. It is
+not a bell with a blemish; it is a bass shelf with a bell buried in it.
+
+Measured through the built extension after the fix, a +6 dB bell at 1200 Hz
+(Q 1, 8 kHz) reads +6.00 dB at center and 0.00 dB at DC and Nyquist, and a
+−6 dB cut reads −6.000 dB. Before it, DC read +21.42 dB.
+
+This is upstream's bug, not a porting error: CircuitPython 10.2.1 carries the
+identical lines at `shared-module/synthio/Biquad.c:157-159`. It survived
+because `PEAKING_EQ` is the one mode a synthesis library rarely reaches for —
+nothing in this repository, in `audioeffects`, or in micropython-vst3's
+instruments or soundtrack used it. `audioeffects.ParametricEQ` worked around
+it by synthesizing bells out of notch and band-pass sections instead.
+
+**Deviation**: fixed here, so `PEAKING_EQ` diverges from `bin/circuitpython`.
+Nothing else moves — no existing fixture reached mode 4, which is also why
+`tests/parity/biquad_component_probe.py` now walks all seven modes.

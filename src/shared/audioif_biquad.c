@@ -57,7 +57,14 @@ void audioif_biquad_configure_w0(audioif_biquad_coefficients_t *coefficients,
             b0 = 1; b1 = -2 * sc.c; b2 = 1;
         }
     } else if (mode == 4) {
-        b0 = 1 + alpha * A; b1 = -2 * sc.c; b2 = 1 + alpha * A;
+        // b2 is `1 - alpha * A`, not `+`. Upstream CircuitPython has the plus
+        // (shared-module/synthio/Biquad.c); see docs/upstream-diff.md. The sign
+        // is what makes numerator and denominator sum alike at DC and Nyquist,
+        // which is the whole point of a peaking filter: unity everywhere except
+        // the band. With it flipped the numerator gains 2*alpha*A at DC while
+        // the denominator does not, and since 1 - cos(W0) is tiny down there,
+        // a +6 dB bell at 1 kHz / Q 1 comes out roughly +21 dB at DC.
+        b0 = 1 + alpha * A; b1 = -2 * sc.c; b2 = 1 - alpha * A;
         a0 = 1 + alpha / A; a1 = -2 * sc.c; a2 = 1 - alpha / A;
     } else {
         double root = fast_sqrt(A);

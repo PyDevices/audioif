@@ -26,3 +26,4 @@ jobs:
       - run: python tests/parity/verify_acceptance.py
       - run: python tests/parity/verify_effects.py
       - run: python tests/parity/verify_streaming.py
+      - run: python tests/parity/verify_biquad.py
