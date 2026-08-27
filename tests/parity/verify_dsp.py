@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""audiodynamics, audioroute, audiomath and audioecho parity: what the
-originals rendered, and what the ports render now.
+"""audiodynamics, audioroute, audiomath, audioecho and audioconvolve parity:
+what the originals rendered, and what the ports render now.
 
     verify_dsp.py --capture-old     record the goldens from the original nodes
     verify_dsp.py                    hold the ports to them
@@ -12,19 +12,25 @@ wants a shared memory mapping a VST host created.
 
 One hash per probe covers every interpreter, unlike the instrument goldens.
 The arithmetic here is entirely inside shared/audioif_dynamics.c,
-shared/audioif_splitter.c and shared/audioif_multiply.c -- the same C the
-CPython extension links -- so a disagreement between two interpreters would
-itself be the finding.
+audioif_splitter.c, audioif_multiply.c, audioif_feedback_delay.c and
+audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
+one -- the same C the CPython extension links, so a disagreement between two
+interpreters would itself be the finding.
 
-`audiomath` and `audioecho` have no oracle at all: they are audioif's own
-modules, and neither do `Dynamics`' lookahead and true-peak options, which is
-why those get a fixture of their own rather than joining dynamics_probe.py --
-that one is held against `vstaudio_dsp.c` compiled unmodified, so it may only
-use forms the original accepts. The modules with no ancestor in CircuitPython or in the engine. Their goldens are
-captured from the port under CPython, and what they prove is cross-interpreter
-agreement and no accidental change over time, not fidelity to something older.
-The delay is the strictest of the three: its loop is recursive and runs in
-`float`, so a one-ulp disagreement between two builds would not stay one ulp.
+Four of the seven probes are held against no oracle, because there is nothing
+older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
+audioif's own modules, with no ancestor in CircuitPython or in the engine, and
+neither have `Dynamics`' lookahead and true-peak options -- which is why those
+get a fixture of their own rather than joining dynamics_probe.py, that one
+being held against `vstaudio_dsp.c` compiled unmodified and so restricted to
+forms the original accepts. Their goldens are captured from the port under
+CPython, and what they prove is cross-interpreter agreement and no accidental
+change over time, not fidelity to something older.
+
+Two of those four are unusually sensitive, which is most of the reason for
+running them on every interpreter. The delay's loop is recursive, so a one-ulp
+disagreement between two builds would not stay one ulp; and every convolver
+output sample is a sum of hundreds of float products through two transforms.
 """
 
 import argparse
