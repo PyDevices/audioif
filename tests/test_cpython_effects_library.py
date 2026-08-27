@@ -102,6 +102,86 @@ def tone_gain_db(hz, build_chain):
     return 20.0 * math.log10(wet / dry)
 
 
+def tilt_db(build_chain, high=16000.0, reference=1000.0):
+    """How much darker or brighter `build_chain` leaves the top end, in dB
+    relative to what it does at `reference`. A saturation curve costs a
+    broadband decibel or so on its own, and that is level, not tone; the
+    difference between the two frequencies is the tone."""
+    return (tone_gain_db(high, build_chain)
+            - tone_gain_db(reference, build_chain))
+
+
+def spectrum(sample, blocks=20, skip=8):
+    """Magnitude spectrum of the left channel, and the bin width, from a
+    power-of-two window so no FFT padding is involved."""
+    values = []
+    for _ in range(skip):
+        audiocore.get_buffer(sample)
+    for _ in range(blocks):
+        data = memoryview(bytes(audiocore.get_buffer(sample)[1])).cast("h")
+        values.extend(data[0::2])
+    size = 1
+    while size * 2 <= len(values):
+        size *= 2
+    window = [0.5 - 0.5 * math.cos(2.0 * math.pi * i / size)
+              for i in range(size)]
+    real = [values[i] * window[i] for i in range(size)]
+    imaginary = [0.0] * size
+    _fft(real, imaginary)
+    half = size // 2
+    return ([math.hypot(real[i], imaginary[i]) for i in range(half)],
+            SAMPLE_RATE / float(size))
+
+
+def _fft(real, imaginary):
+    """In-place radix-2 FFT. No numpy: these tests run wherever audioif
+    builds, and the parity interpreters have no third-party packages."""
+    size = len(real)
+    j = 0
+    for i in range(1, size):
+        bit = size >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            real[i], real[j] = real[j], real[i]
+            imaginary[i], imaginary[j] = imaginary[j], imaginary[i]
+    length = 2
+    while length <= size:
+        angle = -2.0 * math.pi / length
+        step_real, step_imaginary = math.cos(angle), math.sin(angle)
+        for start in range(0, size, length):
+            wr, wi = 1.0, 0.0
+            for offset in range(length // 2):
+                a, b = start + offset, start + offset + length // 2
+                tr = real[b] * wr - imaginary[b] * wi
+                ti = real[b] * wi + imaginary[b] * wr
+                real[b], imaginary[b] = real[a] - tr, imaginary[a] - ti
+                real[a], imaginary[a] = real[a] + tr, imaginary[a] + ti
+                wr, wi = wr * step_real - wi * step_imaginary, \
+                    wr * step_imaginary + wi * step_real
+        length *= 2
+
+
+def harmonic_db(build_chain, hz=1000.0, orders=(2, 3)):
+    """Each named harmonic of `hz`, in dB relative to the fundamental."""
+    magnitudes, bin_hz = spectrum(build_chain(sine(hz, frames=80000)))
+
+    def peak_near(frequency):
+        lo = max(0, int(frequency * 0.97 / bin_hz))
+        hi = min(len(magnitudes), int(frequency * 1.03 / bin_hz) + 1)
+        return max(magnitudes[lo:hi]) if hi > lo else 0.0
+
+    base = peak_near(hz)
+    out = []
+    for order in orders:
+        value = peak_near(hz * order)
+        out.append(20.0 * math.log10(value / base)
+                   if value > 0.0 and base > 0.0 else -200.0)
+    return out
+
+
 class EffectsLibraryTest(unittest.TestCase):
     def test_the_catalogue_is_all_there(self):
         self.assertEqual(len(CLASSES), 39, CLASSES)
@@ -182,6 +262,105 @@ class EffectsLibraryTest(unittest.TestCase):
         # frequency was halved on the way in.
         with self.assertRaises(ValueError):
             audioeffects.LowPass(source(), frequency=SAMPLE_RATE * 0.75)
+
+    def test_the_saturation_characters_are_different_curves(self):
+        # The three are not presets over one curve: tube runs the engine's
+        # asymmetric OVERDRIVE, which generates even harmonics, and the
+        # other two run its odd-symmetric WAVESHAPE, which generates none.
+        # A 2nd harmonic is the whole difference between a valve and a
+        # tape machine, so measure it rather than trusting the table.
+        second = {}
+        for character in ("tube", "tape", "console"):
+            second[character], third = harmonic_db(
+                lambda s, c=character: audioeffects.Saturation(
+                    s, amount=1.0, character=c).output)
+            self.assertGreater(third, -60.0,
+                               "%s generates no harmonics at all" % character)
+        self.assertGreater(second["tube"], second["tape"] + 40.0)
+        self.assertGreater(second["tube"], second["console"] + 40.0)
+
+    def test_the_saturation_characters_are_level_matched(self):
+        # Switching character should change the colour and not the gain,
+        # or an arrangement has to be re-balanced to audition one.
+        levels = [tone_gain_db(1000.0, lambda s, c=c: audioeffects.Saturation(
+            s, amount=1.0, character=c).output)
+            for c in ("tube", "tape", "console")]
+        self.assertLess(max(levels) - min(levels), 0.75, levels)
+
+    def test_amount_scales_the_whole_character(self):
+        # Including the tone shaping. A quarter of the way into tape should
+        # be a quarter of its top-end loss, not all of it.
+        full, quarter, none = (
+            tilt_db(lambda s, a=a: audioeffects.Saturation(
+                s, amount=a, character="tape").output)
+            for a in (1.0, 0.25, 0.0))
+        self.assertLess(full, -2.0)
+        self.assertAlmostEqual(quarter, full * 0.25, delta=0.25)
+        self.assertAlmostEqual(none, 0.0, delta=0.1)
+
+    def test_tape_darkens_and_console_brightens(self):
+        tape = tilt_db(lambda s: audioeffects.Saturation(
+            s, amount=1.0, character="tape").output)
+        console = tilt_db(lambda s: audioeffects.Saturation(
+            s, amount=1.0, character="console").output)
+        self.assertLess(tape, -2.0)
+        self.assertGreater(console, 0.2)
+        # tube shapes nothing: its character is entirely in the harmonics.
+        self.assertAlmostEqual(
+            tilt_db(lambda s: audioeffects.Saturation(
+                s, amount=1.0, character="tube").output), 0.0, delta=0.2)
+
+    def test_an_unknown_character_is_refused(self):
+        with self.assertRaises(ValueError):
+            audioeffects.Saturation(source(), character="transistor")
+
+    def test_the_overdrive_knob_actually_drives(self):
+        # OVERDRIVE mode ignores the engine node's own `drive` argument -
+        # its curve is a fixed shape - so passing the knob straight through
+        # left it inert. It is pre-gain into the curve now, with the level
+        # put back after, so turning it up buys harmonics and not volume.
+        harmonics = []
+        for drive in (0.1, 0.4, 0.9):
+            second, third = harmonic_db(
+                lambda s, d=drive: audioeffects.Overdrive(
+                    s, drive=d, mix=1.0).output)
+            harmonics.append(second)
+        self.assertEqual(harmonics, sorted(harmonics), harmonics)
+        self.assertGreater(harmonics[-1], harmonics[0] + 6.0, harmonics)
+        levels = [tone_gain_db(1000.0, lambda s, d=d: audioeffects.Overdrive(
+            s, drive=d, mix=1.0).output) for d in (0.1, 0.4, 0.9)]
+        self.assertLess(max(levels) - min(levels), 2.0, levels)
+
+    def test_a_bitcrusher_can_be_asked_for_a_bit_depth(self):
+        for bits in (4, 8, 12):
+            self.assertEqual(audioeffects.Bitcrusher(source(),
+                                                     bits=bits).bits, bits)
+        # Fewer bits is a coarser quantizer, so a louder error against the
+        # signal it came from - which is what "crushed" means.
+        eight = peak(audioeffects.Bitcrusher(source(), bits=8).output, 8)
+        four = peak(audioeffects.Bitcrusher(source(), bits=4).output, 8)
+        self.assertNotAlmostEqual(eight, four, places=3)
+        with self.assertRaises(ValueError):
+            audioeffects.Bitcrusher(source(), bits=20)
+
+    def test_an_octaver_reaches_two_octaves_either_way(self):
+        deep = audioeffects.Octaver(source(), down=0.4, down2=0.4)
+        self.assertEqual(deep.down2.semitones, -24.0)
+        self.assertIsNone(deep.up)
+        self.assertGreater(peak(deep.output, 12), 0.001)
+        high = audioeffects.Octaver(source(), down=0.0, up=0.4, up2=0.4)
+        self.assertEqual(high.up2.semitones, 24.0)
+        self.assertIsNone(high.down)
+
+    def test_an_octaver_builds_only_the_octaves_it_was_asked_for(self):
+        # A Splitter fans out to four taps, so the dry signal plus three
+        # octaves is the ceiling - and the default, one octave down, should
+        # cost one shifter rather than four.
+        one = audioeffects.Octaver(source())
+        self.assertEqual(len(one.mixer.voice), 2)
+        with self.assertRaises(ValueError):
+            audioeffects.Octaver(source(), down=0.3, down2=0.3, up=0.3,
+                                 up2=0.3)
 
     def test_the_compressor_actually_compresses(self):
         # Not just "it renders". The comparison is against a Compressor whose

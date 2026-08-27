@@ -76,19 +76,29 @@ then sums).
 ### Drive - `drive.py`
 | Class | Notes |
 |---|---|
-| `Overdrive` | soft clip with tone control |
+| `Overdrive` | soft clip with tone control; `drive` is pre-gain into a fixed curve |
 | `Distortion` | hard clip |
 | `Fuzz` | pre-gained into a square |
-| `Saturation` | subtle soft clip, mostly dry |
-| `Bitcrusher` | lo-fi bit/rate degradation |
+| `Saturation` | `character="tube"/"tape"/"console"`, mostly dry |
+| `Bitcrusher` | bit-depth reduction, by `bits` (2..16) or `crush` |
 | `Exciter` | overdriven high-passed branch blended under the dry |
+
+The three saturation characters are different curves, not one curve with
+presets. `tube` runs the engine's asymmetric OVERDRIVE, so it generates a
+2nd harmonic level with the 3rd; `tape` and `console` run its
+odd-symmetric WAVESHAPE, whose 2nd harmonic measures 66 dB lower - the
+numerical floor. On top of that `tape` loses 2.6 dB by 16 kHz and
+`console` gains half a decibel there, and `console` is the gentlest of the
+three by about 4 dB of THD. All three are level-matched to within 0.3 dB,
+so auditioning one against another does not mean re-balancing. `amount`
+scales the whole character, tone shaping included.
 
 ### Pitch and stereo - `pitch.py`
 | Class | Notes |
 |---|---|
 | `PitchShifter` | time-independent shift |
 | `Harmonizer` | dry + up to three fixed intervals |
-| `Octaver` | -12 and +12 branches |
+| `Octaver` | one or two octaves either way; only the branches asked for are built |
 | `StereoWidener` | Haas: short-delayed copy panned wide against the dry |
 
 ## Deliberately absent
@@ -97,8 +107,34 @@ then sums).
 - **Pitch correction** - needs pitch detection the engine does not have.
 - **Ring modulation of the input** - stream-by-oscillator multiplication
   is not available (synthio ring mod applies to synthesized notes only).
+- **Sample-rate reduction** - the other half of a lo-fi box. The engine's
+  LOFI mode masks low bits and nothing else; decimation needs a
+  sample-and-hold that is not in the palette. `Bitcrusher` does the bit
+  depth alone.
 - LFO-driven parameters update at the block rate (~187 Hz at 48 kHz),
   plenty for sweep rates but not audio-rate modulation.
+
+## A note on how low a filter can go
+
+Every biquad in the engine keeps its coefficients as Q15 integers, which
+is the right trade on a microcontroller and costs low frequencies. Below
+about 300 Hz the coefficients quantize into something that is no longer
+the filter you asked for, and it fails quietly rather than loudly: a
+`LowPass` at 100 Hz returns **silence**, a `HighPass` at 30 Hz returns
+**+20 dB of noise**, and a low shelf at 80 Hz lifts the whole band by 13
+dB instead of its 1.5. From 400 Hz up everything is accurate to a fraction
+of a decibel.
+
+So: keep `LowPass`, `HighPass`, `BandPass`, `Notch`, `LadderFilter`, and
+`ParametricEQ` bands at 400 Hz or above, and expect a swept filter to stop
+behaving as it goes under that. Two classes here carry the consequence in
+their defaults - `GraphicEQ`'s bottom three ISO bands (31.5, 63, 125 Hz)
+are wrong by +6.1, +1.0 and −2.9 dB on a +6 dB request, and
+`MultibandCompressor`'s default `low_hz=200` leaves a +5 dB bump under 100
+Hz. Nothing refuses a low frequency, because a `LadderFilter` sweeping
+down through it is a legitimate thing to do; the failure is graceless, not
+fatal. `docs/upstream-diff.md`, "The biquads are Q15, so they cannot go
+low", has the coefficient arithmetic and the full measurement table.
 
 ## A note on chaining after a Mixer
 

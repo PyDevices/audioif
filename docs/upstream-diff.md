@@ -876,3 +876,62 @@ at 1 kHz and ±0.1 dB two octaves out either way; a −9 dB / Q 1.4 cut at 500 H
 reads −9.05 dB; `LowPass` at 1 kHz reads −3.00 dB at cutoff and −12.33 dB an
 octave above. `tests/test_cpython_effects_library.py` pins the bell placement,
 the flat-EQ passthrough, and the Nyquist refusal.
+
+## The biquads are Q15, so they cannot go low (kept, not fixed; breadth tier)
+
+Not a divergence -- a limit audioif inherits from upstream unchanged, found
+while looking for somewhere to put a tape head bump. It is recorded here
+because it is invisible from the Python side and fails silently, and because
+nothing else documents it.
+
+`audioif_biquad_configure_w0()` stores its five coefficients as Q15 integers
+(`AUDIOIF_BIQUAD_SHIFT = 15`, `scale()` rounds `value * 32768` to an
+`int32_t`), and `audioif_biquad_process()` accumulates the five products in
+`int32_t`. Both come straight from CircuitPython's
+`shared-module/synthio/Biquad.c`, and both are the right call for a
+microcontroller. The cost is that low-frequency sections are unrepresentable:
+as `W0` goes to zero a low-pass's `b0 = (1 - cos W0) / 2` goes with it, and at
+100 Hz / 48 kHz it is `4.3e-5`, which is 1.4 in Q15 and rounds to 1. Meanwhile
+`a1` approaches `-2` and its product with a full-scale sample approaches
+`INT32_MAX`, so the accumulator has nothing left for the other four terms.
+
+Measured at 48 kHz, one biquad, full-scale-ish input:
+
+| asked for | got |
+|---|---|
+| `LOW_PASS` at 100 Hz | silence |
+| `LOW_PASS` at 200 Hz | −2.69 dB at cutoff, **+1.25 dB** two octaves below |
+| `LOW_PASS` at 400 Hz and above | −3.08 dB at cutoff, flat below (correct) |
+| `HIGH_PASS` at 30 Hz | **+21.6 dB** at 50 Hz, +19.8 dB at 8 kHz -- noise |
+| `HIGH_PASS` at 100 Hz | **+6.24 dB** at cutoff |
+| `HIGH_PASS` at 500 Hz and above | −3.05 dB at cutoff (correct) |
+| `LOW_SHELF` 80 Hz / +1.5 dB | **+13.4 dB**, and across the whole band |
+| `PEAKING_EQ` 100 Hz / +3 dB | +7.8 dB at center, +4.4 dB at 4 kHz |
+
+The usable floor is about 300 Hz, and 400 Hz for anything under half a decibel
+of error. Above it the sections are accurate to the numbers in the peaking-EQ
+section above.
+
+Two consequences inside `audioeffects`, both measured, neither previously
+known:
+
+- `GraphicEQ`'s bottom three ISO bands are wrong. Asked for +6 dB and measured
+  at its own center, the 31.5 Hz band gives **+12.14 dB**, 63 Hz gives +6.96,
+  125 Hz gives +3.07. From 250 Hz up it is +5.76 dB or better, and from 500 Hz
+  up it is within 0.12 dB.
+- `MultibandCompressor`'s default `low_hz=200.0` crossover mis-splits, leaving
+  a **+5.2 dB** bump below 100 Hz on a recombine that should be near flat.
+
+Worth noting on the timing: before the effects-extension tier, `_core.filter_hz`
+halved every frequency on the way in, so *both* of those ran an octave lower
+still -- `GraphicEQ`'s 63 Hz band was configured at 31.5 Hz, and the multiband
+low band was a 100 Hz low-pass, i.e. silent. Removing that workaround moved
+them up out of the worst of it by accident.
+
+Nothing in the soundtrack is affected: its one and only filtered rack is
+Perihelion's `LowPass(frequency=4200)`.
+
+Fixing this means widening the coefficient format (Q28 or so) and accumulating
+in `int64_t`, which is a third deviation from the oracle and has not been
+approved. Until then the floor is a documented property; see the effects
+library README, "A note on how low a filter can go".
