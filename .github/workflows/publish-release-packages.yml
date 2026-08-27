@@ -50,6 +50,11 @@ jobs:
     with:
       build-kind: native-and-wasm
       distribution-name: pydevices-audioif
+      # The pure-Python tier only. The native modules are firmware: MicroPython
+      # and CircuitPython build them from src/ as a usermod, so there is nothing
+      # for MIP to carry. audiorender is excluded as well -- it needs numpy and
+      # renders a whole composition in memory, which is a desktop's job.
+      mip-profile: audioinstruments,audioeffects
       expected-wheel-count: 16
       wheel-filename-prefix: pydevices_audioif
       release-ref: ${{ inputs.release-ref }}
