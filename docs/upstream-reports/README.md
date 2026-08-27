@@ -1,7 +1,9 @@
 # Drafts for adafruit/circuitpython
 
-Three bugs this port found in CircuitPython's `shared-module/synthio/Biquad.c`,
-written up as issue bodies ready to paste. **Nothing here has been filed.**
+Six bugs this port found in CircuitPython, written up as issue bodies ready to
+paste. **Nothing here has been filed.**
+
+Three are in `shared-module/synthio/Biquad.c`:
 
 | draft | what | shape of the fix |
 |---|---|---|
@@ -9,30 +11,49 @@ written up as issue bodies ready to paste. **Nothing here has been filed.**
 | [biquad-reset.md](biquad-reset.md) | `synthio_biquad_filter_reset()` clears half its struct, so a reset filter plays 1.3 dB of the previous audio out of silence | one line |
 | [biquad-band-edges.md](biquad-band-edges.md) | Q15 coefficients and a shared sin/cos polynomial: nothing below ~300 Hz or above ~16 kHz is the filter that was asked for | a design decision, with a real MCU cost |
 
+Three are elsewhere:
+
+| draft | what | shape of the fix |
+|---|---|---|
+| [dds-oscillator-off-by-one.md](dds-oscillator-off-by-one.md) | the oscillator wraps one sample late and reads past the end of the waveform, so renders are not reproducible | one character |
+| [distortion-soft-clip-union.md](distortion-soft-clip-union.md) | `Distortion(soft_clip=False)` turns soft clipping **on** — a bool read through the wrong union member | one line |
+| [distortion-overdrive-drive.md](distortion-overdrive-drive.md) | `drive` is ignored in OVERDRIVE mode, and nothing says so | wire it up, or document it |
+
 Each file opens with a short **note to the poster** (strip it before posting),
-then a `---` and the issue body itself. The first two are one-liners a
-maintainer can apply without a round trip; the third is a limitation report
-with a proposed fix and its measured cost, because it is the maintainers' call
-whether to take that cost, make it opt-in, or decline.
+then a `---` and the issue body itself.
 
-Every number in them was measured **on a build of upstream `main`** — the
-CircuitPython checkout at `cmods/circuitpython`, which this repo treats as a
-read-only oracle and never patches. That matters: `docs/upstream-diff.md`
-carries a different "before" table for the same bugs, measured on *this port's*
-copy, which by then already differed from upstream in ways that move the
-numbers. Do not paste this repo's figures into an upstream issue; the ones
-here are upstream's own.
+## Suggested order
 
-The repro scripts run unmodified on a board with an `AudioOut`, and on a unix
-build of CircuitPython with this repo's `audiocore.get_buffer` /
-`audiocore.reset_buffer` helpers (which is how they were measured here — see
-`apply_cp_patches.sh`). A maintainer on a board should replace the
-`audiocore.get_buffer` loop with playing into an output and listening or
-capturing; the effects are all far above the noise floor.
+The one-character and one-line fixes first, separately, so none of them waits
+behind a discussion: **peaking-eq-sign**, **dds-oscillator-off-by-one**,
+**distortion-soft-clip-union**, **biquad-reset**. Then **biquad-band-edges**,
+which is a limitation report with a proposed fix rather than a patch, because
+the M0+ cost is the maintainers' call. **distortion-overdrive-drive** last and
+lightly — it may well be intentional, and a docs fix would settle it.
+
+## Provenance of the numbers
+
+Everything was measured **on a build of upstream `main`** — the CircuitPython
+checkout at `cmods/circuitpython`, which this repo treats as a read-only
+oracle and never patches.
+
+That matters for the biquad ones: `docs/upstream-diff.md` carries a different
+"before" table for the same bugs, measured on *this port's* copy, which by
+then already differed from upstream in ways that move the numbers. Do not
+paste this repo's figures into an upstream issue; the ones here are
+upstream's own.
+
+The repro scripts use this repo's `audiocore.get_buffer` /
+`audiocore.reset_buffer` helpers, which are not upstream (see
+`apply_cp_patches.sh`) — that is just how the output was captured here. On a
+board, play into an `AudioOut` and capture instead; every effect is far above
+the noise floor.
 
 ## Before posting
 
-- Re-check that each bug is still on `main`. All three were verified there on
-  **2026-08-27**, against `shared-module/synthio/Biquad.c` and `Biquad.h`.
-- The stereo-filter bug this port also carries is **not** in here and must not
-  be filed: upstream fixed it after 10.2.1. See `docs/upstream-diff.md`.
+- Re-check that each bug is still on `main`. All six were verified there on
+  **2026-08-27**.
+- Two bugs this port also carries are **not** in here and must not be filed:
+  the stereo `Filter` sharing one biquad state, and `Mixer.reset_buffer`
+  stopping its voices. Upstream fixed both after 10.2.1. See
+  `docs/upstream-diff.md`.

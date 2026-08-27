@@ -5,10 +5,10 @@ CircuitPython's, or needed a workspace-side fix that isn't a plain port.
 Goal: keep this list short. Python-level API and behavior match CP unless
 noted here.
 
-Three of the entries below are upstream bugs rather than divergences, and
-have issue drafts ready to post in [upstream-reports/](upstream-reports/).
-None has been filed. **The numbers here were measured on this port and are
-not upstream's** -- the drafts carry figures measured on a build of upstream
+Six of the entries below are upstream bugs rather than divergences, and have
+issue drafts ready to post in [upstream-reports/](upstream-reports/). None has
+been filed. **The numbers here were measured on this port and are not
+upstream's** -- the drafts carry figures measured on a build of upstream
 `main`, which differ.
 
 ## Property invocation needs an explicit `attr` slot (tier 0/1, all tiers after)
@@ -495,6 +495,18 @@ fix: `soft_clip` now reads correctly (matching caller intent) and produces
 *identical* checksums across all three of this port's targets (unix,
 windows, wasm) for the same script -- a stronger three-architecture
 consistency check than the tier 4 verification had access to at the time.
+**Sharper than the phase-8d writeup, found 2026-08-27 while drafting the
+upstream report**: this is not wasm-only, and "no unix impact" was too kind.
+The default reads correctly everywhere because `mp_arg_parse_all()` copies the
+*whole* union for a defaulted argument, and the static `{.u_bool = false}` is
+zero-filled. A **supplied** argument only has its one `bool` byte written into
+an uninitialised stack union, so `.u_obj` is a pointer made of one meaningful
+byte and seven stale ones. On this port's own x86-64 oracle build,
+`Distortion(soft_clip=False)` reads back **`True`** -- the one case a user
+would reach for to get the hard curve is the one case that cannot be right
+except by luck. Drafted:
+`docs/upstream-reports/distortion-soft-clip-union.md`.
+
 This is now a deliberate, documented divergence from the x86-64 CP oracle
 for this one field (the oracle still exhibits the original bug); the
 `memset(word_buffer, 32768, ...)` truncation quirk noted alongside it in
@@ -613,6 +625,11 @@ same events, same interpreter produced different PCM depending on how the heap
 happened to be laid out. Confirmed directly on CPython -- rendering one TR-909
 sequence gave different output under `PYTHONMALLOC=default`, `malloc`, and
 `debug`, and changed again if unrelated objects were allocated beforehand.
+
+Drafted for upstream: `docs/upstream-reports/dds-oscillator-off-by-one.md`,
+with a repro that keeps the errant read *inside* the buffer (a loop end short
+of the buffer end) so it is deterministic. Still present on `main` 2026-08-27,
+at four sites.
 
 Fixed here (`audioif_oscillator_fill()` in `src/shared/audioif_synth_dsp.c`,
 shared by the MicroPython usermod and the CPython extension, plus the
@@ -1201,6 +1218,24 @@ workaround moved them up out of the worst of it by accident.
   modules to a CP tree; `synthio` and `audiofilters` there are upstream's, so
   a CP board still cannot filter below a few hundred hertz. See the effects
   README, "A note on filters off a stock CircuitPython board".
+
+## `Distortion` ignores `drive` in OVERDRIVE mode (upstream, worked around)
+
+`shared-module/audiofilters/Distortion.c` never reads `drive` in the
+`DISTORTION_MODE_OVERDRIVE` branch -- the curve is a fixed shape. CLIP and
+WAVESHAPE both use it, and the `drive` docstring says it is "the amount of
+distortion" without noting the exception, so the argument looks connected and
+is not. Measured: `drive` 0.0 / 0.2 / 0.5 / 0.9 in OVERDRIVE render byte-
+identical output, while the same four in WAVESHAPE differ.
+
+Still present on `main` 2026-08-27. Drafted for upstream as "wire it up or
+document it": `docs/upstream-reports/distortion-overdrive-drive.md`. It may
+well be intentional, which is why the draft asks rather than patches.
+
+**Not fixed in the C here either.** `audioeffects` works around it instead --
+`drive.py`'s `_push()` maps a 0..1 drive knob onto `pre_gain`, which is the
+only way into that curve, with the level put back so the historical default
+stays bit-identical. See phase 8 in the plan, and the `drive.py` docstring.
 
 ## A biquad reset clears half its state (kept, not fixed)
 
