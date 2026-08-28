@@ -1,7 +1,16 @@
 # Drafts for adafruit/circuitpython
 
-Six bugs this port found in CircuitPython, written up as issue bodies ready to
-paste. **Nothing here has been filed.**
+Six bugs this port found in CircuitPython, written up as issue bodies.
+**Filed 2026-08-28** (all re-verified by inspection of `10.3.0-rc.0` first):
+
+- peaking-eq-sign -> [#11265](https://github.com/adafruit/circuitpython/issues/11265)
+- dds-oscillator-off-by-one -> [#11266](https://github.com/adafruit/circuitpython/issues/11266)
+- distortion-soft-clip-union -> [#11267](https://github.com/adafruit/circuitpython/issues/11267)
+- biquad-reset -> [#11268](https://github.com/adafruit/circuitpython/issues/11268)
+- biquad-band-edges -> [#11269](https://github.com/adafruit/circuitpython/issues/11269)
+- distortion-overdrive-drive -> **not filed; resolved upstream**: 10.3.0-rc.0's
+  OVERDRIVE docstring now states drive has no effect in that mode, which is
+  what the draft asked for.
 
 Three are in `shared-module/synthio/Biquad.c`:
 
