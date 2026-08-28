@@ -29,7 +29,12 @@ Issues = "https://github.com/PyDevices/audioif/issues"
 py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho", "audioconvolve"]
 # Keep py-modules explicit: src/cpython is the root package directory now, and
 # an automatic scan there would also pick up anything else that lands in it.
-packages = ["audioinstruments", "audioeffects", "audiorender"]
+packages = ["audiorender"]
+# audioinstruments and audioeffects are standalone distributions now
+# (pydevices-audioinstruments, pydevices-audioeffects; see lib/*/pyproject.toml)
+# and must not also ship in this wheel: two distributions owning the same
+# files collide in site-packages, since the standalone packages depend on
+# pydevices-audioif and would always be co-installed with it.
 
 # The CPython target is one directory: src/cpython holds the extension source,
 # the extension built in place, and the twelve modules that wrap it. They are
@@ -41,8 +46,6 @@ packages = ["audioinstruments", "audioeffects", "audiorender"]
 # expects <repo>/lib/<package>, can ship them to boards as well as to PyPI.
 [tool.setuptools.package-dir]
 "" = "src/cpython"
-audioinstruments = "lib/audioinstruments"
-audioeffects = "lib/audioeffects"
 audiorender = "lib/audiorender"
 
 [tool.setuptools.dynamic]

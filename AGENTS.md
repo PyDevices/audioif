@@ -23,10 +23,14 @@ for source compatibility; only this repo's own name differs.
   which of the three runtimes is underneath. Nothing puts this directory on
   `sys.path`: audioif is a dependency, imported from wherever it is installed.
 - `lib/` — the pure-Python tiers, published to boards by MIP from
-  `<repo>/lib/<package>` and to PyPI in the same wheel:
-  `lib/audioinstruments/` (53 `synthio` instruments), `lib/audioeffects/`
-  (41 effect classes) and `lib/audiorender/` (whole-composition offline
-  rendering — numpy, desktop-only, never frozen)
+  `<repo>/lib/<package>`. `lib/audioinstruments/` (53 `synthio`
+  instruments) and `lib/audioeffects/` (41 effect classes) are standalone
+  PyPI distributions (`pydevices-audioinstruments`,
+  `pydevices-audioeffects`, each with its own `pyproject.toml`, depending
+  on `pydevices-audioif`) and are deliberately NOT in this repo's wheel —
+  the same files in two distributions would collide. `lib/audiorender/`
+  (whole-composition offline rendering — numpy, desktop-only, never
+  frozen) still ships inside the `pydevices-audioif` wheel.
 - `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics`,
   `audioroute`, `audiomath` and `audioecho` to a CircuitPython tree. None of
   the four is a CircuitPython port: the first two come from micropython-vst3's
