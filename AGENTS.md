@@ -92,3 +92,33 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   smoke test.
 - See `docs/porting-plan.md`'s "Testing strategy" section for the complete
   methodology.
+
+## The CircuitPython oracle — extend, never modify
+
+`cmods/circuitpython` (sibling checkout, detached at tag `10.2.1`) is the
+**oracle** every parity golden is measured against. The rule, for any agent
+working here:
+
+- **Never edit files in `cmods/circuitpython` directly**, and never commit,
+  pull, or move its pin. A modified oracle silently redefines what "parity"
+  means and invalidates every golden without failing anything.
+- **Extending CircuitPython is fine and is the designed path**: new modules
+  live in this repo under `src/circuitpython_spike/`, and
+  `apply_cp_patches.sh` copies them (plus `src/shared/` DSP) into the CP
+  tree. The script is **additive-only by design** — it adds files and
+  registers them in build glue; the sole stock-file rewrite it performs is
+  the fenced audiocore `'B'`-memoryview patch. Do not add non-additive
+  rewrites to it: `cmods/build_cp.sh` auto-applies the script before
+  building `bin/circuitpython`, so a behavioral rewrite would leak *into*
+  the oracle.
+- Fixes to bugs that also exist upstream go in **this repo's targets only**
+  (MicroPython/CPython/`src/shared/`), recorded in `docs/upstream-diff.md`
+  — never into the CP tree. Approved deviations from the oracle are
+  enumerated there; **ask before adding one**.
+- Quick self-check after any CP-adjacent work:
+  `./apply_cp_patches.sh --status` must account for every difference, and
+  `git -C ../cmods/circuitpython status` must show only the known additive
+  set (new module dirs, build glue, the fenced audiocore rewrite) — no
+  changes under `shared-module/`/`shared-bindings/` for `synthio`,
+  `audiofilters`, `audiocore` (beyond the fence), `audiomixer`, or
+  `audiodelays`.
