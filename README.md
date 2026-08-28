@@ -33,6 +33,11 @@ source and exposing its chain tail as `.output`. `lib/audiorender/` renders a
 whole composition offline: tracks, tempo map, notes and automation in, a mixed
 stereo master and a level report out. Each has its own README.
 
+The instrument and effect libraries share the audio component metadata
+manifest described in [docs/audio-components.md](docs/audio-components.md).
+`audioif` is the provider and validates every published component; consumers
+may use the optional descriptive metadata as needed.
+
 `audiorender` is the one part of this repository written for a desktop rather
 than a board — numpy throughout, a whole song in memory — so it ships in the
 wheel and is never frozen into firmware.

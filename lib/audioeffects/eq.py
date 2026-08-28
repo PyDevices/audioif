@@ -33,9 +33,13 @@ class ParametricEQ(_core.Effect):
     ``biquads`` holds the sections in chain order, so an application can
     bind a macro straight to ``eq.biquads[2].frequency`` or ``.A``."""
 
-    NAME = 'Parametric EQ'
+    NAME = 'ParametricEQ'
+    DISPLAY_NAME = 'Parametric EQ'
     CATEGORIES = ('EQ',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, bands=(), low_shelf=None, high_shelf=None):
         self.biquads = []
@@ -70,9 +74,13 @@ class GraphicEQ(ParametricEQ):
     as unity sections, and so are bands above Nyquist at the configured
     rate - the top ISO band needs better than 32 kHz to exist at all."""
 
-    NAME = 'Graphic EQ'
+    NAME = 'GraphicEQ'
+    DISPLAY_NAME = 'Graphic EQ'
     CATEGORIES = ('EQ',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, gains_db=None):
         # No curve means a flat one. Every other effect in this package is
@@ -105,33 +113,49 @@ class _SingleFilter(_core.Effect):
 
 class LowPass(_SingleFilter):
 
-    NAME = 'Low Pass'
+    NAME = 'LowPass'
+    DISPLAY_NAME = 'Low Pass'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     MODE = _FM.LOW_PASS
 
 
 class HighPass(_SingleFilter):
 
-    NAME = 'High Pass'
+    NAME = 'HighPass'
+    DISPLAY_NAME = 'High Pass'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     MODE = _FM.HIGH_PASS
 
 
 class BandPass(_SingleFilter):
 
-    NAME = 'Band Pass'
+    NAME = 'BandPass'
+    DISPLAY_NAME = 'Band Pass'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     MODE = _FM.BAND_PASS
 
 
 class Notch(_SingleFilter):
 
     NAME = 'Notch'
+    DISPLAY_NAME = 'Notch'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     MODE = _FM.NOTCH
 
 
@@ -140,9 +164,13 @@ class LadderFilter(_core.Effect):
     cutoff, resonance concentrated in the last stages. 24 dB/octave slope
     with the familiar squelch when resonance is pushed."""
 
-    NAME = 'Ladder Filter'
+    NAME = 'LadderFilter'
+    DISPLAY_NAME = 'Ladder Filter'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, cutoff=1200.0, resonance=0.4):
         self.cutoff = synthio.Math(synthio.MathOperation.SUM,
@@ -165,9 +193,13 @@ class LadderFilter(_core.Effect):
 class CombFilter(_core.Effect):
     """A short feedback delay tuned to a frequency: 1/f seconds."""
 
-    NAME = 'Comb Filter'
+    NAME = 'CombFilter'
+    DISPLAY_NAME = 'Comb Filter'
     CATEGORIES = ('Filter',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, frequency=440.0, feedback=0.7, mix=0.5):
         delay_ms = 1000.0 / float(frequency)
@@ -192,9 +224,13 @@ class DynamicEQ(_core.Effect):
     the channels, which used to leak each channel's band into the other's
     notch."""
 
-    NAME = 'Dynamic EQ'
+    NAME = 'DynamicEQ'
+    DISPLAY_NAME = 'Dynamic EQ'
     CATEGORIES = ('EQ',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, frequency=3000.0, threshold_db=-30.0,
                  ratio=4.0, q=2.0):

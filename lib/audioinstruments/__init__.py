@@ -3,10 +3,11 @@
 Each instrument is a self-contained `synthio` program - no samples - exposing:
 
     MACRO_LABELS  tuple of names, one per macro parameter
+    MACRO_MODES   {index: "UNIPOLAR" | "BIPOLAR" | "TOGGLE"}
     PATCHES       {index: (name, (macro values, 0-127))}; patch 0 is the sound
                   a freshly created instrument makes
-    NOTE_MAP      drum machines only: ((midi_note, label), ...) for the voices
-                  the machine actually maps
+    NOTE_MAP      percussion instruments only: ((midi_note, label), ...) for
+                  the voices the machine actually maps
     create(sample_rate, transport=None) -> Instrument
 
 `transport` is an optional callable returning the host's playback position as
@@ -24,26 +25,44 @@ import sys
 
 _PKG = __name__
 
-#: The subset of :data:`ALL` that maps drum voices and exports ``NOTE_MAP``.
-DRUM_MACHINES = (
-    "cr78", "dmx", "drumtraks", "linndrum", "simmons_sdsv", "sp1200",
-    "tr606", "tr707", "tr808", "tr909",
-)
-
-#: Everything else: synthesizers, organs, and electromechanical keyboards,
-#: played by pitch rather than by voice.
-MELODIC = (
-    "andromeda", "arp2600", "b3", "clavinet", "cp70", "cs80", "cz101", "d50",
-    "dx7", "emulator2", "fairlight", "farfisa", "fs1r", "jp8000", "juno106",
-    "jupiter8", "k2600", "karplus", "mellotron", "microwave", "minimoog",
-    "ms20", "ms2000", "music_easel", "nord_lead", "obxa", "odyssey", "pianet",
-    "polysix", "ppg_wave", "prophet5", "prophet_vs", "rhodes", "sh101",
-    "solina", "taurus", "tb303", "virus", "vl1", "vox_continental", "vp330",
-    "wasp", "wurlitzer",
-)
-
 #: Every instrument module in this package.
-ALL = DRUM_MACHINES + MELODIC
+ALL = (
+    "cr78", "dmx", "drumtraks", "linndrum", "simmons_sdsv", "sp1200",
+    "tr606", "tr707", "tr808", "tr909", "andromeda", "arp2600", "b3",
+    "clavinet", "cp70", "cs80", "cz101", "d50", "dx7", "emulator2",
+    "fairlight", "farfisa", "fs1r", "jp8000", "juno106", "jupiter8",
+    "k2600", "karplus", "mellotron", "microwave", "minimoog", "ms20",
+    "ms2000", "music_easel", "nord_lead", "obxa", "odyssey", "pianet",
+    "polysix", "ppg_wave", "prophet5", "prophet_vs", "rhodes", "sh101",
+    "solina", "taurus", "tb303", "virus", "vl1", "vox_continental",
+    "vp330", "wasp", "wurlitzer",
+)
+
+_DRUM_MACHINES = None
+
+__all__ = ("ALL", "DRUM_MACHINES", "MELODIC", "load", "create")
+
+
+def _classifications():
+    """Return the percussion and melodic modules from their declarations."""
+    global _DRUM_MACHINES
+    if _DRUM_MACHINES is None:
+        _DRUM_MACHINES = tuple(
+            name for name in ALL if "NOTE_MAP" in vars(load(name)))
+    return _DRUM_MACHINES, tuple(name for name in ALL
+                                 if name not in _DRUM_MACHINES)
+
+
+def __getattr__(name):
+    if name == "DRUM_MACHINES":
+        return _classifications()[0]
+    if name == "MELODIC":
+        return _classifications()[1]
+    raise AttributeError(name)
+
+
+def __dir__():
+    return sorted(set(globals()) | {"DRUM_MACHINES", "MELODIC"})
 
 
 def load(name):

@@ -6,15 +6,16 @@ effect's ``output`` - builds its chain immediately, and exposes the chain
 tail as ``.output``:
 
     import audioeffects
-    from audioeffects import Compressor, Reverb
 
-    audioeffects.configure(48000)
-    comp = Compressor(source, threshold_db=-20, ratio=3)
-    verb = Reverb(comp.output, preset="hall", mix=0.3)
+    comp = audioeffects.create("Compressor", source, 48000,
+                               threshold_db=-20, ratio=3)
+    verb = audioeffects.create("Reverb", comp.output, 48000,
+                               preset="hall", mix=0.3)
     audio_out.play(verb.output)
 
-The underlying audioif nodes are kept as attributes so applications can
-bind parameters straight to them.
+The underlying audioif nodes are kept as attributes so applications can bind
+parameters straight to them. Direct class construction remains supported for
+local code after `configure()`.
 
 Some classes also carry patches - named settings on the 0-127 MIDI grid, the
 way an instrument does. See `Effect` below.
@@ -105,12 +106,17 @@ def macro_of(span, value):
 class Effect:
     """Base: subclasses set self.output to their chain tail.
 
-    A subclass may also carry a **patch surface**, in the shape the instrument
-    tier uses: `MACRO_LABELS` names the knobs, `MACRO_RANGES` says what each
-    one spans, `PATCHES` holds settings on the 0-127 MIDI grid, and
-    `_apply_macro` does the work. It is optional and most classes do not have
-    one yet - without `MACRO_LABELS` the methods below raise rather than
-    quietly pretending.
+    ``create(source, sample_rate, **options)`` is the stable construction
+    boundary for hosts. Direct class calls remain a convenient local API and
+    use the package-wide rate selected by :func:`configure`.
+
+    A public subclass carries a **patch surface**, in the shape the instrument
+    tier uses: `MACRO_LABELS` names the knobs, `MACRO_MODES` describes each
+    control's public behavior, `PATCHES` holds settings on the 0-127 MIDI
+    grid, and `_apply_macro` does the work. `_MACRO_RANGES` is private
+    implementation data for converting those values into engineering units.
+    The provider validator requires every public subclass to declare the
+    public fields explicitly, including empty values for a macro-less effect.
 
     A patchable class calls `_init_macros()` at the end of its `__init__` with
     its own arguments, in the macros' own units. That is deliberately the only
@@ -124,8 +130,11 @@ class Effect:
     #: MACRO_LABELS means.
     MACRO_LABELS = ()
 
-    #: Parallel to MACRO_LABELS: `(low, high)`, or `(low, high, "log")`.
-    MACRO_RANGES = ()
+    #: One of UNIPOLAR, BIPOLAR, or TOGGLE for every macro index.
+    MACRO_MODES = {}
+
+    #: Private engineering spans; never part of the provider metadata.
+    _MACRO_RANGES = ()
 
     #: {index: (name, (values on the 0-127 grid,))}. Patch 0 is the
     #: constructor's own defaults rendered onto that grid - close to a fresh
@@ -134,11 +143,27 @@ class Effect:
     #: constructor_defaults` holds every patchable class to that.
     PATCHES = {}
 
+    @classmethod
+    def create(cls, source, sample_rate, **options):
+        """Construct ``cls`` for ``sample_rate`` around ``source``.
+
+        Effect implementations historically took ``source`` in their
+        constructor and used the package-wide ``configure()`` setting. Keep
+        that implementation shape, but make the host-facing rate explicit at
+        this one boundary.
+        """
+        configure(sample_rate)
+        effect = cls(source, **options)
+        if getattr(effect, "output", None) is None:
+            raise TypeError("%s.create() returned no output"
+                            % cls.__name__)
+        return effect
+
     def _init_macros(self, values, patch=None):
         """Seed the knobs from the constructor's arguments and, if one was
         asked for, apply a patch over the top."""
         self._macros = [macro_position(span, value)
-                        for span, value in zip(self.MACRO_RANGES, values)]
+                        for span, value in zip(self._MACRO_RANGES, values)]
         for index, position in enumerate(self._macros):
             self._apply_macro(index, position)
         if patch is not None:
@@ -167,7 +192,7 @@ class Effect:
 
     def macro(self, index):
         """What macro `index` currently stands for, in its own units."""
-        return macro_value(self.MACRO_RANGES[index], self._macros[index])
+        return macro_value(self._MACRO_RANGES[index], self._macros[index])
 
     def _apply_macro(self, index, position):
         """Push macro `index`, at its 0..1 `position`, into the nodes. Read

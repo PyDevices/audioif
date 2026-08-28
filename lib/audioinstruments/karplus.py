@@ -1,6 +1,7 @@
 """Plucked string, Karplus-Strong style."""
 
-NAME = 'Karplus-Strong'
+NAME = 'karplus'
+DISPLAY_NAME = 'Karplus-Strong'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -9,13 +10,22 @@ MACRO_LABELS = (
     "Volume", "Pluck Position", "String Damping", "Body Resonance",
     "Pick Hardness", "Decay", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 64, 64, 64, 64, 48, 64)),
+    0: ("Default", (102, 64, 64, 64, 64, 48, 64)),
 }
 
 import array

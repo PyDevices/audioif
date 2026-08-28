@@ -16,6 +16,16 @@ audio_out.play(inst.output)
 
 ## The instrument API
 
+This package follows audioif's audio component metadata manifest. Every
+instrument module explicitly declares `NAME`, `MACRO_LABELS`,
+`MACRO_MODES`, and `PATCHES`; percussion modules also declare `NOTE_MAP`.
+The complete provider rules are in `docs/audio-components.md`.
+
+A module is one instrument and exposes `create(sample_rate, transport=None)`;
+`audioinstruments.create(name, sample_rate, transport=None)` is the lookup
+helper for hosts. The returned object has `output` and the note/control
+methods below.
+
 `create(name, sample_rate, transport=None)` returns an `Instrument`:
 
 | Method | |
@@ -40,9 +50,10 @@ across the whole MIDI 1.0 controller table.
 
 | | |
 |---|---|
-| `MACRO_LABELS` | one name per macro parameter |
+| `MACRO_LABELS` | tuple of zero to sixteen macro names |
+| `MACRO_MODES` | index to `UNIPOLAR`, `BIPOLAR`, or `TOGGLE` |
 | `PATCHES` | `{index: (name, (values, 0-127))}`; patch 0 is what a fresh instrument plays |
-| `NOTE_MAP` | drum machines only: `((midi_note, label), ...)` for the voices it maps |
+| `NOTE_MAP` | percussion only: `((midi_note, label), ...)` for the voices it maps |
 | `create(sample_rate, transport=None)` | |
 
 `transport` is optional, and only the tempo-syncing instruments call it. It

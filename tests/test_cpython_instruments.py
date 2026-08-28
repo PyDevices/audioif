@@ -4,6 +4,7 @@ import unittest
 
 import audiocore
 import audioinstruments
+from tools.validate_metadata import validate_instruments
 
 SAMPLE_RATE = 48000
 
@@ -22,12 +23,29 @@ def peak(sample, blocks):
 
 
 class InstrumentLibraryTest(unittest.TestCase):
+    def test_every_module_implements_the_component_contract(self):
+        required = ("output", "note_on", "note_off", "all_notes_off",
+                    "set_macro", "program_change", "channel_pressure",
+                    "poly_pressure")
+        self.assertEqual(validate_instruments(audioinstruments),
+                         audioinstruments.DRUM_MACHINES)
+        for name in audioinstruments.ALL:
+            module = audioinstruments.load(name)
+            self.assertTrue(callable(module.create), name)
+            instrument = module.create(SAMPLE_RATE)
+            for member in required:
+                self.assertTrue(hasattr(instrument, member),
+                                "%s missing %s" % (name, member))
+            self.assertIsNotNone(instrument.output, name)
+
     def test_every_module_declares_its_surface(self):
         for name in audioinstruments.ALL:
             module = audioinstruments.load(name)
-            self.assertTrue(module.MACRO_LABELS, name)
+            self.assertLessEqual(len(module.MACRO_LABELS), 16, name)
             self.assertTrue(all(isinstance(label, str)
                                 for label in module.MACRO_LABELS), name)
+            self.assertEqual(set(module.MACRO_MODES),
+                             set(range(len(module.MACRO_LABELS))), name)
             self.assertIn(0, module.PATCHES, name)
             patch_name, values = module.PATCHES[0]
             self.assertIsInstance(patch_name, str)

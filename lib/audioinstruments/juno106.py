@@ -1,6 +1,7 @@
 """Roland Juno-106."""
 
-NAME = 'Juno-106'
+NAME = 'juno106'
+DISPLAY_NAME = 'Juno-106'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -11,13 +12,31 @@ MACRO_LABELS = (
     "Env Depth", "Amp Attack", "Amp Decay", "Amp Sustain", "Amp Release",
     "Filter Decay",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 102, 25, 64, 0, 64, 23, 3, 64, 31, 48, 1, 11, 64, 9,
+    0: ("Default", (102, 102, 25, 64, 0, 64, 23, 3, 64, 31, 48, 1, 11, 64, 9,
                  11)),
 }
 

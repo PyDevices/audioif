@@ -1,6 +1,7 @@
 """Roland VP-330 Vocoder Plus."""
 
-NAME = 'VP-330'
+NAME = 'vp330'
+DISPLAY_NAME = 'VP-330'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,27 @@ MACRO_LABELS = (
     "Release", "Formant Shift", "Vibrato Rate", "Vibrato Depth",
     "Brilliance", "Bass", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "BIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 102, 64, 127, 6, 16, 64, 62, 0, 64, 64, 64)),
+    0: ("Default", (102, 102, 64, 127, 6, 16, 64, 62, 0, 64, 64, 64)),
 }
 
 import synthio

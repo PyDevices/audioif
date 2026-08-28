@@ -1,6 +1,7 @@
 """Sequential Circuits Prophet VS vector synthesizer."""
 
-NAME = 'Prophet VS'
+NAME = 'prophet_vs'
+DISPLAY_NAME = 'Prophet VS'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -11,13 +12,31 @@ MACRO_LABELS = (
     "Filter Sustain", "Filter Release", "Amp Attack", "Amp Decay",
     "Amp Sustain", "Amp Release", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "BIPOLAR",
+    2: "BIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 64, 64, 108, 18, 48, 0, 1, 19, 64, 16, 1, 19, 102, 16,
+    0: ("Default", (102, 64, 64, 108, 18, 48, 0, 1, 19, 64, 16, 1, 19, 102, 16,
                  64)),
 }
 

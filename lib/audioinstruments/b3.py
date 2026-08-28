@@ -1,6 +1,7 @@
 """Hammond B-3 tonewheel organ."""
 
-NAME = 'B-3'
+NAME = 'b3'
+DISPLAY_NAME = 'B-3'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,26 @@ MACRO_LABELS = (
     "Perc Level", "Perc Decay", "Key Click", "Leslie Fast", "Overdrive",
     "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "TOGGLE",
+    9: "UNIPOLAR",
+    10: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 127, 127, 64, 25, 64, 32, 38, 0, 0, 64)),
+    0: ("Default", (102, 127, 127, 64, 25, 64, 32, 38, 0, 0, 64)),
 }
 
 import synthio

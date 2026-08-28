@@ -1,6 +1,7 @@
 """Roland TR-909 Rhythm Composer."""
 
-NAME = 'TR-909'
+NAME = 'tr909'
+DISPLAY_NAME = 'TR-909'
 CATEGORIES = ('Drum',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,31 @@ MACRO_LABELS = (
     "SD Tone", "SD Snappy", "LT Tune", "MT Tune", "HT Tune", "Tom Decay",
     "Clap/Rim", "CH Decay", "OH Decay", "Cymbal Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 64, 51, 64, 76, 56, 60, 64, 74, 71, 71, 85, 64, 58,
+    0: ("Default", (102, 64, 51, 64, 76, 56, 60, 64, 74, 71, 71, 85, 64, 58,
                  85, 74)),
 }
 

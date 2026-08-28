@@ -33,8 +33,12 @@ _PRESETS = {
 class Reverb(_core.Effect):
 
     NAME = 'Reverb'
+    DISPLAY_NAME = 'Reverb'
     CATEGORIES = ('Reverb',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, preset="hall", mix=0.3):
         roomsize, damp = _PRESETS[preset]
         chain_source = source
@@ -84,12 +88,20 @@ class ConvolutionReverb(_core.Effect):
     see the audioconvolve docstring for why that is inherent here.
     """
 
-    NAME = 'Convolution Reverb'
+    NAME = 'ConvolutionReverb'
+    DISPLAY_NAME = 'Convolution Reverb'
     CATEGORIES = ('Reverb',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Decay", "Damping", "Predelay", "Diffusion", "Mix")
-    MACRO_RANGES = (
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+        4: "UNIPOLAR",
+    }
+    _MACRO_RANGES = (
         (0.05, 1.0),                 # fraction of `seconds`
         (500.0, 16000.0, "log"),
         (0.0, 120.0),
@@ -97,7 +109,7 @@ class ConvolutionReverb(_core.Effect):
         (0.0, 1.0),
     )
     PATCHES = {
-        0: ("Init", (127, 91, 0, 0, 38)),
+        0: ("Natural Room", (127, 91, 0, 0, 38)),
         1: ("Small Room", (26, 76, 4, 6, 45)),
         2: ("Concert Hall", (127, 96, 30, 25, 51)),
         3: ("Dark Chamber", (79, 51, 13, 19, 45)),
@@ -170,6 +182,6 @@ class ConvolutionReverb(_core.Effect):
 
     def _apply_macro(self, index, position):
         if index == 4:
-            self.node.set(mix=_core.macro_value(self.MACRO_RANGES[4], position))
+            self.node.set(mix=_core.macro_value(self._MACRO_RANGES[4], position))
         else:
             self._rebuild()

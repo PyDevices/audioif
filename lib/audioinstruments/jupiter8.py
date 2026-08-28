@@ -1,6 +1,7 @@
 """Roland Jupiter-8."""
 
-NAME = 'Jupiter-8'
+NAME = 'jupiter8'
+DISPLAY_NAME = 'Jupiter-8'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,31 @@ MACRO_LABELS = (
     "LFO Rate", "Amp Release", "Amp Attack", "Amp Decay", "Amp Sustain",
     "Filter Attack", "Filter Decay", "Filter Sustain", "HPF Cutoff", "PW",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "TOGGLE",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 108, 25, 64, 0, 0, 31, 16, 1, 15, 64, 1, 15, 38, 1,
+    0: ("Default", (102, 108, 25, 64, 0, 0, 31, 16, 1, 15, 64, 1, 15, 38, 1,
                  64)),
 }
 

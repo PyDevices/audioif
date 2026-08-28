@@ -1,6 +1,7 @@
 """ARP Odyssey."""
 
-NAME = 'Odyssey'
+NAME = 'odyssey'
+DISPLAY_NAME = 'Odyssey'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,31 @@ MACRO_LABELS = (
     "Osc 2 Detune", "Sync", "Attack", "Decay", "Sustain", "Release",
     "HPF Cutoff", "PPC", "Master Tune", "Glide",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "BIPOLAR",
+    7: "TOGGLE",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "BIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 108, 18, 0, 31, 48, 106, 0, 1, 11, 64, 9, 1, 0, 64, 0)),
+    0: ("Default", (102, 108, 18, 0, 31, 48, 106, 0, 1, 11, 64, 9, 1, 0, 64, 0)),
 }
 
 import array

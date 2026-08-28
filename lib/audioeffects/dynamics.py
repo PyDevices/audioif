@@ -30,15 +30,24 @@ class Compressor(_core.Effect):
     resolved to, so a patch and a character are two ways at the same knobs."""
 
     NAME = 'Compressor'
+    DISPLAY_NAME = 'Compressor'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Threshold", "Ratio", "Attack", "Release", "Knee",
                     "Makeup")
-    MACRO_RANGES = ((-60.0, 0.0), (1.0, 20.0, "log"), (0.1, 100.0, "log"),
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+        4: "UNIPOLAR",
+        5: "UNIPOLAR",
+    }
+    _MACRO_RANGES = ((-60.0, 0.0), (1.0, 20.0, "log"), (0.1, 100.0, "log"),
                     (5.0, 1000.0, "log"), (0.0, 24.0), (0.0, 24.0))
     PATCHES = {
-        0: ("Init", (76, 59, 85, 76, 32, 0)),
+        0: ("General Purpose", (76, 59, 85, 76, 32, 0)),
         1: ("Drum Bus", (89, 59, 81, 69, 21, 21)),
         2: ("Vocal Level", (80, 47, 92, 105, 64, 26)),
         3: ("Pump", (68, 88, 30, 86, 0, 37)),
@@ -83,17 +92,24 @@ class Limiter(_core.Effect):
     """
 
     NAME = 'Limiter'
+    DISPLAY_NAME = 'Limiter'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Ceiling", "Release", "Lookahead", "True Peak")
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "TOGGLE",
+    }
     #: True Peak is a switch worn as a knob: anything at or above the middle
     #: turns it on. A macro surface has no room for a boolean, and pretending
     #: otherwise would mean two ways to set one thing.
-    MACRO_RANGES = ((-24.0, 0.0), (5.0, 1000.0, "log"), (0.0, 20.0),
+    _MACRO_RANGES = ((-24.0, 0.0), (5.0, 1000.0, "log"), (0.0, 20.0),
                     (0.0, 1.0))
     PATCHES = {
-        0: ("Init", (122, 60, 0, 0)),
+        0: ("Transparent", (122, 60, 0, 0)),
         1: ("Safety Catch", (125, 76, 32, 127)),
         2: ("Brickwall", (126, 43, 51, 127)),
         3: ("Glue", (111, 94, 13, 0)),
@@ -125,8 +141,12 @@ class Expander(_core.Effect):
     """Downward expander: below the threshold, quiet gets quieter."""
 
     NAME = 'Expander'
+    DISPLAY_NAME = 'Expander'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, threshold_db=-40.0, ratio=2.0,
                  attack_ms=5.0, release_ms=150.0):
@@ -140,9 +160,13 @@ class Expander(_core.Effect):
 
 class NoiseGate(_core.Effect):
 
-    NAME = 'Noise Gate'
+    NAME = 'NoiseGate'
+    DISPLAY_NAME = 'Noise Gate'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, threshold_db=-50.0, attack_ms=1.5,
                  release_ms=80.0):
         self.node = audiodynamics.Dynamics(
@@ -157,9 +181,13 @@ class DeEsser(_core.Effect):
     """Broadband de-esser: the detector hears only what is above
     `frequency`, so sibilance ducks the signal and lows never trigger it."""
 
-    NAME = 'De-Esser'
+    NAME = 'DeEsser'
+    DISPLAY_NAME = 'De-Esser'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, threshold_db=-30.0, ratio=6.0,
                  frequency=5000.0, attack_ms=0.5, release_ms=60.0):
@@ -175,9 +203,13 @@ class TransientShaper(_core.Effect):
     """Positive attack_db pushes the hit forward, negative pulls it back;
     sustain_db does the same for what rings after it."""
 
-    NAME = 'Transient Shaper'
+    NAME = 'TransientShaper'
+    DISPLAY_NAME = 'Transient Shaper'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, attack_db=0.0, sustain_db=0.0):
         self.node = audiodynamics.Dynamics(
@@ -193,9 +225,13 @@ class MultibandCompressor(_core.Effect):
     Butterworth sections a side - so the three bands recombine flat to a
     fraction of a decibel when none of them is working."""
 
-    NAME = 'Multiband Compressor'
+    NAME = 'MultibandCompressor'
+    DISPLAY_NAME = 'Multiband Compressor'
     CATEGORIES = ('Dynamics',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, low_hz=200.0, high_hz=2000.0,
                  thresholds_db=(-28.0, -24.0, -24.0),

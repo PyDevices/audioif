@@ -15,9 +15,13 @@ from . import _core
 
 class PitchShifter(_core.Effect):
 
-    NAME = 'Pitch Shifter'
+    NAME = 'PitchShifter'
+    DISPLAY_NAME = 'Pitch Shifter'
     CATEGORIES = ('Pitch Shift',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, semitones=0.0, mix=1.0):
         self.node = audiodelays.PitchShift(
             semitones=semitones, mix=mix, window=2048, **_core.pcm())
@@ -32,8 +36,12 @@ class Harmonizer(_core.Effect):
     """Dry plus up to three fixed-interval shifted copies."""
 
     NAME = 'Harmonizer'
+    DISPLAY_NAME = 'Harmonizer'
     CATEGORIES = ('Pitch Shift',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, intervals=(4.0, 7.0), level=0.5):
         intervals = tuple(intervals)[:_core.SPLITTER_TAPS - 1]
@@ -65,8 +73,12 @@ class Octaver(_core.Effect):
     """
 
     NAME = 'Octaver'
+    DISPLAY_NAME = 'Octaver'
     CATEGORIES = ('Pitch Shift',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     #: (attribute, semitones, window) per octave, in the order they mix.
     #: Shorter windows track faster, which matters more the further up the
@@ -104,9 +116,13 @@ class StereoWidener(_core.Effect):
     """Haas-effect width: the dry center plus a short-delayed copy pushed
     to one side and its source-panned opposite."""
 
-    NAME = 'Stereo Widener'
+    NAME = 'StereoWidener'
+    DISPLAY_NAME = 'Stereo Widener'
     CATEGORIES = ('Spatial',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, delay_ms=14.0, width=0.7):
         split = audioroute.Splitter(source, taps=2)

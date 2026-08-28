@@ -1,6 +1,7 @@
 """Moog Minimoog Model D."""
 
-NAME = 'Minimoog'
+NAME = 'minimoog'
+DISPLAY_NAME = 'Minimoog'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -11,13 +12,31 @@ MACRO_LABELS = (
     "Amp Release", "Filter Attack", "Filter Decay", "Filter Sustain",
     "Overdrive",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "BIPOLAR",
+    6: "BIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 44, 32, 51, 6, 65, 62, 0, 6, 51, 64, 44, 6, 51, 25, 0)),
+    0: ("Classic Lead", (102, 44, 32, 51, 6, 65, 62, 0, 6, 51, 64, 44, 6, 51, 25, 0)),
     1: ('Deep Bass', (114, 25, 44, 70, 0, 66, 61, 0, 3, 38, 102, 25, 3, 32,
                       89, 19)),
     2: ('Screaming Lead', (108, 70, 95, 89, 19, 74, 56, 6, 1, 25, 114, 51,

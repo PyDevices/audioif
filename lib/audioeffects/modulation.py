@@ -20,8 +20,12 @@ from . import _core
 class Chorus(_core.Effect):
 
     NAME = 'Chorus'
+    DISPLAY_NAME = 'Chorus'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, rate=0.6, depth_ms=6.0, voices=3, mix=0.5):
         self.motion = synthio.LFO(rate=rate, scale=depth_ms * 0.5,
                                   offset=depth_ms + 8.0)
@@ -37,8 +41,12 @@ class Flanger(_core.Effect):
     swept comb, jet engine included."""
 
     NAME = 'Flanger'
+    DISPLAY_NAME = 'Flanger'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, rate=0.25, depth_ms=2.5, feedback=0.6,
                  mix=0.5):
@@ -54,8 +62,12 @@ class Flanger(_core.Effect):
 class Phaser(_core.Effect):
 
     NAME = 'Phaser'
+    DISPLAY_NAME = 'Phaser'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, rate=0.4, depth=0.7, stages=6,
                  feedback=0.5, mix=0.6):
         self.sweep = synthio.LFO(rate=rate, scale=900.0 * depth,
@@ -80,8 +92,12 @@ class _MixerMod(_core.Effect):
 class Tremolo(_MixerMod):
 
     NAME = 'Tremolo'
+    DISPLAY_NAME = 'Tremolo'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, rate=5.0, depth=0.6):
         _MixerMod.__init__(self, source)
         self.lfo = synthio.LFO(rate=rate, scale=depth * 0.5,
@@ -91,9 +107,13 @@ class Tremolo(_MixerMod):
 
 class AutoPan(_MixerMod):
 
-    NAME = 'Auto Pan'
+    NAME = 'AutoPan'
+    DISPLAY_NAME = 'Auto Pan'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, rate=0.8, depth=1.0):
         _MixerMod.__init__(self, source)
         self.lfo = synthio.LFO(rate=rate, scale=depth)
@@ -104,8 +124,12 @@ class AutoPan(_MixerMod):
 class Vibrato(_core.Effect):
 
     NAME = 'Vibrato'
+    DISPLAY_NAME = 'Vibrato'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, rate=5.5, depth_semitones=0.4):
         self.lfo = synthio.LFO(rate=rate, scale=depth_semitones)
         self.node = audiodelays.PitchShift(
@@ -119,8 +143,12 @@ class Rotary(_core.Effect):
     sweeping past, auto-pan for the cabinet spin, at a shared speed."""
 
     NAME = 'Rotary'
+    DISPLAY_NAME = 'Rotary'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, speed="slow"):
         rate = 0.8 if speed == "slow" else 6.5
@@ -183,14 +211,20 @@ class RingMod(_core.Effect):
     limit.
     """
 
-    NAME = 'Ring Modulator'
+    NAME = 'RingMod'
+    DISPLAY_NAME = 'Ring Modulator'
     CATEGORIES = ('Modulation',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Frequency", "Depth", "Mix")
-    MACRO_RANGES = ((20.0, 4000.0, "log"), (0.0, 1.0), (0.0, 1.0))
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+    }
+    _MACRO_RANGES = ((20.0, 4000.0, "log"), (0.0, 1.0), (0.0, 1.0))
     PATCHES = {
-        0: ("Init", (57, 127, 127)),
+        0: ("Full Ring", (57, 127, 127)),
         1: ("Dalek", (10, 127, 127)),
         2: ("Clangour", (98, 127, 127)),
         # Below about 30 Hz the sidebands stop being heard as pitch and start
@@ -226,4 +260,4 @@ class RingMod(_core.Effect):
 
     def set_frequency(self, frequency):
         """Retune the carrier, in hertz."""
-        self.set_macro(0, _core.macro_of(self.MACRO_RANGES[0], frequency))
+        self.set_macro(0, _core.macro_of(self._MACRO_RANGES[0], frequency))

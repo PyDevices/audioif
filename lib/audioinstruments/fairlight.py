@@ -1,6 +1,7 @@
 """Fairlight CMI."""
 
-NAME = 'Fairlight CMI'
+NAME = 'fairlight'
+DISPLAY_NAME = 'Fairlight CMI'
 CATEGORIES = ('Sampler',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -9,13 +10,25 @@ MACRO_LABELS = (
     "Volume", "Patch Select", "Bitcrush Approx", "Attack", "Decay",
     "Sustain", "Release", "Pitch Env Depth", "Filter Env", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 0, 0, 6, 19, 102, 16, 0, 0, 64)),
+    0: ("Default", (102, 0, 0, 6, 19, 102, 16, 0, 0, 64)),
 }
 
 import array

@@ -1,6 +1,7 @@
 """Yamaha CP-70 electric grand."""
 
-NAME = 'CP-70'
+NAME = 'cp70'
+DISPLAY_NAME = 'CP-70'
 CATEGORIES = ('Piano',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -9,13 +10,24 @@ MACRO_LABELS = (
     "Volume", "Hammer Strike", "String Body", "Tremolo Rate",
     "Tremolo Depth", "Chorus", "Decay", "Brilliance", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 51, 64, 62, 0, 64, 48, 102, 64)),
+    0: ("Default", (102, 51, 64, 62, 0, 64, 48, 102, 64)),
 }
 
 import synthio

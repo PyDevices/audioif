@@ -1,6 +1,7 @@
 """Roland TB-303 Bass Line."""
 
-NAME = 'TB-303'
+NAME = 'tb303'
+DISPLAY_NAME = 'TB-303'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -9,13 +10,24 @@ MACRO_LABELS = (
     "Volume", "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent",
     "Overdrive", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "BIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 64, 64, 42, 64, 29, 0, 0, 64)),
+    0: ("Default", (102, 64, 64, 42, 64, 29, 0, 0, 64)),
 }
 
 import synthio

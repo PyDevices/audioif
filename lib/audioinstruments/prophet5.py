@@ -1,6 +1,7 @@
 """Sequential Circuits Prophet-5."""
 
-NAME = 'Prophet-5'
+NAME = 'prophet5'
+DISPLAY_NAME = 'Prophet-5'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -11,13 +12,31 @@ MACRO_LABELS = (
     "Amp Sustain", "Filter Attack", "Filter Decay", "Filter Sustain",
     "LFO Rate", "LFO Depth",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "UNIPOLAR",
+    5: "BIPOLAR",
+    6: "TOGGLE",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "UNIPOLAR",
+    12: "UNIPOLAR",
+    13: "UNIPOLAR",
+    14: "UNIPOLAR",
+    15: "UNIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 102, 18, 48, 0, 106, 0, 17, 1, 11, 64, 1, 11, 25, 31,
+    0: ("Default", (102, 102, 18, 48, 0, 106, 0, 17, 1, 11, 64, 1, 11, 25, 31,
                  0)),
 }
 

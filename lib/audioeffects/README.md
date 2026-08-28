@@ -5,17 +5,19 @@ that can pull an audiosample:
 
 ```python
 import audioeffects
-from audioeffects import Compressor, TapeDelay, Reverb
 
-audioeffects.configure(48000)
-comp = Compressor(source, threshold_db=-20, ratio=3, character="optical")
-tape = TapeDelay(comp.output, time_ms=340, feedback=0.4, mix=0.25)
-hall = Reverb(tape.output, preset="hall", mix=0.3)
+comp = audioeffects.create("Compressor", source, 48000,
+                           threshold_db=-20, ratio=3, character="optical")
+tape = audioeffects.create("TapeDelay", comp.output, 48000,
+                           time_ms=340, feedback=0.4, mix=0.25)
+hall = audioeffects.create("Reverb", tape.output, 48000,
+                           preset="hall", mix=0.3)
 audio_out.play(hall.output)
 ```
 
-`configure()` sets the sample rate every effect built after it runs at. Call
-it once, before building anything; a process only ever has one.
+The package factory is the host-facing construction boundary: it receives the
+source and sample rate explicitly. Direct class construction remains
+supported for local code after a call to `configure()`.
 
 Every class takes its audio source as the first argument - a synthesizer, an
 `audioinstruments` instrument's `output`, a host input, or another effect's
@@ -24,6 +26,16 @@ kept as attributes (`.node`, `.mixer`, `.cutoff`, ...) so applications can
 bind parameters straight to them; the classes with a natural swept control
 also expose `set_*` helpers (`LadderFilter.set_cutoff`,
 `DigitalDelay.set_time`, ...).
+
+Every public effect class explicitly declares `NAME`, `MACRO_LABELS`,
+`MACRO_MODES`, and `PATCHES`. `VENDOR` is declared once at module scope for
+all effects in that source file. The complete provider rules are in
+`docs/audio-components.md`.
+
+For host integration, every public class also has the explicit factory
+`EffectClass.create(source, sample_rate, **options)`, and the package helper
+`audioeffects.create(name, source, sample_rate, **options)`. Direct class
+construction remains supported for local code after a call to `configure()`.
 
 Five nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
 envelope-follower gain computer with sidechain filtering, lookahead and
@@ -193,9 +205,10 @@ mod.set_macro(0, 96)                          # Frequency, MIDI scale
 name, values = audioeffects.RingMod.PATCHES[2]
 ```
 
-A patchable class declares `MACRO_LABELS` (the knob names), `MACRO_RANGES`
-(what each spans, linear or logarithmic), and `PATCHES`
-(`{index: (name, (values,))}`). `set_macro(index, value)` takes the MIDI
+A class declares `MACRO_LABELS` (the knob names), `MACRO_MODES` (the public
+control behavior), and `PATCHES` (`{index: (name, (values,))}`). Private
+engineering mappings may remain in `_MACRO_RANGES`; consumers never inspect
+them. `set_macro(index, value)` takes the MIDI
 scale and accepts floats, so a host with finer resolution need not quantize;
 `macro(index)` reads a knob back in its own units; `program_change(index)`
 applies a patch and ignores an index the class does not have, the way an
@@ -207,35 +220,11 @@ cannot land exactly on every default. Constructor arguments are *not*
 quantized: `RingMod(src, frequency=440)` gets 440 Hz, while patch 0's nearest
 grid point for the 220 Hz default is 215.7.
 
-It is optional, and most classes do not have one yet. A class without
-`MACRO_LABELS` raises rather than pretending: `set_macro` on it is an
-application bug, not a wire message.
-
-### Known gap: a *rack* cannot have patches
-
-Patches live on a class. A **rack** - several of these classes wired
-together, with a `handle_event` mapping incoming macros onto whichever knobs
-of whichever nodes the author chose - is a script, not a class, so there is
-nothing for `MACRO_LABELS`/`PATCHES` to attach to. Every rack in
-`micropython-vst3/soundtrack/` is one of these, and none of them can offer a
-preset.
-
-That is the gap, found 2026-08-27 while auditioning
-`soundtrack/Perihelion/fx_shimmer.py` (a choir into an octave-up tape echo
-into a long hall). The user's words: *"This effect needs presets to be very
-usable."* The composed thing is what a musician actually reaches for, and it
-is exactly the layer with no preset story.
-
-**Deliberately not solved here.** It wants its own plan: a rack needs a
-declared identity (labels, ranges, patches) that survives being a plain
-script the sidecar `exec`s, and the answer probably looks like the
-`create()` factory convention `audioinstruments` uses rather than anything
-in this package. Sketched, not designed: a rack module declaring
-`MACRO_LABELS`/`MACRO_RANGES`/`PATCHES` at module scope and a
-`create(source, sample_rate)` returning an object with the same
-`set_macro`/`program_change` surface as an `Effect`, so hosts cannot tell a
-rack from a single class. That would also give `render_preview.py` and
-`generate_project.py` one thing to read instead of two.
+An effect rack is one audio component whose internal graph chains or mixes
+multiple effect nodes. It declares the same required metadata at module
+scope, and may implement its control surface with a module-level event
+handler or a factory/object equivalent to an effect class. See
+`docs/audio-components.md` for the complete rack rule.
 
 ## A note on chaining after a Mixer
 

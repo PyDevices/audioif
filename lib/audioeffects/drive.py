@@ -58,8 +58,12 @@ class Overdrive(_core.Effect):
     """
 
     NAME = 'Overdrive'
+    DISPLAY_NAME = 'Overdrive'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, drive=0.4, tone_hz=4500.0, mix=1.0):
         # OVERDRIVE ignores the node's own drive argument, so passing it
@@ -82,8 +86,12 @@ class Distortion(_core.Effect):
     """Hard clipping."""
 
     NAME = 'Distortion'
+    DISPLAY_NAME = 'Distortion'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, drive=0.7, mix=1.0):
         self.node = audiofilters.Distortion(
@@ -97,8 +105,12 @@ class Fuzz(_core.Effect):
     """Everything into the ceiling: the waveform leaves as a square."""
 
     NAME = 'Fuzz'
+    DISPLAY_NAME = 'Fuzz'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, drive=0.95, mix=1.0):
         self.node = audiofilters.Distortion(
@@ -152,8 +164,12 @@ class Saturation(_core.Effect):
     """
 
     NAME = 'Saturation'
+    DISPLAY_NAME = 'Saturation'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, amount=0.25, character="tube", drive=0.35):
         try:
@@ -193,8 +209,12 @@ class Bitcrusher(_core.Effect):
     """
 
     NAME = 'Bitcrusher'
+    DISPLAY_NAME = 'Bitcrusher'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     #: LOFI masks off `round(drive * 14)` of a sample's low bits, so the
     #: knob spans 16 bits down to 2 and no further.
@@ -219,8 +239,12 @@ class Exciter(_core.Effect):
     overdriven (generating harmonics) and blended back in under the dry."""
 
     NAME = 'Exciter'
+    DISPLAY_NAME = 'Exciter'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, frequency=3000.0, amount=0.3):
         split = audioroute.Splitter(source, taps=2)
@@ -266,7 +290,8 @@ class CabinetSim(_core.Effect):
     multiplies. Fine on a knob move, wrong to automate per block.
     """
 
-    NAME = 'Cabinet Sim'
+    NAME = 'CabinetSim'
+    DISPLAY_NAME = 'Cabinet Sim'
     CATEGORIES = ('Distortion',)
     VERSION = '0.0.1'
 
@@ -280,14 +305,20 @@ class CabinetSim(_core.Effect):
     _PROBES = 48
 
     MACRO_LABELS = ("Body", "Presence", "Top", "Mix")
-    MACRO_RANGES = (
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+    }
+    _MACRO_RANGES = (
         (60.0, 140.0, "log"),        # cone/box resonance
         (1500.0, 6000.0, "log"),     # presence peak
         (2500.0, 12000.0, "log"),    # where the paper gives up
         (0.0, 1.0),
     )
     PATCHES = {
-        0: ("Init", (77, 57, 56, 127)),
+        0: ("Studio Cabinet", (77, 57, 56, 127)),
         1: ("4x12 Stack", (46, 74, 47, 127)),
         2: ("1x12 Combo", (99, 55, 74, 127)),
         3: ("Tweed Box", (117, 40, 88, 127)),
@@ -441,6 +472,6 @@ class CabinetSim(_core.Effect):
 
     def _apply_macro(self, index, position):
         if index == 3:
-            self.node.set(mix=_core.macro_value(self.MACRO_RANGES[3], position))
+            self.node.set(mix=_core.macro_value(self._MACRO_RANGES[3], position))
         else:
             self._rebuild()

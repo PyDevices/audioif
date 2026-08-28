@@ -1,6 +1,7 @@
 """Waldorf Microwave."""
 
-NAME = 'Microwave'
+NAME = 'microwave'
+DISPLAY_NAME = 'Microwave'
 CATEGORIES = ('Synth',)
 VERSION = '0.0.1'
 VENDOR = "PyDevices"
@@ -10,13 +11,27 @@ MACRO_LABELS = (
     "Env to Filter", "Filter Attack", "Amp Attack", "Amp Decay",
     "Amp Sustain", "Amp Release", "Master Tune",
 )
+MACRO_MODES = {
+    0: "UNIPOLAR",
+    1: "UNIPOLAR",
+    2: "UNIPOLAR",
+    3: "UNIPOLAR",
+    4: "BIPOLAR",
+    5: "UNIPOLAR",
+    6: "UNIPOLAR",
+    7: "UNIPOLAR",
+    8: "UNIPOLAR",
+    9: "UNIPOLAR",
+    10: "UNIPOLAR",
+    11: "BIPOLAR",
+}
 
 # Patch 0 is the sound this instrument's defaults describe, so a fresh
 # instance and patch 0 are the same thing - create() applies it. A macro
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ('Init', (102, 0, 102, 18, 127, 64, 1, 1, 19, 102, 16, 64)),
+    0: ("Default", (102, 0, 102, 18, 127, 64, 1, 1, 19, 102, 16, 64)),
 }
 
 import array

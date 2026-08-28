@@ -24,9 +24,13 @@ from . import _core
 
 class DigitalDelay(_core.Effect):
 
-    NAME = 'Digital Delay'
+    NAME = 'DigitalDelay'
+    DISPLAY_NAME = 'Digital Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
     def __init__(self, source, time_ms=350.0, feedback=0.4, mix=0.3):
         self.node = audiodelays.Echo(
             max_delay_ms=int(time_ms) + 100, delay_ms=time_ms,
@@ -44,9 +48,13 @@ class DigitalDelay(_core.Effect):
 class SlapbackDelay(DigitalDelay):
     """One short, single repeat - the rockabilly vocal trick."""
 
-    NAME = 'Slapback Delay'
+    NAME = 'SlapbackDelay'
+    DISPLAY_NAME = 'Slapback Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, time_ms=95.0, mix=0.4):
         DigitalDelay.__init__(self, source, time_ms=time_ms, feedback=0.0,
@@ -83,10 +91,10 @@ class _LoopDelay(_core.Effect):
 
     def set_time(self, time_ms):
         """Retune the delay, in milliseconds."""
-        self.set_macro(0, _core.macro_of(self.MACRO_RANGES[0], time_ms))
+        self.set_macro(0, _core.macro_of(self._MACRO_RANGES[0], time_ms))
 
     def set_mix(self, mix):
-        self.set_macro(2, _core.macro_of(self.MACRO_RANGES[2], mix))
+        self.set_macro(2, _core.macro_of(self._MACRO_RANGES[2], mix))
 
     def clear(self):
         """Empty the line, so the next thing through is not played over the
@@ -105,15 +113,24 @@ class TapeDelay(_LoopDelay):
     progressively and the dry path is untouched.
     """
 
-    NAME = 'Tape Delay'
+    NAME = 'TapeDelay'
+    DISPLAY_NAME = 'Tape Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Wow", "Tone", "Drive")
-    MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+        4: "UNIPOLAR",
+        5: "UNIPOLAR",
+    }
+    _MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (800.0, 16000.0, "log"), (0.0, 1.0))
     PATCHES = {
-        0: ("Init", (90, 60, 22, 38, 66, 38)),
+        0: ("Tape Echo", (90, 60, 22, 38, 66, 38)),
         1: ("Slapback Tape", (55, 13, 19, 19, 79, 42)),
         2: ("Space Echo", (97, 74, 25, 42, 60, 55)),
         # Long, hot and dark: the repeats pile up faster than they decay and
@@ -159,15 +176,23 @@ class AnalogDelay(_LoopDelay):
     down, its high-pass up, and the drift and softening up with them.
     """
 
-    NAME = 'Analog Delay'
+    NAME = 'AnalogDelay'
+    DISPLAY_NAME = 'Analog Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Age", "Drive")
-    MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+        4: "UNIPOLAR",
+    }
+    _MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (0.0, 1.0))
     PATCHES = {
-        0: ("Init", (88, 53, 19, 64, 44)),
+        0: ("Aged BBD", (88, 53, 19, 64, 44)),
         1: ("Short BBD", (65, 47, 18, 51, 38)),
         2: ("Memory Man", (99, 74, 22, 79, 57)),
         3: ("Chorus Echo", (81, 51, 25, 38, 44)),
@@ -211,15 +236,23 @@ class PingPongDelay(_LoopDelay):
     right side simply ran at half speed.
     """
 
-    NAME = 'Ping-Pong Delay'
+    NAME = 'PingPongDelay'
+    DISPLAY_NAME = 'Ping-Pong Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
 
     MACRO_LABELS = ("Time", "Feedback", "Mix", "Spread", "Tone")
-    MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
+    MACRO_MODES = {
+        0: "UNIPOLAR",
+        1: "UNIPOLAR",
+        2: "UNIPOLAR",
+        3: "UNIPOLAR",
+        4: "UNIPOLAR",
+    }
+    _MACRO_RANGES = ((20.0, 1000.0, "log"), (0.0, 0.95), (0.0, 2.0),
                     (0.0, 1.0), (800.0, 16000.0, "log"))
     PATCHES = {
-        0: ("Init", (86, 47, 22, 127, 85)),
+        0: ("Wide Bounce", (86, 47, 22, 127, 85)),
         1: ("Wide Eighths", (95, 60, 25, 127, 95)),
         2: ("Narrow Taps", (68, 40, 19, 64, 103)),
         3: ("Dark Bounce", (104, 74, 29, 127, 50)),
@@ -250,9 +283,13 @@ class PingPongDelay(_LoopDelay):
 class MultiTapDelay(_core.Effect):
     """taps: (position 0..1 of time_ms, level) pairs."""
 
-    NAME = 'Multi-Tap Delay'
+    NAME = 'MultiTapDelay'
+    DISPLAY_NAME = 'Multi-Tap Delay'
     CATEGORIES = ('Delay',)
     VERSION = '0.0.1'
+    MACRO_LABELS = ()
+    MACRO_MODES = {}
+    PATCHES = {0: ("Default", ())}
 
     def __init__(self, source, time_ms=500.0,
                  taps=((0.25, 0.8), (0.5, 0.6), (0.75, 0.4), (1.0, 0.3)),

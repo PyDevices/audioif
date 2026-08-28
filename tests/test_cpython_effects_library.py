@@ -16,6 +16,7 @@ import audioeffects
 import audiofilters
 import synthio
 import audioinstruments
+from tools.validate_metadata import validate_effects
 
 SAMPLE_RATE = 48000
 audioeffects.configure(SAMPLE_RATE)
@@ -216,6 +217,23 @@ def loudest_in(values, start, length):
 
 
 class EffectsLibraryTest(unittest.TestCase):
+    def test_every_public_effect_implements_the_factory_contract(self):
+        validate_effects(audioeffects)
+        for name in CLASSES:
+            cls = getattr(audioeffects, name)
+            self.assertTrue(callable(getattr(cls, "create", None)), name)
+            effect = build(name)
+            self.assertIsNotNone(effect.output, name)
+
+    def test_factory_owns_the_sample_rate(self):
+        original = audioeffects.sample_rate()
+        try:
+            effect = audioeffects.create("LowPass", source(rate=22050),
+                                         22050)
+            self.assertEqual(effect.output.sample_rate, 22050)
+        finally:
+            audioeffects.configure(original)
+
     def test_the_catalogue_is_all_there(self):
         self.assertEqual(len(CLASSES), 43, CLASSES)
 
@@ -669,7 +687,7 @@ class EffectsLibraryTest(unittest.TestCase):
 
     def test_a_macro_moves_the_thing_it_names(self):
         effect = build(PATCHABLE[0])
-        for index, span in enumerate(effect.MACRO_RANGES):
+        for index, span in enumerate(effect._MACRO_RANGES):
             effect.set_macro(index, 127)
             self.assertAlmostEqual(effect.macro(index), span[1], delta=1e-6)
             effect.set_macro(index, 0)
@@ -688,9 +706,11 @@ class EffectsLibraryTest(unittest.TestCase):
         effect.program_change(99)
         self.assertEqual(effect._macros, before)
 
-    def test_a_class_without_macros_has_no_patch_surface(self):
+    def test_a_class_without_macros_declares_an_empty_macro_surface(self):
         plain = audioeffects.Reverb(source())
         self.assertEqual(plain.MACRO_LABELS, ())
+        self.assertEqual(plain.MACRO_MODES, {})
+        self.assertEqual(plain.PATCHES, {0: ("Default", ())})
         with self.assertRaises(IndexError):
             plain.set_macro(0, 64)
 
@@ -772,7 +792,7 @@ class EffectsLibraryTest(unittest.TestCase):
     def test_a_synthesized_room_decays_at_the_time_it_was_asked_for(self):
         verb = audioeffects.ConvolutionReverb(source(), seconds=0.5)
         verb.set_macro(4, 127)          # full wet, so only the tail is measured
-        low, high = audioeffects.ConvolutionReverb.MACRO_RANGES[0][:2]
+        low, high = audioeffects.ConvolutionReverb._MACRO_RANGES[0][:2]
         for knob in (127, 64, 0):
             verb.set_macro(0, knob)
             expected = 0.5 * (low + (high - low) * knob / 127.0)
