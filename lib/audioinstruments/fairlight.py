@@ -61,9 +61,9 @@ WAVE_ARR1_8BIT = quantize_table(WAVE_ARR1, 256)
 WAVE_ORCH5_8BIT = quantize_table(WAVE_ORCH5, 256)
 
 
-def create(sample_rate, transport=None):
+def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=2)
+    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     # Macros
     volume = 0.8
@@ -155,5 +155,4 @@ def create(sample_rate, transport=None):
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)
-    instrument.program_change(0)
     return instrument

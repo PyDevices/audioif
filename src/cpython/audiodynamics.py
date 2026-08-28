@@ -60,17 +60,21 @@ FRAMES = _audioif.DYNAMICS_FRAMES
 class Dynamics(_AudioSample):
     def __init__(self, mode=DYN_COMPRESS, **options):
         sample_rate = int(options.pop("sample_rate", 48000))
+        channel_count = int(options.pop("channel_count", 2))
+        if channel_count not in (1, 2):
+            raise ValueError("channel_count must be 1 or 2")
         self.sample_rate = sample_rate
         self.bits_per_sample = 16
-        self.channel_count = 2
+        self.channel_count = channel_count
         self.samples_signed = True
         self.single_buffer = False
-        self.max_buffer_length = FRAMES * 4
+        self.max_buffer_length = FRAMES * 2 * channel_count
         self._deinited = False
         self._source = None
         self._pending = b""
         self._state = _audioif.DynamicsState(mode=int(mode),
-                                             sample_rate=sample_rate)
+                                             sample_rate=sample_rate,
+                                             channel_count=channel_count)
         self._apply(options)
         # Only now do the unset attack/release times fall back to their
         # defaults - see shared/audioif_dynamics.h for why that is a separate
@@ -133,17 +137,20 @@ class Dynamics(_AudioSample):
                     break
                 result, data = get_buffer(self._source, False, 0)
                 data = bytes(data)
-                if result == GET_BUFFER_ERROR or len(data) < 4:
+                if result == GET_BUFFER_ERROR or len(data) < 2 * self.channel_count:
                     break
-                self._pending = data[:len(data) // 4 * 4]
-            run = min(FRAMES - produced, len(self._pending) // 4)
-            output += self._state.process(self._pending[:run * 4])
-            self._pending = self._pending[run * 4:]
+                width = 2 * self.channel_count
+                self._pending = data[:len(data) // width * width]
+            width = 2 * self.channel_count
+            run = min(FRAMES - produced, len(self._pending) // width)
+            output += self._state.process(self._pending[:run * width])
+            self._pending = self._pending[run * width:]
             produced += run
         # A starved chain gets silence rather than a short block: this node
         # sits in the middle of a live graph and never reports itself finished.
         if produced == 0:
-            return GET_BUFFER_MORE_DATA, memoryview(bytes(FRAMES * 4))
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(FRAMES * 2 * self.channel_count))
         return GET_BUFFER_MORE_DATA, memoryview(bytes(output))
 
 

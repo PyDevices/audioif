@@ -63,10 +63,10 @@ SINE = make_table(((1, 1.0),))
 NOISE = noise_table(seed=135792468)
 
 
-def create(sample_rate, transport=None):
+def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
     NOISE_HZ = SR / 8192.0
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=2)
+    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     # Master params
     master_level = 0.8
@@ -220,5 +220,4 @@ def create(sample_rate, transport=None):
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport, note_map=NOTE_MAP)
-    instrument.program_change(0)
     return instrument

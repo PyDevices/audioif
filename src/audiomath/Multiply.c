@@ -9,12 +9,14 @@
 
 static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
     size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    enum { ARG_source, ARG_modulator, ARG_mix, ARG_sample_rate };
+    enum { ARG_source, ARG_modulator, ARG_mix, ARG_sample_rate,
+           ARG_channel_count };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_source, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_modulator, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_mix, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_sample_rate, MP_ARG_INT, {.u_int = 48000} },
+        { MP_QSTR_channel_count, MP_ARG_INT, {.u_int = 2} },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args,
@@ -22,10 +24,14 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
 
     audiomath_multiply_obj_t *self =
         mp_obj_malloc(audiomath_multiply_obj_t, type);
+    if (args[ARG_channel_count].u_int < 1 ||
+        args[ARG_channel_count].u_int > 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
+    }
     self->base.sample_rate = (uint32_t)args[ARG_sample_rate].u_int;
     self->base.max_buffer_length = sizeof(self->buffer);
     self->base.bits_per_sample = 16;
-    self->base.channel_count = 2;
+    self->base.channel_count = (uint8_t)args[ARG_channel_count].u_int;
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
@@ -35,13 +41,24 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
     self->pending_modulator = NULL;
     self->pending_modulator_frames = 0;
     audioif_multiply_config_init(&self->config);
+    audioif_multiply_set_channel_count(&self->config,
+        (uint32_t)self->base.channel_count);
 
     if (args[ARG_source].u_obj != mp_const_none) {
-        (void)audiosample_check(args[ARG_source].u_obj);
+        audiosample_base_t *sample = audiosample_check(args[ARG_source].u_obj);
+        if (sample->channel_count != self->base.channel_count) {
+            mp_raise_ValueError(MP_ERROR_TEXT(
+                "source channel_count does not match Multiply"));
+        }
         self->source = args[ARG_source].u_obj;
     }
     if (args[ARG_modulator].u_obj != mp_const_none) {
-        (void)audiosample_check(args[ARG_modulator].u_obj);
+        audiosample_base_t *sample = audiosample_check(
+            args[ARG_modulator].u_obj);
+        if (sample->channel_count != self->base.channel_count) {
+            mp_raise_ValueError(MP_ERROR_TEXT(
+                "modulator channel_count does not match Multiply"));
+        }
         self->modulator = args[ARG_modulator].u_obj;
     }
     if (args[ARG_mix].u_obj != mp_const_none) {
@@ -53,7 +70,11 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
 
 static mp_obj_t audiomath_multiply_play(mp_obj_t self_in, mp_obj_t sample) {
     audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    (void)audiosample_check(sample);
+    audiosample_base_t *base = audiosample_check(sample);
+    if (base->channel_count != self->base.channel_count) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "source channel_count does not match Multiply"));
+    }
     self->source = sample;
     self->pending_source = NULL;
     self->pending_source_frames = 0;
@@ -65,7 +86,11 @@ static MP_DEFINE_CONST_FUN_OBJ_2(audiomath_multiply_play_obj,
 static mp_obj_t audiomath_multiply_modulate(mp_obj_t self_in,
     mp_obj_t sample) {
     audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    (void)audiosample_check(sample);
+    audiosample_base_t *base = audiosample_check(sample);
+    if (base->channel_count != self->base.channel_count) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "modulator channel_count does not match Multiply"));
+    }
     self->modulator = sample;
     self->pending_modulator = NULL;
     self->pending_modulator_frames = 0;
@@ -114,11 +139,12 @@ static audioio_get_buffer_result_t audiomath_multiply_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending_source = (const int16_t *)raw;
-            self->pending_source_frames = raw_bytes / 4u;
+            self->pending_source_frames = raw_bytes / width;
         }
         if (self->pending_modulator_frames == 0 &&
             self->modulator != MP_OBJ_NULL) {
@@ -129,9 +155,10 @@ static audioio_get_buffer_result_t audiomath_multiply_get_buffer(
             // A modulator is normally a short looping table, which hands back
             // its whole length every time it is asked; one that has genuinely
             // stopped leaves the signal alone rather than muting it.
-            if (result != GET_BUFFER_ERROR && raw != NULL && raw_bytes >= 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result != GET_BUFFER_ERROR && raw != NULL && raw_bytes >= width) {
                 self->pending_modulator = (const int16_t *)raw;
-                self->pending_modulator_frames = raw_bytes / 4u;
+                self->pending_modulator_frames = raw_bytes / width;
             }
         }
         uint32_t run = AUDIOIF_MULTIPLY_FRAMES - produced;
@@ -143,15 +170,17 @@ static audioio_get_buffer_result_t audiomath_multiply_get_buffer(
                 run = self->pending_modulator_frames;
             }
             audioif_multiply_process_s16(&self->config,
-                &self->buffer[produced * 2], self->pending_source,
+                &self->buffer[produced * self->base.channel_count],
+                self->pending_source,
                 self->pending_modulator, run);
-            self->pending_modulator += run * 2;
+            self->pending_modulator += run * self->base.channel_count;
             self->pending_modulator_frames -= run;
         } else {
-            audioif_multiply_passthrough_s16(&self->buffer[produced * 2],
-                self->pending_source, run);
+            memcpy(&self->buffer[produced * self->base.channel_count],
+                self->pending_source,
+                (size_t)run * self->base.channel_count * sizeof(int16_t));
         }
-        self->pending_source += run * 2;
+        self->pending_source += run * self->base.channel_count;
         self->pending_source_frames -= run;
         produced += run;
     }
@@ -162,7 +191,7 @@ static audioio_get_buffer_result_t audiomath_multiply_get_buffer(
         produced = AUDIOIF_MULTIPLY_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }
 

@@ -38,12 +38,14 @@
 
 static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
     size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    enum { ARG_source, ARG_modulator, ARG_mix, ARG_sample_rate };
+    enum { ARG_source, ARG_modulator, ARG_mix, ARG_sample_rate,
+           ARG_channel_count };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_source, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_modulator, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_mix, MP_ARG_OBJ, {.u_obj = MP_ROM_NONE} },
         { MP_QSTR_sample_rate, MP_ARG_INT, {.u_int = 48000} },
+        { MP_QSTR_channel_count, MP_ARG_INT, {.u_int = 2} },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args,
@@ -51,10 +53,14 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
 
     audiomath_multiply_obj_t *self =
         mp_obj_malloc(audiomath_multiply_obj_t, type);
+    if (args[ARG_channel_count].u_int < 1 ||
+        args[ARG_channel_count].u_int > 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
+    }
     self->base.sample_rate = (uint32_t)args[ARG_sample_rate].u_int;
     self->base.max_buffer_length = sizeof(self->buffer);
     self->base.bits_per_sample = 16;
-    self->base.channel_count = 2;
+    self->base.channel_count = (uint8_t)args[ARG_channel_count].u_int;
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
@@ -64,13 +70,24 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
     self->pending_modulator = NULL;
     self->pending_modulator_frames = 0;
     audioif_multiply_config_init(&self->config);
+    audioif_multiply_set_channel_count(&self->config,
+        (uint32_t)self->base.channel_count);
 
     if (args[ARG_source].u_obj != mp_const_none) {
-        (void)audiosample_check(args[ARG_source].u_obj);
+        audiosample_base_t *sample = audiosample_check(args[ARG_source].u_obj);
+        if (sample->channel_count != self->base.channel_count) {
+            mp_raise_ValueError(MP_ERROR_TEXT(
+                "source channel_count does not match Multiply"));
+        }
         self->source = args[ARG_source].u_obj;
     }
     if (args[ARG_modulator].u_obj != mp_const_none) {
-        (void)audiosample_check(args[ARG_modulator].u_obj);
+        audiosample_base_t *sample = audiosample_check(
+            args[ARG_modulator].u_obj);
+        if (sample->channel_count != self->base.channel_count) {
+            mp_raise_ValueError(MP_ERROR_TEXT(
+                "modulator channel_count does not match Multiply"));
+        }
         self->modulator = args[ARG_modulator].u_obj;
     }
     if (args[ARG_mix].u_obj != mp_const_none) {
@@ -85,7 +102,11 @@ static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
 //|         ...
 static mp_obj_t audiomath_multiply_play(mp_obj_t self_in, mp_obj_t sample) {
     audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    (void)audiosample_check(sample);
+    audiosample_base_t *base = audiosample_check(sample);
+    if (base->channel_count != self->base.channel_count) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "source channel_count does not match Multiply"));
+    }
     self->source = sample;
     self->pending_source = NULL;
     self->pending_source_frames = 0;
@@ -100,7 +121,11 @@ MP_DEFINE_CONST_FUN_OBJ_2(audiomath_multiply_play_obj,
 static mp_obj_t audiomath_multiply_modulate(mp_obj_t self_in,
     mp_obj_t sample) {
     audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    (void)audiosample_check(sample);
+    audiosample_base_t *base = audiosample_check(sample);
+    if (base->channel_count != self->base.channel_count) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "modulator channel_count does not match Multiply"));
+    }
     self->modulator = sample;
     self->pending_modulator = NULL;
     self->pending_modulator_frames = 0;

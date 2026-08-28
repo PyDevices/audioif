@@ -79,7 +79,7 @@ class Overdrive(_core.Effect):
                                   Q=0.707),
             **_core.pcm())
         self.tone.play(self.node)
-        self.output = self.tone
+        self._output = self.tone
 
 
 class Distortion(_core.Effect):
@@ -98,7 +98,7 @@ class Distortion(_core.Effect):
             drive=drive, mode=_DM.CLIP, soft_clip=False,
             pre_gain=6.0, post_gain=-6.0, mix=mix, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class Fuzz(_core.Effect):
@@ -117,7 +117,7 @@ class Fuzz(_core.Effect):
             drive=drive, mode=_DM.CLIP, soft_clip=False,
             pre_gain=18.0, post_gain=-9.0, mix=mix, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 #: The three analog-gear characters, as (mode, curve, makeup_db, shelves).
@@ -185,7 +185,7 @@ class Saturation(_core.Effect):
             arguments["drive"] = curve
         self.node = audiofilters.Distortion(**dict(_core.pcm(), **arguments))
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
         if not shelves:
             self.tone = None
             return
@@ -195,7 +195,7 @@ class Saturation(_core.Effect):
                     for shelf_mode, hz, gain_db in shelves],
             **_core.pcm())
         self.tone.play(self.node)
-        self.output = self.tone
+        self._output = self.tone
 
 
 class Bitcrusher(_core.Effect):
@@ -231,7 +231,7 @@ class Bitcrusher(_core.Effect):
         self.node = audiofilters.Distortion(
             drive=crush, mode=_DM.LOFI, mix=mix, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class Exciter(_core.Effect):
@@ -264,7 +264,7 @@ class Exciter(_core.Effect):
         self.mixer.voice[1].play(self.harmonics)
         self.mixer.voice[1].level = amount
         self.splitter = split
-        self.output = self.mixer
+        self._output = self.mixer
 
 
 class CabinetSim(_core.Effect):
@@ -334,9 +334,10 @@ class CabinetSim(_core.Effect):
                 "CircuitPython board does not have")
         self.node = audioconvolve.Convolver(
             max_taps=self.TAPS, ir_channels=1,
-            sample_rate=_core.sample_rate())
+            sample_rate=_core.sample_rate(),
+            channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
         # One impulse build at the end rather than one per knob.
         self._ready = False
         self._init_macros((body_hz, presence_hz, top_hz, mix), patch)
@@ -346,12 +347,15 @@ class CabinetSim(_core.Effect):
     def set_mix(self, mix):
         self.node.set(mix=mix)
 
-    def program_change(self, index):
+    def program_change(self, index, channel=0, note_id=-1,
+                       sample_position=0):
         if int(index) not in self.PATCHES:
             return
         self._ready = False
         try:
-            _core.Effect.program_change(self, index)
+            _core.Effect.program_change(self, index, channel=channel,
+                                         note_id=note_id,
+                                         sample_position=sample_position)
         finally:
             self._ready = True
         self._rebuild()

@@ -57,6 +57,7 @@ typedef enum {
 //: the line or the filters.
 typedef struct {
     uint32_t sample_rate;
+    uint32_t channel_count;
     // Frames of line per channel. Fixed at construction: it is what was
     // allocated, and `delay_ms` is clamped against it.
     uint32_t line_frames;
@@ -112,6 +113,9 @@ void audioif_feedback_delay_configure(audioif_feedback_delay_config_t *config,
 // it, and once after construction.
 void audioif_feedback_delay_config_finish(
     audioif_feedback_delay_config_t *config);
+
+void audioif_feedback_delay_set_channel_count(
+    audioif_feedback_delay_config_t *config, uint32_t channel_count);
 
 void audioif_feedback_delay_state_init(audioif_feedback_delay_state_t *state,
     int16_t *line);

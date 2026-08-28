@@ -2,7 +2,8 @@
 
 Every instrument here is a `synthio` program with the same shape: module-level
 `MACRO_LABELS`/`PATCHES` (plus `NOTE_MAP` for drum machines), sample-rate
-independent wavetables, and a `create(sample_rate, transport=None)` factory
+independent wavetables, and a `create(sample_rate, channel_count=2,
+transport=None)` factory
 returning an `Instrument`.
 
 Units: the `Instrument` methods speak MIDI (pitches 0-127, velocity 0-127,
@@ -273,60 +274,283 @@ def apply_patch(handle_event, patches, index, channel=0, note_id=-1,
 
 
 class Instrument:
-    """A live instrument: an audio source plus the MIDI surface that plays it.
+    """A live instrument implementing the audio component API.
 
-    ``output`` is what a host pulls PCM from - usually the synthesizer itself,
-    but an instrument that ends in an effect chain hands back the chain's tail.
+    The class is a provider helper rather than a required base class. It keeps
+    the existing event-handler seam used by the instruments, while presenting
+    a stable object to renderers, hosts, and hardware callers.
     """
 
     def __init__(self, synth, handle_event, patches, macro_labels,
-                 output=None, transport=None, note_map=None):
+                 output=None, transport=None, note_map=None,
+                 capabilities=(), latency_samples=0, tail_samples=0):
         self.synth = synth
-        self.output = synth if output is None else output
+        self._output = synth if output is None else output
         self.patches = patches
-        self.macro_labels = macro_labels
+        self.macro_labels = tuple(macro_labels)
         self.note_map = note_map
         self.transport = static_transport if transport is None else transport
         self._handle = handle_event
-        self._active = set()
+        # The public identity is (channel, note_id) when a note id is
+        # supplied, otherwise (channel, pitch). Keep the pitch alongside the
+        # identity so all_notes_off() can emit a complete note-off event.
+        self._active = {}
+        self._macro_values = [0.0] * len(self.macro_labels)
+        self._patch_index = None
+        self._sample_rate = int(getattr(self._output, "sample_rate",
+                                       getattr(synth, "sample_rate", 0)))
+        self._channel_count = int(getattr(self._output, "channel_count",
+                                         getattr(synth, "channel_count", 0)))
+        if self._sample_rate < 1:
+            raise ValueError("instrument sample_rate must be positive")
+        if self._channel_count not in (1, 2):
+            raise ValueError("instrument channel_count must be 1 or 2")
+        self._capabilities = tuple(capabilities)
+        for capability in self._capabilities:
+            if (not isinstance(capability, str)
+                    or any(ord(character) >= 128 for character in capability)):
+                raise ValueError("instrument capabilities must be ASCII strings")
+        self._latency_samples = _nonnegative_int(latency_samples,
+                                                 "latency_samples")
+        self._tail_samples = _tail_value(tail_samples)
+        self._deinited = False
+        self.program_change(0)
+
+    def _check_live(self):
+        if self._deinited:
+            raise RuntimeError("instrument has been deinitialized")
+
+    @property
+    def output(self):
+        self._check_live()
+        return self._output
+
+    @property
+    def sample_rate(self):
+        self._check_live()
+        return self._sample_rate
+
+    @property
+    def channel_count(self):
+        self._check_live()
+        return self._channel_count
+
+    @property
+    def latency_samples(self):
+        self._check_live()
+        return self._latency_samples
+
+    @property
+    def tail_samples(self):
+        self._check_live()
+        return self._tail_samples
+
+    @property
+    def capabilities(self):
+        self._check_live()
+        return self._capabilities
+
+    @property
+    def patch_index(self):
+        self._check_live()
+        return self._patch_index
 
     def note_on(self, pitch, velocity=127, detune=0.0, channel=0, note_id=-1,
                 sample_position=0):
         """Play ``pitch`` at ``velocity`` (0-127). A zero velocity releases,
         as it does on the wire. ``detune`` offsets the pitch in semitones."""
-        pitch = int(pitch)
+        self._check_live()
+        pitch = _midi_value(pitch, "pitch")
+        velocity = _midi_value(velocity, "velocity")
+        channel = _channel(channel)
+        note_id = _note_id(note_id)
+        detune = float(detune)
+        sample_position = _sample_position(sample_position)
+        key = key_of(channel, note_id, pitch)
         if velocity > 0:
-            self._active.add((channel, note_id, pitch))
+            self._active[key] = (pitch, note_id)
+            self._handle(EVENT_NOTE_ON, channel, note_id, pitch,
+                         velocity / 127.0, detune, sample_position)
         else:
-            self._active.discard((channel, note_id, pitch))
-        self._handle(EVENT_NOTE_ON, channel, note_id, pitch, velocity / 127.0,
-                     detune, sample_position)
+            # MIDI note-on with zero velocity is a note-off, including at the
+            # provider boundary. Do not send a note-on event that a provider
+            # might reasonably ignore because its velocity is zero.
+            if self._active.pop(key, None) is not None:
+                self._handle(EVENT_NOTE_OFF, channel, note_id, pitch, 0.0,
+                             0.0, sample_position)
 
     def note_off(self, pitch, channel=0, note_id=-1, sample_position=0):
-        pitch = int(pitch)
-        self._active.discard((channel, note_id, pitch))
-        self._handle(EVENT_NOTE_OFF, channel, note_id, pitch, 0.0, 0.0,
-                     sample_position)
+        self._check_live()
+        pitch = _midi_value(pitch, "pitch")
+        channel = _channel(channel)
+        note_id = _note_id(note_id)
+        sample_position = _sample_position(sample_position)
+        key = key_of(channel, note_id, pitch)
+        if self._active.pop(key, None) is not None:
+            self._handle(EVENT_NOTE_OFF, channel, note_id, pitch, 0.0, 0.0,
+                         sample_position)
 
     def set_macro(self, index, value, channel=0, note_id=-1, sample_position=0):
         """Set macro ``index`` to ``value`` on the 0-127 MIDI scale. Floats are
         accepted so hosts with finer resolution need not quantize."""
-        self._handle(EVENT_PARAMETER, channel, note_id, int(index),
-                     value / 127.0, 0.0, sample_position)
+        self._check_live()
+        channel = _channel(channel)
+        note_id = _note_id(note_id)
+        sample_position = _sample_position(sample_position)
+        index = self._macro_index(index)
+        self._set_macro(index, _bounded_midi(value), channel, note_id,
+                        sample_position, custom=True)
 
     def program_change(self, index, channel=0, note_id=-1, sample_position=0):
-        apply_patch(self._handle, self.patches, int(index), channel, note_id,
-                    sample_position)
+        self._check_live()
+        channel = _channel(channel)
+        note_id = _note_id(note_id)
+        sample_position = _sample_position(sample_position)
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise ValueError("program index must be a non-negative integer")
+        if index < 0:
+            raise ValueError("program index must be non-negative")
+        patch = self.patches.get(index)
+        if patch is None:
+            return
+        for macro_index, macro_value in enumerate(patch[1]):
+            self._set_macro(macro_index, macro_value, channel, note_id,
+                            sample_position, custom=False)
+        self._patch_index = index
 
     def channel_pressure(self, value, channel=0, sample_position=0):
-        self._handle(EVENT_CHANNEL_PRESSURE, channel, -1, 0, value / 127.0,
-                     0.0, sample_position)
+        self._check_live()
+        self._handle(EVENT_CHANNEL_PRESSURE, _channel(channel), -1, 0,
+                     _bounded_midi(value) / 127.0, 0.0,
+                     _sample_position(sample_position))
 
     def poly_pressure(self, pitch, value, channel=0, note_id=-1,
                       sample_position=0):
-        self._handle(EVENT_POLY_PRESSURE, channel, note_id, int(pitch),
-                     value / 127.0, 0.0, sample_position)
+        self._check_live()
+        self._handle(EVENT_POLY_PRESSURE, _channel(channel), _note_id(note_id),
+                     _midi_value(pitch, "pitch"), _bounded_midi(value) / 127.0,
+                     0.0, _sample_position(sample_position))
+
+    def pitch_bend(self, value, channel=0, sample_position=0):
+        self._check_live()
+        value = _pitch_bend(value)
+        self._handle(EVENT_PITCH_BEND, _channel(channel), -1, 0,
+                     value / 16383.0,
+                     (value - 8192.0) / 8192.0,
+                     _sample_position(sample_position))
+
+    def control_change(self, controller, value, channel=0, sample_position=0):
+        self._check_live()
+        self._handle(EVENT_CONTROL_CHANGE, _channel(channel), -1,
+                     _midi_value(controller, "controller"),
+                     _bounded_midi(value) / 127.0, 0.0,
+                     _sample_position(sample_position))
 
     def all_notes_off(self):
-        for channel, note_id, pitch in tuple(self._active):
+        self._check_live()
+        for (channel, _identity), (pitch, note_id) in tuple(
+                self._active.items()):
             self.note_off(pitch, channel=channel, note_id=note_id)
+
+    def get_macro(self, index):
+        self._check_live()
+        return self._macro_values[self._macro_index(index)]
+
+    def reset(self):
+        self._check_live()
+        self.all_notes_off()
+        release = getattr(self.synth, "release_all", None)
+        if release is not None:
+            release()
+        self._active.clear()
+        self.program_change(0)
+
+    def deinit(self):
+        if self._deinited:
+            return
+        self.all_notes_off()
+        seen = set()
+        for node in (self._output, self.synth):
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
+            deinit = getattr(node, "deinit", None)
+            if deinit is not None:
+                deinit()
+        self._output = None
+        self._deinited = True
+
+    def _macro_index(self, index):
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise IndexError("macro index must be an integer")
+        if not 0 <= index < len(self.macro_labels):
+            raise IndexError("instrument has %d macros; no index %d"
+                             % (len(self.macro_labels), index))
+        return index
+
+    def _set_macro(self, index, value, channel, note_id, sample_position,
+                   custom):
+        self._macro_values[index] = value
+        if custom:
+            self._patch_index = None
+        self._handle(EVENT_PARAMETER, channel, note_id, index,
+                     value / 127.0, 0.0, sample_position)
+
+
+def _nonnegative_int(value, name):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("%s must be a non-negative integer" % name)
+    if value < 0:
+        raise ValueError("%s must be non-negative" % name)
+    return value
+
+
+def _tail_value(value):
+    if value is None:
+        return None
+    return _nonnegative_int(value, "tail_samples")
+
+
+def _midi_value(value, name):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("%s must be an integer from 0 through 127" % name)
+    if not 0 <= value <= 127:
+        raise ValueError("%s must be from 0 through 127" % name)
+    return value
+
+
+def _bounded_midi(value):
+    value = float(value)
+    return min(127.0, max(0.0, value))
+
+
+def _pitch_bend(value):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("pitch bend must be an integer from 0 through 16383")
+    if not 0 <= value <= 16383:
+        raise ValueError("pitch bend must be from 0 through 16383")
+    return value
+
+
+def _channel(value):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("channel must be an integer from 0 through 15")
+    if not 0 <= value <= 15:
+        raise ValueError("channel must be from 0 through 15")
+    return value
+
+
+def _note_id(value):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("note_id must be -1 or a non-negative integer")
+    if value < -1:
+        raise ValueError("note_id must be -1 or non-negative")
+    return value
+
+
+def _sample_position(value):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("sample_position must be a non-negative integer")
+    if value < 0:
+        raise ValueError("sample_position must be non-negative")
+    return value

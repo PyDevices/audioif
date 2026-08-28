@@ -55,21 +55,25 @@ _OPTIONS = {
 
 class FeedbackDelay(_AudioSample):
     def __init__(self, sample_rate=48000, max_delay_ms=250.0, **options):
+        channel_count = int(options.pop("channel_count", 2))
+        if channel_count not in (1, 2):
+            raise ValueError("channel_count must be 1 or 2")
         options.pop("sample_rate", None)
         options.pop("max_delay_ms", None)
         self.sample_rate = int(sample_rate)
         self.bits_per_sample = 16
-        self.channel_count = 2
+        self.channel_count = channel_count
         self.samples_signed = True
         self.single_buffer = False
-        self.max_buffer_length = FRAMES * 4
+        self.max_buffer_length = FRAMES * 2 * channel_count
         self._deinited = False
         self._source = None
         self._pending = b""
         if max_delay_ms <= 0:
             raise ValueError("max_delay_ms must be positive")
         self._state = _audioif.FeedbackDelayState(
-            sample_rate=self.sample_rate, max_delay_ms=float(max_delay_ms))
+            sample_rate=self.sample_rate, max_delay_ms=float(max_delay_ms),
+            channel_count=channel_count)
         # The default delay is half the line rather than all of it, so a
         # caller who sizes the line and says nothing else still hears repeats.
         self._apply(options)
@@ -127,12 +131,14 @@ class FeedbackDelay(_AudioSample):
                     break
                 result, data = get_buffer(self._source, False, 0)
                 data = bytes(data)
-                if result == GET_BUFFER_ERROR or len(data) < 4:
+                if result == GET_BUFFER_ERROR or len(data) < 2 * self.channel_count:
                     break
-                self._pending = data[:len(data) // 4 * 4]
-            run = min(FRAMES - produced, len(self._pending) // 4)
-            output += self._state.process(self._pending[:run * 4])
-            self._pending = self._pending[run * 4:]
+                width = 2 * self.channel_count
+                self._pending = data[:len(data) // width * width]
+            width = 2 * self.channel_count
+            run = min(FRAMES - produced, len(self._pending) // width)
+            output += self._state.process(self._pending[:run * width])
+            self._pending = self._pending[run * width:]
             produced += run
         # A starved chain gets silence rather than a short block: this node
         # sits in the middle of a live graph and never reports itself
@@ -140,7 +146,8 @@ class FeedbackDelay(_AudioSample):
         # only advanced by frames that arrive, so repeats do not ring on into
         # silence. That matches audiodelays.Echo, whose users expect it.
         if produced == 0:
-            return GET_BUFFER_MORE_DATA, memoryview(bytes(FRAMES * 4))
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(FRAMES * 2 * self.channel_count))
         return GET_BUFFER_MORE_DATA, memoryview(bytes(output))
 
 

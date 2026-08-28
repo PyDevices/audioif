@@ -24,6 +24,7 @@ float audioif_dynamics_gain_to_db(float gain) {
 void audioif_dynamics_config_init(audioif_dynamics_config_t *config, int mode,
     uint32_t sample_rate) {
     config->sample_rate = sample_rate;
+    config->channel_count = 2;
     config->mode = mode;
     config->threshold_db = -24.0f;
     config->ratio = 4.0f;
@@ -111,11 +112,13 @@ void audioif_dynamics_set_lookahead(audioif_dynamics_state_t *state,
     state->lookahead_capacity = frames;
     state->lookahead_write = 0;
     if (buffer != NULL && frames != 0) {
-        memset(buffer, 0, (size_t)frames * 2u * sizeof(int16_t));
+        memset(buffer, 0, (size_t)frames * state->channel_count *
+            sizeof(int16_t));
     }
 }
 
 void audioif_dynamics_state_init(audioif_dynamics_state_t *state) {
+    state->channel_count = 2;
     state->sidechain_lp[0] = 0.0f;
     state->sidechain_lp[1] = 0.0f;
     state->envelope = 0.0f;
@@ -128,6 +131,17 @@ void audioif_dynamics_state_init(audioif_dynamics_state_t *state) {
     memset(state->peak_history, 0, sizeof(state->peak_history));
 }
 
+void audioif_dynamics_set_channel_count(
+    audioif_dynamics_config_t *config, audioif_dynamics_state_t *state,
+    uint32_t channel_count) {
+    if (channel_count != 1u) {
+        channel_count = 2u;
+    }
+    config->channel_count = channel_count;
+    state->channel_count = channel_count;
+    state->lookahead_write = 0;
+}
+
 void audioif_dynamics_reset(audioif_dynamics_state_t *state) {
     state->envelope = 0.0f;
     state->fast_env = 0.0f;
@@ -138,7 +152,8 @@ void audioif_dynamics_reset(audioif_dynamics_state_t *state) {
     // the previous take still queued would play it.
     if (state->lookahead != NULL && state->lookahead_capacity != 0) {
         memset(state->lookahead, 0,
-            (size_t)state->lookahead_capacity * 2u * sizeof(int16_t));
+            (size_t)state->lookahead_capacity * state->channel_count *
+            sizeof(int16_t));
         state->lookahead_write = 0;
     }
     memset(state->peak_history, 0, sizeof(state->peak_history));
@@ -217,55 +232,54 @@ void audioif_dynamics_process_s16(const audioif_dynamics_config_t *config,
         state->lookahead_write = 0;
     }
 
+    const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
     while (frames-- != 0) {
-        const float source_l = (float)input[0] / 32768.0f;
-        const float source_r = (float)input[1] / 32768.0f;
+        float source[2] = {0.0f, 0.0f};
+        for (uint32_t channel = 0; channel < channels; ++channel) {
+            source[channel] = (float)input[channel] / 32768.0f;
+        }
         // The detector reads the signal as it arrives; the audio it applies
         // its gain to is what came in `held` frames ago. That is the whole
         // trick, and the whole cost: the chain is now that much later.
-        float left = source_l;
-        float right = source_r;
+        float delayed[2] = {source[0], source[channels == 1u ? 0u : 1u]};
         if (held != 0) {
-            left = (float)state->lookahead[state->lookahead_write * 2] /
-                32768.0f;
-            right = (float)state->lookahead[state->lookahead_write * 2 + 1] /
-                32768.0f;
-            state->lookahead[state->lookahead_write * 2] = input[0];
-            state->lookahead[state->lookahead_write * 2 + 1] = input[1];
+            for (uint32_t channel = 0; channel < channels; ++channel) {
+                delayed[channel] = (float)state->lookahead[
+                    state->lookahead_write * channels + channel] / 32768.0f;
+                state->lookahead[state->lookahead_write * channels + channel] =
+                    input[channel];
+            }
             state->lookahead_write = (state->lookahead_write + 1u) % held;
         }
-        float det_l = source_l;
-        float det_r = source_r;
+        float detector[2] = {source[0], source[channels == 1u ? 0u : 1u]};
         if (config->sidechain_coef > 0.0f) {
-            state->sidechain_lp[0] += config->sidechain_coef *
-                (source_l - state->sidechain_lp[0]);
-            state->sidechain_lp[1] += config->sidechain_coef *
-                (source_r - state->sidechain_lp[1]);
-            det_l = source_l - state->sidechain_lp[0];
-            det_r = source_r - state->sidechain_lp[1];
+            for (uint32_t channel = 0; channel < channels; ++channel) {
+                state->sidechain_lp[channel] += config->sidechain_coef *
+                    (source[channel] - state->sidechain_lp[channel]);
+                detector[channel] = source[channel] -
+                    state->sidechain_lp[channel];
+            }
         }
-        float level = fabsf(det_l);
-        const float level_r = fabsf(det_r);
-        if (level_r > level) {
-            level = level_r;
+        float level = 0.0f;
+        for (uint32_t channel = 0; channel < channels; ++channel) {
+            const float channel_level = fabsf(detector[channel]);
+            if (channel_level > level) {
+                level = channel_level;
+            }
         }
         if (config->true_peak) {
-            const float between_l =
-                half_sample_peak(state->peak_history[0], det_l);
-            const float between_r =
-                half_sample_peak(state->peak_history[1], det_r);
-            if (between_l > level) {
-                level = between_l;
+            for (uint32_t channel = 0; channel < channels; ++channel) {
+                const float between = half_sample_peak(
+                    state->peak_history[channel], detector[channel]);
+                if (between > level) {
+                    level = between;
+                }
+                state->peak_history[channel][0] =
+                    state->peak_history[channel][1];
+                state->peak_history[channel][1] =
+                    state->peak_history[channel][2];
+                state->peak_history[channel][2] = detector[channel];
             }
-            if (between_r > level) {
-                level = between_r;
-            }
-            state->peak_history[0][0] = state->peak_history[0][1];
-            state->peak_history[0][1] = state->peak_history[0][2];
-            state->peak_history[0][2] = det_l;
-            state->peak_history[1][0] = state->peak_history[1][1];
-            state->peak_history[1][1] = state->peak_history[1][2];
-            state->peak_history[1][2] = det_r;
         }
         float gain_db;
         if (config->mode == AUDIOIF_DYNAMICS_TRANSIENT) {
@@ -295,21 +309,16 @@ void audioif_dynamics_process_s16(const audioif_dynamics_config_t *config,
         state->gain_reduction_db = gain_db;
         const float gain = audioif_dynamics_db_to_gain(gain_db) *
             config->makeup_gain;
-        float out_l = left * gain * 32768.0f;
-        float out_r = right * gain * 32768.0f;
-        if (out_l > 32767.0f) {
-            out_l = 32767.0f;
-        } else if (out_l < -32768.0f) {
-            out_l = -32768.0f;
+        for (uint32_t channel = 0; channel < channels; ++channel) {
+            float value = delayed[channel] * gain * 32768.0f;
+            if (value > 32767.0f) {
+                value = 32767.0f;
+            } else if (value < -32768.0f) {
+                value = -32768.0f;
+            }
+            output[channel] = (int16_t)value;
         }
-        if (out_r > 32767.0f) {
-            out_r = 32767.0f;
-        } else if (out_r < -32768.0f) {
-            out_r = -32768.0f;
-        }
-        output[0] = (int16_t)out_l;
-        output[1] = (int16_t)out_r;
-        input += 2;
-        output += 2;
+        input += channels;
+        output += channels;
     }
 }

@@ -17,7 +17,7 @@ way an instrument does. See README.md, "A note on patches".
 """
 
 from . import _core
-from ._core import configure, sample_rate
+from ._core import channel_count, configure, sample_rate
 
 from .dynamics import (Compressor, Limiter, Expander, NoiseGate, DeEsser,
                        TransientShaper, MultibandCompressor)
@@ -33,22 +33,27 @@ from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
 
 
-def create(name, source, sample_rate, **options):
+def create(name, source, sample_rate, transport=None, **options):
     """Construct the public effect named ``name``.
 
     This is the effect-side counterpart to ``audioinstruments.create``. The
     selected class's ``create`` method owns the actual construction, so a
     consumer does not need to know which module contains it.
     """
-    cls = globals().get(name)
-    if not isinstance(cls, type) or not issubclass(cls, _core.Effect):
-        raise ImportError("audioeffects has no %s" % name)
-    return cls.create(source, sample_rate, **options)
+    for exported in __all__:
+        cls = globals().get(exported)
+        if (isinstance(cls, type)
+                and issubclass(cls, _core.Effect)
+                and cls is not _core.Effect
+                and getattr(cls, "NAME", None) == name):
+            return cls.create(source, sample_rate, transport=transport,
+                              **options)
+    raise ImportError("audioeffects has no %s" % name)
 
 #: The package's whole surface, grouped as the modules above are. Every
 #: name here is re-exported; nothing else in a submodule is public.
 __all__ = [
-    "configure", "sample_rate", "create",
+    "configure", "sample_rate", "channel_count", "create", "ALL",
     # dynamics
     "Compressor", "Limiter", "Expander", "NoiseGate", "DeEsser",
     "TransientShaper", "MultibandCompressor",
@@ -69,3 +74,13 @@ __all__ = [
     # pitch and stereo
     "PitchShifter", "Harmonizer", "Octaver", "StereoWidener",
 ]
+
+# Stable provider names, not implementation module names. This is computed
+# from the already-imported public classes and never constructs an effect.
+ALL = tuple(sorted(
+    getattr(globals()[name], "NAME", name)
+    for name in __all__
+    if isinstance(globals().get(name), type)
+    and issubclass(globals()[name], _core.Effect)
+    and globals()[name] is not _core.Effect
+))

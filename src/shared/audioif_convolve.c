@@ -64,6 +64,7 @@ uint32_t audioif_convolve_float_count(const audioif_convolve_config_t *config) {
 void audioif_convolve_config_init(audioif_convolve_config_t *config,
     uint32_t sample_rate, uint32_t partitions, uint32_t ir_channels) {
     config->sample_rate = sample_rate ? sample_rate : 48000u;
+    config->channel_count = 2u;
     if (partitions < 1u) partitions = 1u;
     if (partitions > AUDIOIF_CONVOLVE_MAX_PARTITIONS) {
         partitions = AUDIOIF_CONVOLVE_MAX_PARTITIONS;
@@ -71,6 +72,11 @@ void audioif_convolve_config_init(audioif_convolve_config_t *config,
     config->partitions = partitions;
     config->ir_channels = ir_channels >= 2u ? 2u : 1u;
     config->mix = 1.0f;   // 0.5 asked for, doubled -- full wet beside full dry
+}
+
+void audioif_convolve_set_channel_count(audioif_convolve_config_t *config,
+    uint32_t channel_count) {
+    config->channel_count = channel_count == 1u ? 1u : 2u;
 }
 
 void audioif_convolve_configure(audioif_convolve_config_t *config,
@@ -257,7 +263,8 @@ static void process_block(const audioif_convolve_config_t *config,
 
     state->cursor = state->cursor + 1u < parts ? state->cursor + 1u : 0u;
 
-    for (uint32_t ch = 0; ch < 2u; ch++) {
+    const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
+    for (uint32_t ch = 0; ch < channels; ch++) {
         float *window = state->window + ch * FFTN;
         float *pending = state->pending + ch * FRAMES;
 
@@ -301,22 +308,24 @@ void audioif_convolve_process_s16(const audioif_convolve_config_t *config,
         // Nothing loaded is a bypass, not a room of zero size -- and it has
         // to bypass without the block latency, or a chain built before its
         // impulse arrives would drift against its neighbours.
-        for (uint32_t i = 0; i < frames * 2u; i++) out[i] = in[i];
+        const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
+        for (uint32_t i = 0; i < frames * channels; i++) out[i] = in[i];
         return;
     }
+    const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
     for (uint32_t frame = 0; frame < frames; frame++) {
         uint32_t phase = state->phase;
         // Read before write: `emitted` holds the previous block's result, so
         // the output trails the input by exactly one partition however the
         // caller chops up its calls.
-        for (uint32_t ch = 0; ch < 2u; ch++) {
+        for (uint32_t ch = 0; ch < channels; ch++) {
             float value = state->emitted[ch * FRAMES + phase];
             int32_t rounded = (int32_t)(value < 0.0f ? value - 0.5f : value + 0.5f);
             if (rounded > 32767) rounded = 32767;
             else if (rounded < -32768) rounded = -32768;
             state->pending[ch * FRAMES + phase] =
-                (float)in[frame * 2u + ch];
-            out[frame * 2u + ch] = (int16_t)rounded;
+                (float)in[frame * channels + ch];
+            out[frame * channels + ch] = (int16_t)rounded;
         }
         state->phase = phase + 1u;
         if (state->phase >= FRAMES) {

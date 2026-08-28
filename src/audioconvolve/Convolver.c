@@ -41,7 +41,7 @@ static void convolver_allocate(audioconvolve_convolver_obj_t *self,
 static mp_obj_t audioconvolve_convolver_make_new(const mp_obj_type_t *type,
     size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
     enum { ARG_impulse, ARG_impulse_channels, ARG_sample_rate, ARG_max_taps,
-           ARG_ir_channels, ARG_gain, ARG_mix };
+           ARG_ir_channels, ARG_gain, ARG_mix, ARG_channel_count };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_impulse, MP_ARG_OBJ, { .u_obj = MP_ROM_NONE } },
         { MP_QSTR_impulse_channels, MP_ARG_INT, { .u_int = 1 } },
@@ -50,6 +50,7 @@ static mp_obj_t audioconvolve_convolver_make_new(const mp_obj_type_t *type,
         { MP_QSTR_ir_channels, MP_ARG_INT, { .u_int = 0 } },
         { MP_QSTR_gain, MP_ARG_OBJ, { .u_obj = MP_ROM_NONE } },
         { MP_QSTR_mix, MP_ARG_OBJ, { .u_obj = MP_ROM_NONE } },
+        { MP_QSTR_channel_count, MP_ARG_INT, { .u_int = 2 } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed),
@@ -82,10 +83,14 @@ static mp_obj_t audioconvolve_convolver_make_new(const mp_obj_type_t *type,
 
     audioconvolve_convolver_obj_t *self =
         mp_obj_malloc(audioconvolve_convolver_obj_t, type);
+    if (args[ARG_channel_count].u_int < 1 ||
+        args[ARG_channel_count].u_int > 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
+    }
     self->base.sample_rate = (uint32_t)args[ARG_sample_rate].u_int;
     self->base.max_buffer_length = sizeof(self->buffer);
     self->base.bits_per_sample = 16;
-    self->base.channel_count = 2;
+    self->base.channel_count = (uint8_t)args[ARG_channel_count].u_int;
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
@@ -94,6 +99,8 @@ static mp_obj_t audioconvolve_convolver_make_new(const mp_obj_type_t *type,
     self->storage = NULL;
 
     convolver_allocate(self, self->base.sample_rate, max_taps, ir_channels);
+    audioif_convolve_set_channel_count(&self->config,
+        (uint32_t)self->base.channel_count);
 
     if (args[ARG_mix].u_obj != mp_const_none) {
         audioif_convolve_configure(&self->config, AUDIOIF_CONVOLVE_OPT_MIX,
@@ -111,7 +118,11 @@ static mp_obj_t audioconvolve_convolver_make_new(const mp_obj_type_t *type,
 static mp_obj_t audioconvolve_convolver_play(mp_obj_t self_in,
     mp_obj_t sample) {
     audioconvolve_convolver_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    (void)audiosample_check(sample);
+    audiosample_base_t *base = audiosample_check(sample);
+    if (base->channel_count != self->base.channel_count) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "source channel_count does not match Convolver"));
+    }
     self->source = sample;
     self->pending = NULL;
     self->pending_frames = 0;
@@ -251,19 +262,21 @@ static audioio_get_buffer_result_t audioconvolve_convolver_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending = (const int16_t *)raw;
-            self->pending_frames = raw_bytes / 4u;
+            self->pending_frames = raw_bytes / width;
         }
         uint32_t run = AUDIOIF_CONVOLVE_FRAMES - produced;
         if (run > self->pending_frames) {
             run = self->pending_frames;
         }
         audioif_convolve_process_s16(&self->config, &self->state,
-            &self->buffer[produced * 2], self->pending, run);
-        self->pending += run * 2;
+            &self->buffer[produced * self->base.channel_count], self->pending,
+            run);
+        self->pending += run * self->base.channel_count;
         self->pending_frames -= run;
         produced += run;
     }
@@ -277,7 +290,7 @@ static audioio_get_buffer_result_t audioconvolve_convolver_get_buffer(
         produced = AUDIOIF_CONVOLVE_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }
 

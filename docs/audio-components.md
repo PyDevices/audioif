@@ -1,5 +1,9 @@
 # Audio component metadata manifest
 
+The live-object construction and processing surface is specified separately in
+[`audio-component-api.md`](audio-component-api.md). This document defines only
+the static provider metadata and its consumer rules.
+
 An **audio component** is an audioif instrument, effect, or effect rack. The
 component's metadata is a static declaration owned by `audioif`. Consumers
 such as the offline renderer and `micropython-vst3` may use as much or as

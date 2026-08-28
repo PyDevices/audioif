@@ -80,7 +80,8 @@ static void feedback_delay_apply_kwargs(audioecho_feedback_delay_obj_t *self,
             continue;
         }
         qstr name = mp_obj_str_get_qstr(kw->table[i].key);
-        if (name == MP_QSTR_sample_rate || name == MP_QSTR_max_delay_ms) {
+        if (name == MP_QSTR_sample_rate || name == MP_QSTR_max_delay_ms ||
+            name == MP_QSTR_channel_count) {
             continue;
         }
         float value = (float)mp_obj_get_float(kw->table[i].value);
@@ -108,6 +109,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     mp_map_init_fixed_table(&kw_map, n_kw, all_args + n_args);
 
     uint32_t sample_rate = 48000;
+    uint32_t channel_count = 2;
     mp_float_t max_delay_ms = 250;
     for (size_t i = 0; i < kw_map.alloc; ++i) {
         if (!mp_map_slot_is_filled(&kw_map, i)) {
@@ -118,10 +120,15 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
             sample_rate = (uint32_t)mp_obj_get_int(kw_map.table[i].value);
         } else if (name == MP_QSTR_max_delay_ms) {
             max_delay_ms = mp_obj_get_float(kw_map.table[i].value);
+        } else if (name == MP_QSTR_channel_count) {
+            channel_count = (uint32_t)mp_obj_get_int(kw_map.table[i].value);
         }
     }
     if (max_delay_ms <= 0) {
         mp_raise_ValueError(MP_ERROR_TEXT("max_delay_ms must be positive"));
+    }
+    if (channel_count < 1u || channel_count > 2u) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
     }
 
     audioecho_feedback_delay_obj_t *self =
@@ -129,7 +136,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     self->base.sample_rate = sample_rate;
     self->base.max_buffer_length = sizeof(self->buffer);
     self->base.bits_per_sample = 16;
-    self->base.channel_count = 2;
+    self->base.channel_count = (uint8_t)channel_count;
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
@@ -143,6 +150,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     }
     audioif_feedback_delay_config_init(&self->config, sample_rate,
         line_frames);
+    audioif_feedback_delay_set_channel_count(&self->config, channel_count);
     int16_t *line = m_malloc((size_t)line_frames * 2u * sizeof(int16_t));
     memset(line, 0, (size_t)line_frames * 2u * sizeof(int16_t));
     audioif_feedback_delay_state_init(&self->state, line);

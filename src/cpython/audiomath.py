@@ -28,13 +28,16 @@ FRAMES = _audioif.MULTIPLY_FRAMES
 
 class Multiply(_AudioSample):
     def __init__(self, source=None, modulator=None, mix=1.0,
-                 sample_rate=48000):
+                 sample_rate=48000, channel_count=2):
+        channel_count = int(channel_count)
+        if channel_count not in (1, 2):
+            raise ValueError("channel_count must be 1 or 2")
         self.sample_rate = int(sample_rate)
         self.bits_per_sample = 16
-        self.channel_count = 2
+        self.channel_count = channel_count
         self.samples_signed = True
         self.single_buffer = False
-        self.max_buffer_length = FRAMES * 4
+        self.max_buffer_length = FRAMES * 2 * channel_count
         self._deinited = False
         self._source = source
         self._modulator = modulator
@@ -87,9 +90,10 @@ class Multiply(_AudioSample):
     def _pull(self, sample):
         result, data = get_buffer(sample, False, 0)
         data = bytes(data)
-        if result == GET_BUFFER_ERROR or len(data) < 4:
+        width = 2 * self.channel_count
+        if result == GET_BUFFER_ERROR or len(data) < width:
             return b""
-        return data[:len(data) // 4 * 4]
+        return data[:len(data) // width * width]
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         self._check()
@@ -108,21 +112,24 @@ class Multiply(_AudioSample):
                 # genuinely stopped leaves the signal alone rather than
                 # muting it.
                 self._pending_modulator = self._pull(self._modulator)
-            run = min(FRAMES - produced, len(self._pending_source) // 4)
+            width = 2 * self.channel_count
+            run = min(FRAMES - produced, len(self._pending_source) // width)
             if self._pending_modulator:
-                run = min(run, len(self._pending_modulator) // 4)
+                run = min(run, len(self._pending_modulator) // width)
                 output += _audioif.multiply_s16(
-                    self._pending_source[:run * 4],
-                    self._pending_modulator[:run * 4], self._mix)
-                self._pending_modulator = self._pending_modulator[run * 4:]
+                    self._pending_source[:run * width],
+                    self._pending_modulator[:run * width], self._mix,
+                    self.channel_count)
+                self._pending_modulator = self._pending_modulator[run * width:]
             else:
-                output += self._pending_source[:run * 4]
-            self._pending_source = self._pending_source[run * 4:]
+                output += self._pending_source[:run * width]
+            self._pending_source = self._pending_source[run * width:]
             produced += run
         # A starved chain gets silence rather than a short block: this node
         # sits in the middle of a live graph and never reports itself finished.
         if produced == 0:
-            return GET_BUFFER_MORE_DATA, memoryview(bytes(FRAMES * 4))
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(FRAMES * 2 * self.channel_count))
         return GET_BUFFER_MORE_DATA, memoryview(bytes(output))
 
 

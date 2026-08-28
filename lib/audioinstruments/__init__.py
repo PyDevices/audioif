@@ -8,7 +8,7 @@ Each instrument is a self-contained `synthio` program - no samples - exposing:
                   a freshly created instrument makes
     NOTE_MAP      percussion instruments only: ((midi_note, label), ...) for
                   the voices the machine actually maps
-    create(sample_rate, transport=None) -> Instrument
+    create(sample_rate, channel_count=2, transport=None) -> Instrument
 
 `transport` is an optional callable returning the host's playback position as
 ``(playing, seconds, bpm, ts_numerator, ts_denominator)``; instruments that
@@ -72,6 +72,7 @@ def load(name):
     return sys.modules[full]
 
 
-def create(name, sample_rate, transport=None):
+def create(name, sample_rate, channel_count=2, transport=None, **options):
     """Load instrument ``name`` and return a live instance of it."""
-    return load(name).create(sample_rate, transport=transport)
+    return load(name).create(sample_rate, channel_count=channel_count,
+                              transport=transport, **options)

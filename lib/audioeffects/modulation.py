@@ -33,7 +33,7 @@ class Chorus(_core.Effect):
             max_delay_ms=int(depth_ms * 2 + 30), delay_ms=self.motion,
             voices=voices, mix=mix, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class Flanger(_core.Effect):
@@ -56,7 +56,7 @@ class Flanger(_core.Effect):
             max_delay_ms=int(depth_ms * 2 + 20), delay_ms=self.motion,
             decay=feedback, mix=mix, freq_shift=True, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class Phaser(_core.Effect):
@@ -76,7 +76,7 @@ class Phaser(_core.Effect):
             frequency=self.sweep, feedback=feedback, stages=stages,
             mix=mix, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class _MixerMod(_core.Effect):
@@ -86,7 +86,7 @@ class _MixerMod(_core.Effect):
         self.mixer = audiomixer.Mixer(voice_count=1, **_core.pcm(1024))
         self.mixer.voice[0].play(source)
         self.voice = self.mixer.voice[0]
-        self.output = self.mixer
+        self._output = self.mixer
 
 
 class Tremolo(_MixerMod):
@@ -135,7 +135,7 @@ class Vibrato(_core.Effect):
         self.node = audiodelays.PitchShift(
             semitones=self.lfo, mix=1.0, window=1024, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class Rotary(_core.Effect):
@@ -157,7 +157,7 @@ class Rotary(_core.Effect):
         self.mixer = self.tremolo.mixer
         self.pan_lfo = synthio.LFO(rate=rate, scale=0.7, phase_offset=0.25)
         self.tremolo.voice.panning = self.pan_lfo
-        self.output = self.tremolo.output
+        self._output = self.tremolo.output
 
 
 #: Frames a carrier table aims for. It holds a whole number of cycles, so the
@@ -168,7 +168,7 @@ class Rotary(_core.Effect):
 _CARRIER_FRAMES = 2048
 
 
-def _carrier(frequency, depth, sample_rate):
+def _carrier(frequency, depth, sample_rate, channel_count):
     """One sine as a looping stereo table, at `depth` between a constant and
     full swing.
 
@@ -189,10 +189,10 @@ def _carrier(frequency, depth, sample_rate):
         shape = (1.0 - depth) + depth * math.sin(
             2.0 * math.pi * cycles * frame / length)
         sample = int(32767.0 * shape)
-        values.append(sample)
-        values.append(sample)
+        for _ in range(channel_count):
+            values.append(sample)
     return audiocore.RawSample(values, sample_rate=sample_rate,
-                               channel_count=2)
+                               channel_count=channel_count)
 
 
 class RingMod(_core.Effect):
@@ -237,9 +237,11 @@ class RingMod(_core.Effect):
 
     def __init__(self, source, frequency=220.0, depth=1.0, mix=1.0,
                  patch=None):
-        self.node = audiomath.Multiply(sample_rate=_core.sample_rate())
+        self.node = audiomath.Multiply(
+            sample_rate=_core.sample_rate(),
+            channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
         self._built = None
         self._init_macros((frequency, depth, mix), patch)
 
@@ -255,7 +257,8 @@ class RingMod(_core.Effect):
         if self._built == (frequency, depth):
             return
         self._built = (frequency, depth)
-        self.carrier = _carrier(frequency, depth, _core.sample_rate())
+        self.carrier = _carrier(frequency, depth, _core.sample_rate(),
+                                _core.channel_count())
         self.node.modulate(self.carrier)
 
     def set_frequency(self, frequency):

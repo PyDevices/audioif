@@ -60,9 +60,9 @@ class Compressor(_core.Effect):
                  knee_db=None, makeup_db=0.0, patch=None):
         preset = _CHARACTERS[character]
         self.node = audiodynamics.Dynamics(
-            audiodynamics.DYN_COMPRESS, sample_rate=_core.SAMPLE_RATE)
+            audiodynamics.DYN_COMPRESS, sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
         self._init_macros((
             threshold_db, ratio,
             attack_ms if attack_ms is not None else preset[0],
@@ -120,9 +120,9 @@ class Limiter(_core.Effect):
                  lookahead_ms=0.0, true_peak=False, patch=None):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_LIMIT, attack_ms=0.05,
-            sample_rate=_core.SAMPLE_RATE)
+            sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
         self._init_macros((ceiling_db, release_ms, lookahead_ms,
                            1.0 if true_peak else 0.0), patch)
 
@@ -153,9 +153,9 @@ class Expander(_core.Effect):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_EXPAND, threshold_db=threshold_db, ratio=ratio,
             attack_ms=attack_ms, release_ms=release_ms,
-            sample_rate=_core.SAMPLE_RATE)
+            sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class NoiseGate(_core.Effect):
@@ -172,9 +172,9 @@ class NoiseGate(_core.Effect):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_GATE, threshold_db=threshold_db,
             attack_ms=attack_ms, release_ms=release_ms,
-            sample_rate=_core.SAMPLE_RATE)
+            sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class DeEsser(_core.Effect):
@@ -194,9 +194,9 @@ class DeEsser(_core.Effect):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_COMPRESS, threshold_db=threshold_db, ratio=ratio,
             attack_ms=attack_ms, release_ms=release_ms, knee_db=3.0,
-            sidechain_hz=frequency, sample_rate=_core.SAMPLE_RATE)
+            sidechain_hz=frequency, sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class TransientShaper(_core.Effect):
@@ -214,9 +214,9 @@ class TransientShaper(_core.Effect):
     def __init__(self, source, attack_db=0.0, sustain_db=0.0):
         self.node = audiodynamics.Dynamics(
             audiodynamics.DYN_TRANSIENT, attack_gain_db=attack_db,
-            sustain_gain_db=sustain_db, sample_rate=_core.SAMPLE_RATE)
+            sustain_gain_db=sustain_db, sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class MultibandCompressor(_core.Effect):
@@ -265,11 +265,11 @@ class MultibandCompressor(_core.Effect):
             comp = audiodynamics.Dynamics(
                 audiodynamics.DYN_COMPRESS, threshold_db=thr, ratio=ratio,
                 attack_ms=8.0, release_ms=150.0,
-                sample_rate=_core.SAMPLE_RATE)
+                sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
             comp.play(filt)
             self.bands.append(comp)
             mixer.voice[index].play(comp)
             mixer.voice[index].level = 1.0
         self.splitter = split
         self.mixer = mixer
-        self.output = mixer
+        self._output = mixer

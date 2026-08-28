@@ -57,6 +57,9 @@ typedef enum {
 //: the detector.
 typedef struct {
     uint32_t sample_rate;
+    // Interleaved audio width. The bounded state arrays remain two entries so
+    // mono and stereo use one implementation.
+    uint32_t channel_count;
     int mode;
     float threshold_db;
     float ratio;
@@ -75,6 +78,7 @@ typedef struct {
 
 //: What the detector remembers between blocks.
 typedef struct {
+    uint32_t channel_count;
     float sidechain_lp[2];
     float envelope;         // main detector, linear 0..1
     float fast_env;         // transient mode detectors
@@ -111,6 +115,11 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
     audioif_dynamics_option_t option, float value);
 
 void audioif_dynamics_state_init(audioif_dynamics_state_t *state);
+
+// Select mono or stereo processing before configuring lookahead storage.
+void audioif_dynamics_set_channel_count(
+    audioif_dynamics_config_t *config, audioif_dynamics_state_t *state,
+    uint32_t channel_count);
 
 // How many frames of lookahead buffer the current config wants. Bindings call
 // this after applying options and hand back storage of at least that size;

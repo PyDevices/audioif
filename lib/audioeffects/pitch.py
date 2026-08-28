@@ -26,7 +26,7 @@ class PitchShifter(_core.Effect):
         self.node = audiodelays.PitchShift(
             semitones=semitones, mix=mix, window=2048, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
     def set_semitones(self, semitones):
         self.node.semitones = semitones
@@ -59,7 +59,7 @@ class Harmonizer(_core.Effect):
             self.mixer.voice[index + 1].play(shifter)
             self.mixer.voice[index + 1].level = level
         self.splitter = split
-        self.output = self.mixer
+        self._output = self.mixer
 
 
 class Octaver(_core.Effect):
@@ -109,7 +109,7 @@ class Octaver(_core.Effect):
             self.mixer.voice[index + 1].play(shifter)
             self.mixer.voice[index + 1].level = levels[name]
         self.splitter = split
-        self.output = self.mixer
+        self._output = self.mixer
 
 
 class StereoWidener(_core.Effect):
@@ -138,4 +138,4 @@ class StereoWidener(_core.Effect):
         self.mixer.voice[1].level = 0.8
         self.mixer.voice[1].panning = 0.9 * width
         self.splitter = split
-        self.output = self.mixer
+        self._output = self.mixer

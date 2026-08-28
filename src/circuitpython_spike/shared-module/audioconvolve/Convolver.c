@@ -35,19 +35,21 @@ audioio_get_buffer_result_t audioconvolve_convolver_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending = (const int16_t *)raw;
-            self->pending_frames = raw_bytes / 4u;
+            self->pending_frames = raw_bytes / width;
         }
         uint32_t run = AUDIOIF_CONVOLVE_FRAMES - produced;
         if (run > self->pending_frames) {
             run = self->pending_frames;
         }
         audioif_convolve_process_s16(&self->config, &self->state,
-            &self->buffer[produced * 2], self->pending, run);
-        self->pending += run * 2;
+            &self->buffer[produced * self->base.channel_count],
+            self->pending, run);
+        self->pending += run * self->base.channel_count;
         self->pending_frames -= run;
         produced += run;
     }
@@ -61,6 +63,6 @@ audioio_get_buffer_result_t audioconvolve_convolver_get_buffer(
         produced = AUDIOIF_CONVOLVE_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }

@@ -72,7 +72,8 @@ static void dynamics_ensure_lookahead(audiodynamics_dynamics_obj_t *self) {
     if (wanted == 0 || wanted <= self->state.lookahead_capacity) {
         return;
     }
-    int16_t *buffer = m_malloc((size_t)wanted * 2u * sizeof(int16_t));
+    int16_t *buffer = m_malloc((size_t)wanted * self->base.channel_count *
+        sizeof(int16_t));
     audioif_dynamics_set_lookahead(&self->state, buffer, wanted);
 }
 
@@ -87,11 +88,24 @@ static void dynamics_apply_kwargs(audiodynamics_dynamics_obj_t *self,
         }
     }
     for (size_t i = 0; i < kw->alloc; ++i) {
+        if (mp_map_slot_is_filled(kw, i) &&
+            mp_obj_str_get_qstr(kw->table[i].key) == MP_QSTR_channel_count) {
+            mp_int_t channels = mp_obj_get_int(kw->table[i].value);
+            if (channels < 1 || channels > 2) {
+                mp_raise_ValueError(MP_ERROR_TEXT(
+                    "channel_count must be 1 or 2"));
+            }
+            self->base.channel_count = (uint8_t)channels;
+            audioif_dynamics_set_channel_count(&self->config, &self->state,
+                (uint32_t)channels);
+        }
+    }
+    for (size_t i = 0; i < kw->alloc; ++i) {
         if (!mp_map_slot_is_filled(kw, i)) {
             continue;
         }
         qstr name = mp_obj_str_get_qstr(kw->table[i].key);
-        if (name == MP_QSTR_sample_rate) {
+        if (name == MP_QSTR_sample_rate || name == MP_QSTR_channel_count) {
             continue;
         }
         float value = (float)mp_obj_get_float(kw->table[i].value);

@@ -24,6 +24,7 @@
 #define AUDIOIF_MULTIPLY_FRAMES 256u
 
 typedef struct {
+    uint32_t channel_count;
     // 0..32768: how much of the product replaces the dry signal. Held as a
     // Q15 integer rather than a float because the process loop is the hot
     // path and every other term in it is already an integer.
@@ -31,6 +32,9 @@ typedef struct {
 } audioif_multiply_config_t;
 
 void audioif_multiply_config_init(audioif_multiply_config_t *config);
+
+void audioif_multiply_set_channel_count(audioif_multiply_config_t *config,
+    uint32_t channel_count);
 
 // Clamps to 0..1. Anything outside is a caller's arithmetic slipping rather
 // than a request worth honouring.

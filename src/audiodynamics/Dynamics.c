@@ -38,7 +38,8 @@ static void dynamics_ensure_lookahead(audiodynamics_dynamics_obj_t *self) {
     if (wanted == 0 || wanted <= self->state.lookahead_capacity) {
         return;
     }
-    int16_t *buffer = m_malloc((size_t)wanted * 2u * sizeof(int16_t));
+    int16_t *buffer = m_malloc((size_t)wanted * self->base.channel_count *
+        sizeof(int16_t));
     audioif_dynamics_set_lookahead(&self->state, buffer, wanted);
 }
 
@@ -53,11 +54,24 @@ static void dynamics_apply_kwargs(audiodynamics_dynamics_obj_t *self,
         }
     }
     for (size_t i = 0; i < kw->alloc; ++i) {
+        if (mp_map_slot_is_filled(kw, i) &&
+            mp_obj_str_get_qstr(kw->table[i].key) == MP_QSTR_channel_count) {
+            mp_int_t channels = mp_obj_get_int(kw->table[i].value);
+            if (channels < 1 || channels > 2) {
+                mp_raise_ValueError(MP_ERROR_TEXT(
+                    "channel_count must be 1 or 2"));
+            }
+            self->base.channel_count = (uint8_t)channels;
+            audioif_dynamics_set_channel_count(&self->config, &self->state,
+                (uint32_t)channels);
+        }
+    }
+    for (size_t i = 0; i < kw->alloc; ++i) {
         if (!mp_map_slot_is_filled(kw, i)) {
             continue;
         }
         qstr name = mp_obj_str_get_qstr(kw->table[i].key);
-        if (name == MP_QSTR_sample_rate) {
+        if (name == MP_QSTR_sample_rate || name == MP_QSTR_channel_count) {
             continue;
         }
         float value = (float)mp_obj_get_float(kw->table[i].value);
@@ -150,11 +164,12 @@ static audioio_get_buffer_result_t audiodynamics_dynamics_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending = (const int16_t *)raw;
-            self->pending_frames = raw_bytes / 4u;
+            self->pending_frames = raw_bytes / width;
         }
         uint32_t run = AUDIOIF_DYNAMICS_FRAMES - produced;
         if (run > self->pending_frames) {
@@ -162,7 +177,7 @@ static audioio_get_buffer_result_t audiodynamics_dynamics_get_buffer(
         }
         audioif_dynamics_process_s16(&self->config, &self->state,
             &self->buffer[produced * 2], self->pending, run);
-        self->pending += run * 2;
+        self->pending += run * self->base.channel_count;
         self->pending_frames -= run;
         produced += run;
     }
@@ -173,7 +188,7 @@ static audioio_get_buffer_result_t audiodynamics_dynamics_get_buffer(
         produced = AUDIOIF_DYNAMICS_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }
 

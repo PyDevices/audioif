@@ -50,6 +50,11 @@ static mp_obj_t audioroute_splitter_make_new(const mp_obj_type_t *type,
         mp_obj_malloc(audioroute_splitter_obj_t, type);
     self->source = source;
     audioif_splitter_init(&self->state, (uint32_t)taps);
+    if (sample->channel_count < 1 || sample->channel_count > 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "source channel_count must be 1 or 2"));
+    }
+    audioif_splitter_set_channel_count(&self->state, sample->channel_count);
     for (uint32_t index = 0; index < AUDIOIF_SPLITTER_MAX_TAPS; ++index) {
         self->taps[index] = MP_OBJ_NULL;
     }
@@ -58,9 +63,10 @@ static mp_obj_t audioroute_splitter_make_new(const mp_obj_type_t *type,
             mp_obj_malloc(audioroute_splitter_tap_obj_t,
                 &audioroute_splitter_tap_type);
         tap->base.sample_rate = sample->sample_rate;
-        tap->base.max_buffer_length = AUDIOIF_SPLITTER_CHUNK_FRAMES * 4u;
+        tap->base.max_buffer_length = AUDIOIF_SPLITTER_CHUNK_FRAMES * 2u *
+            sample->channel_count;
         tap->base.bits_per_sample = 16;
-        tap->base.channel_count = 2;
+        tap->base.channel_count = sample->channel_count;
         tap->base.samples_signed = 1;
         tap->base.single_buffer = false;
         tap->owner = MP_OBJ_FROM_PTR(self);

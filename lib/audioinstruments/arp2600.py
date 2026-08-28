@@ -53,9 +53,9 @@ SQUARE = make_table([(n, 1.0 / n) for n in range(1, 40, 2)])
 TRIANGLE = make_table([(n, (1.0 / (n*n)) * (-1)**((n-1)//2)) for n in range(1, 11, 2)])
 
 
-def create(sample_rate, transport=None):
+def create(sample_rate, channel_count=2, transport=None):
     SR = sample_rate
-    synth = synthio.Synthesizer(sample_rate=SR, channel_count=2)
+    synth = synthio.Synthesizer(sample_rate=SR, channel_count=channel_count)
 
     # Macros
     volume = 0.8
@@ -169,5 +169,4 @@ def create(sample_rate, transport=None):
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
                             transport=transport)
-    instrument.program_change(0)
     return instrument

@@ -36,7 +36,8 @@ static void feedback_delay_apply_kwargs(audioecho_feedback_delay_obj_t *self,
             continue;
         }
         qstr name = mp_obj_str_get_qstr(kw->table[i].key);
-        if (name == MP_QSTR_sample_rate || name == MP_QSTR_max_delay_ms) {
+        if (name == MP_QSTR_sample_rate || name == MP_QSTR_max_delay_ms ||
+            name == MP_QSTR_channel_count) {
             continue;
         }
         float value = (float)mp_obj_get_float(kw->table[i].value);
@@ -64,6 +65,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     mp_map_init_fixed_table(&kw_map, n_kw, all_args + n_args);
 
     uint32_t sample_rate = 48000;
+    uint32_t channel_count = 2;
     mp_float_t max_delay_ms = 250;
     for (size_t i = 0; i < kw_map.alloc; ++i) {
         if (!mp_map_slot_is_filled(&kw_map, i)) {
@@ -74,10 +76,15 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
             sample_rate = (uint32_t)mp_obj_get_int(kw_map.table[i].value);
         } else if (name == MP_QSTR_max_delay_ms) {
             max_delay_ms = mp_obj_get_float(kw_map.table[i].value);
+        } else if (name == MP_QSTR_channel_count) {
+            channel_count = (uint32_t)mp_obj_get_int(kw_map.table[i].value);
         }
     }
     if (max_delay_ms <= 0) {
         mp_raise_ValueError(MP_ERROR_TEXT("max_delay_ms must be positive"));
+    }
+    if (channel_count < 1u || channel_count > 2u) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
     }
 
     audioecho_feedback_delay_obj_t *self =
@@ -85,7 +92,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     self->base.sample_rate = sample_rate;
     self->base.max_buffer_length = sizeof(self->buffer);
     self->base.bits_per_sample = 16;
-    self->base.channel_count = 2;
+    self->base.channel_count = (uint8_t)channel_count;
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
@@ -99,6 +106,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     }
     audioif_feedback_delay_config_init(&self->config, sample_rate,
         line_frames);
+    audioif_feedback_delay_set_channel_count(&self->config, channel_count);
     int16_t *line = m_malloc((size_t)line_frames * 2u * sizeof(int16_t));
     memset(line, 0, (size_t)line_frames * 2u * sizeof(int16_t));
     audioif_feedback_delay_state_init(&self->state, line);
@@ -158,11 +166,12 @@ static audioio_get_buffer_result_t audioecho_feedback_delay_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending = (const int16_t *)raw;
-            self->pending_frames = raw_bytes / 4u;
+            self->pending_frames = raw_bytes / width;
         }
         uint32_t run = AUDIOIF_FEEDBACK_DELAY_FRAMES - produced;
         if (run > self->pending_frames) {
@@ -170,7 +179,7 @@ static audioio_get_buffer_result_t audioecho_feedback_delay_get_buffer(
         }
         audioif_feedback_delay_process_s16(&self->config, &self->state,
             &self->buffer[produced * 2], self->pending, run);
-        self->pending += run * 2;
+        self->pending += run * self->base.channel_count;
         self->pending_frames -= run;
         produced += run;
     }
@@ -184,7 +193,7 @@ static audioio_get_buffer_result_t audioecho_feedback_delay_get_buffer(
         produced = AUDIOIF_FEEDBACK_DELAY_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }
 

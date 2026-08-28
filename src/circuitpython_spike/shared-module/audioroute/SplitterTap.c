@@ -34,10 +34,20 @@ audioio_get_buffer_result_t audioroute_splitter_tap_get_buffer(
         // branch stay in step rather than stalling the graph.
         memset(self->silence, 0, sizeof(self->silence));
         *buffer = (uint8_t *)self->silence;
-        *buffer_length = sizeof(self->silence);
+        *buffer_length = AUDIOIF_SPLITTER_CHUNK_FRAMES * 2u *
+            tap->base.channel_count;
         return GET_BUFFER_MORE_DATA;
     }
-    *buffer = (uint8_t *)&self->state.ring[start * 2u];
-    *buffer_length = run * 4u;
+    if (tap->base.channel_count == 2u) {
+        *buffer = (uint8_t *)&self->state.ring[start * 2u];
+        *buffer_length = run * 4u;
+        return GET_BUFFER_MORE_DATA;
+    }
+    for (uint32_t frame = 0; frame < run; ++frame) {
+        tap->mono[frame] = self->state.ring[
+            ((start + frame) % AUDIOIF_SPLITTER_RING_FRAMES) * 2u];
+    }
+    *buffer = (uint8_t *)tap->mono;
+    *buffer_length = run * 2u;
     return GET_BUFFER_MORE_DATA;
 }

@@ -23,12 +23,16 @@
 
 typedef struct {
     uint32_t tap_count;
+    uint32_t channel_count;
     uint32_t write_pos;
     uint32_t read_pos[AUDIOIF_SPLITTER_MAX_TAPS];
     int16_t ring[AUDIOIF_SPLITTER_RING_FRAMES * 2];
 } audioif_splitter_state_t;
 
 void audioif_splitter_init(audioif_splitter_state_t *state, uint32_t tap_count);
+
+void audioif_splitter_set_channel_count(audioif_splitter_state_t *state,
+    uint32_t channel_count);
 
 // Append interleaved stereo frames, dragging any cursor the write laps.
 void audioif_splitter_write(audioif_splitter_state_t *state,

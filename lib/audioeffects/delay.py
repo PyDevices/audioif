@@ -36,7 +36,7 @@ class DigitalDelay(_core.Effect):
             max_delay_ms=int(time_ms) + 100, delay_ms=time_ms,
             decay=feedback, mix=mix, freq_shift=False, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
     def set_time(self, time_ms):
         self.node.delay_ms = time_ms
@@ -84,10 +84,12 @@ class _LoopDelay(_core.Effect):
         if line_ms is None:
             line_ms = max(float(time_ms) * self.HEADROOM, 400.0)
         self.node = audioecho.FeedbackDelay(
-            sample_rate=_core.sample_rate(), max_delay_ms=line_ms, **options)
+            sample_rate=_core.sample_rate(),
+            channel_count=_core.channel_count(), max_delay_ms=line_ms,
+            **options)
         self.node.play(source)
         self.max_time_ms = line_ms
-        self.output = self.node
+        self._output = self.node
 
     def set_time(self, time_ms):
         """Retune the delay, in milliseconds."""
@@ -298,4 +300,4 @@ class MultiTapDelay(_core.Effect):
             max_delay_ms=int(time_ms) + 100, delay_ms=time_ms,
             decay=0.0, mix=mix, taps=tuple(taps), **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node

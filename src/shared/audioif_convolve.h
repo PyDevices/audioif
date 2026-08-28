@@ -65,6 +65,7 @@ typedef enum {
 
 typedef struct {
     uint32_t sample_rate;
+    uint32_t channel_count;
     uint32_t partitions;
     // 1 or 2. A mono impulse is shared by both audio channels, which is both
     // the common case and half the memory; a stereo impulse gives each
@@ -104,6 +105,9 @@ void audioif_convolve_config_init(audioif_convolve_config_t *config,
 
 void audioif_convolve_configure(audioif_convolve_config_t *config,
     audioif_convolve_option_t option, float value);
+
+void audioif_convolve_set_channel_count(audioif_convolve_config_t *config,
+    uint32_t channel_count);
 
 // `storage` must hold audioif_convolve_float_count() floats and outlive the
 // state. Leaves the impulse empty, which is a bypass rather than silence:

@@ -51,7 +51,11 @@ def _frames_of(impulse, channels):
 
 class Convolver(_AudioSample):
     def __init__(self, impulse=None, impulse_channels=1, sample_rate=48000,
-                 max_taps=0, ir_channels=0, gain=1.0, mix=None):
+                 max_taps=0, ir_channels=0, gain=1.0, mix=None,
+                 channel_count=2):
+        channel_count = int(channel_count)
+        if channel_count not in (1, 2):
+            raise ValueError("channel_count must be 1 or 2")
         if impulse_channels not in (1, 2):
             raise ValueError("impulse_channels must be 1 or 2")
         taps = b""
@@ -76,17 +80,17 @@ class Convolver(_AudioSample):
 
         self.sample_rate = int(sample_rate)
         self.bits_per_sample = 16
-        self.channel_count = 2
+        self.channel_count = channel_count
         self.samples_signed = True
         self.single_buffer = False
-        self.max_buffer_length = FRAMES * 4
+        self.max_buffer_length = FRAMES * 2 * channel_count
         self._deinited = False
         self._source = None
         self._pending = b""
         self._max_taps = partitions * FRAMES
         self._state = _audioif.ConvolverState(
             sample_rate=self.sample_rate, partitions=partitions,
-            ir_channels=ir_channels)
+            ir_channels=ir_channels, channel_count=channel_count)
         if mix is not None:
             self._state.configure(0, float(mix))
         if tap_frames:
@@ -187,12 +191,14 @@ class Convolver(_AudioSample):
                     break
                 result, data = get_buffer(self._source, False, 0)
                 data = bytes(data)
-                if result == GET_BUFFER_ERROR or len(data) < 4:
+                if result == GET_BUFFER_ERROR or len(data) < 2 * self.channel_count:
                     break
-                self._pending = data[:len(data) // 4 * 4]
-            run = min(FRAMES - produced, len(self._pending) // 4)
-            output += self._state.process(self._pending[:run * 4])
-            self._pending = self._pending[run * 4:]
+                width = 2 * self.channel_count
+                self._pending = data[:len(data) // width * width]
+            width = 2 * self.channel_count
+            run = min(FRAMES - produced, len(self._pending) // width)
+            output += self._state.process(self._pending[:run * width])
+            self._pending = self._pending[run * width:]
             produced += run
         # A starved chain gets silence rather than a short block, and the tail
         # stops with the source: only frames that arrive advance the
@@ -201,7 +207,8 @@ class Convolver(_AudioSample):
         # reason -- a node in the middle of a live graph never reports itself
         # finished.
         if produced == 0:
-            return GET_BUFFER_MORE_DATA, memoryview(bytes(FRAMES * 4))
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(FRAMES * 2 * self.channel_count))
         return GET_BUFFER_MORE_DATA, memoryview(bytes(output))
 
 

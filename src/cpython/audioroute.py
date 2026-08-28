@@ -30,15 +30,15 @@ _SILENCE = bytes(CHUNK_FRAMES * 4)
 class SplitterTap(_AudioSample):
     """One branch's view of a Splitter's ring. Built by the Splitter."""
 
-    def __init__(self, owner, index, sample_rate):
+    def __init__(self, owner, index, sample_rate, channel_count):
         self._owner = owner
         self._index = index
         self.sample_rate = sample_rate
         self.bits_per_sample = 16
-        self.channel_count = 2
+        self.channel_count = channel_count
         self.samples_signed = True
         self.single_buffer = False
-        self.max_buffer_length = CHUNK_FRAMES * 4
+        self.max_buffer_length = CHUNK_FRAMES * 2 * channel_count
         self._deinited = False
 
     def _reset_buffer(self, single_channel_output=False, audio_channel=0):
@@ -56,7 +56,8 @@ class SplitterTap(_AudioSample):
         if not data:
             # Still nothing: the source is dry, or another tap has already
             # read past what one pull could supply.
-            return GET_BUFFER_MORE_DATA, memoryview(_SILENCE)
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(CHUNK_FRAMES * 2 * self.channel_count))
         return GET_BUFFER_MORE_DATA, memoryview(data)
 
 
@@ -66,12 +67,17 @@ class Splitter:
         if taps < 1 or taps > MAX_TAPS:
             raise ValueError("taps must be 1..4")
         self._source = source
-        self._ring = _audioif.SplitterRing(taps=taps)
+        self.channel_count = int(source.channel_count)
+        if self.channel_count not in (1, 2):
+            raise ValueError("source channel_count must be 1 or 2")
+        self._ring = _audioif.SplitterRing(
+            taps=taps, channel_count=self.channel_count)
         self._tap_count = taps
         # Every tap exists from the start, whether or not anything asks for
         # it: the ring drops what an unread tap never collects, so a branch
         # built late would begin mid-stream rather than at the beginning.
-        self._taps = tuple(SplitterTap(self, index, source.sample_rate)
+        self._taps = tuple(SplitterTap(self, index, source.sample_rate,
+                                       self.channel_count)
                            for index in range(taps))
 
     def tap(self, index):

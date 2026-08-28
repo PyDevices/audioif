@@ -8,11 +8,17 @@
 void audioif_splitter_init(audioif_splitter_state_t *state,
     uint32_t tap_count) {
     state->tap_count = tap_count;
+    state->channel_count = 2u;
     state->write_pos = 0;
     for (uint32_t index = 0; index < AUDIOIF_SPLITTER_MAX_TAPS; ++index) {
         state->read_pos[index] = 0;
     }
     memset(state->ring, 0, sizeof(state->ring));
+}
+
+void audioif_splitter_set_channel_count(audioif_splitter_state_t *state,
+    uint32_t channel_count) {
+    state->channel_count = channel_count == 1u ? 1u : 2u;
 }
 
 void audioif_splitter_write(audioif_splitter_state_t *state,
@@ -21,8 +27,9 @@ void audioif_splitter_write(audioif_splitter_state_t *state,
         const uint32_t at =
             (state->write_pos % AUDIOIF_SPLITTER_RING_FRAMES) * 2u;
         state->ring[at] = frames[0];
-        state->ring[at + 1u] = frames[1];
-        frames += 2;
+        state->ring[at + 1u] = state->channel_count == 1u
+            ? frames[0] : frames[1];
+        frames += state->channel_count;
         ++state->write_pos;
         for (uint32_t tap = 0; tap < state->tap_count; ++tap) {
             if (state->write_pos - state->read_pos[tap] >

@@ -57,11 +57,11 @@ class ParametricEQ(_core.Effect):
             # An EQ asked for nothing is a wire, not a chain of no filters:
             # every Filter stage costs a buffer and 16 bits of headroom.
             self.node = None
-            self.output = source
+            self._output = source
             return
         self.node = audiofilters.Filter(filter=self.biquads, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 ISO_BANDS = (31.5, 63.0, 125.0, 250.0, 500.0,
@@ -105,7 +105,7 @@ class _SingleFilter(_core.Effect):
         self.node = audiofilters.Filter(filter=self.biquad, mix=mix,
                                         **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
     def set_frequency(self, hz):
         self.frequency.a = _core.check_hz(hz)
@@ -184,7 +184,7 @@ class LadderFilter(_core.Effect):
         ]
         self.node = audiofilters.Filter(filter=self.stages, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
     def set_cutoff(self, hz):
         self.cutoff.a = _core.check_hz(hz)
@@ -207,7 +207,7 @@ class CombFilter(_core.Effect):
             max_delay_ms=50, delay_ms=delay_ms, decay=feedback, mix=mix,
             freq_shift=False, **_core.pcm())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
 
 class DynamicEQ(_core.Effect):
@@ -245,7 +245,7 @@ class DynamicEQ(_core.Effect):
         self.band.play(split.tap(1))
         self.dynamics = audiodynamics.Dynamics(
             audiodynamics.DYN_COMPRESS, threshold_db=threshold_db, ratio=ratio,
-            attack_ms=2.0, release_ms=80.0, sample_rate=_core.SAMPLE_RATE)
+            attack_ms=2.0, release_ms=80.0, sample_rate=_core.SAMPLE_RATE, channel_count=_core.channel_count())
         self.dynamics.play(self.band)
         self.mixer = audiomixer.Mixer(voice_count=2, **_core.pcm(1024))
         self.mixer.voice[0].play(self.rest)
@@ -253,4 +253,4 @@ class DynamicEQ(_core.Effect):
         self.mixer.voice[1].play(self.dynamics)
         self.mixer.voice[1].level = 1.0
         self.splitter = split
-        self.output = self.mixer
+        self._output = self.mixer

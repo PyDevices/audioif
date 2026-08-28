@@ -34,11 +34,12 @@ audioio_get_buffer_result_t audiomath_multiply_get_buffer(
             uint32_t raw_bytes = 0;
             audioio_get_buffer_result_t result = audiosample_get_buffer(
                 self->source, false, 0, &raw, &raw_bytes);
-            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL || raw_bytes < width) {
                 break;
             }
             self->pending_source = (const int16_t *)raw;
-            self->pending_source_frames = raw_bytes / 4u;
+            self->pending_source_frames = raw_bytes / width;
         }
         if (self->pending_modulator_frames == 0 &&
             self->modulator != MP_OBJ_NULL) {
@@ -49,9 +50,10 @@ audioio_get_buffer_result_t audiomath_multiply_get_buffer(
             // A modulator is normally a short looping table, which hands back
             // its whole length every time it is asked; one that has genuinely
             // stopped leaves the signal alone rather than muting it.
-            if (result != GET_BUFFER_ERROR && raw != NULL && raw_bytes >= 4) {
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result != GET_BUFFER_ERROR && raw != NULL && raw_bytes >= width) {
                 self->pending_modulator = (const int16_t *)raw;
-                self->pending_modulator_frames = raw_bytes / 4u;
+                self->pending_modulator_frames = raw_bytes / width;
             }
         }
         uint32_t run = AUDIOIF_MULTIPLY_FRAMES - produced;
@@ -63,15 +65,17 @@ audioio_get_buffer_result_t audiomath_multiply_get_buffer(
                 run = self->pending_modulator_frames;
             }
             audioif_multiply_process_s16(&self->config,
-                &self->buffer[produced * 2], self->pending_source,
+                &self->buffer[produced * self->base.channel_count],
+                self->pending_source,
                 self->pending_modulator, run);
-            self->pending_modulator += run * 2;
+            self->pending_modulator += run * self->base.channel_count;
             self->pending_modulator_frames -= run;
         } else {
-            audioif_multiply_passthrough_s16(&self->buffer[produced * 2],
-                self->pending_source, run);
+            memcpy(&self->buffer[produced * self->base.channel_count],
+                self->pending_source,
+                (size_t)run * self->base.channel_count * sizeof(int16_t));
         }
-        self->pending_source += run * 2;
+        self->pending_source += run * self->base.channel_count;
         self->pending_source_frames -= run;
         produced += run;
     }
@@ -82,6 +86,6 @@ audioio_get_buffer_result_t audiomath_multiply_get_buffer(
         produced = AUDIOIF_MULTIPLY_FRAMES;
     }
     *buffer = (uint8_t *)self->buffer;
-    *buffer_length = produced * 4u;
+    *buffer_length = produced * 2u * self->base.channel_count;
     return GET_BUFFER_MORE_DATA;
 }

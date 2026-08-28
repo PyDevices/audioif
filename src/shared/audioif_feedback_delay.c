@@ -41,6 +41,7 @@ void audioif_feedback_delay_config_init(
     audioif_feedback_delay_config_t *config, uint32_t sample_rate,
     uint32_t line_frames) {
     config->sample_rate = sample_rate ? sample_rate : 48000;
+    config->channel_count = 2;
     config->line_frames = line_frames < 2 ? 2 : line_frames;
     config->delay_frames = (float)config->line_frames * 0.5f;
     config->feedback = 0.4f;
@@ -56,6 +57,17 @@ void audioif_feedback_delay_config_init(
     config->wow_hz = 0.0f;
     audioif_feedback_delay_configure(config,
         AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN, 0.0f);
+}
+
+void audioif_feedback_delay_set_channel_count(
+    audioif_feedback_delay_config_t *config, uint32_t channel_count) {
+    config->channel_count = channel_count == 1u ? 1u : 2u;
+    if (config->channel_count == 1u) {
+        config->feed_own[0] = 1.0f;
+        config->feed_other[0] = 0.0f;
+        config->feed_own[1] = 0.0f;
+        config->feed_other[1] = 0.0f;
+    }
 }
 
 void audioif_feedback_delay_configure(audioif_feedback_delay_config_t *config,
@@ -208,7 +220,8 @@ void audioif_feedback_delay_process_s16(
             (near_frame + length - 1u) % length;
 
         float loop[2];
-        for (uint32_t channel = 0; channel < 2u; ++channel) {
+        const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
+        for (uint32_t channel = 0; channel < channels; ++channel) {
             const int16_t *lane = state->line + (size_t)channel * length;
             const float near_sample = (float)lane[near_frame];
             const float delayed = near_sample +
@@ -231,19 +244,20 @@ void audioif_feedback_delay_process_s16(
             loop[channel] = value;
         }
 
-        for (uint32_t channel = 0; channel < 2u; ++channel) {
-            const float sent = loop[channel] * direct +
-                loop[1u - channel] * crossed;
-            const float source = (float)in[frame * 2u + channel];
+        for (uint32_t channel = 0; channel < channels; ++channel) {
+            const float other = channels == 2u ? loop[1u - channel] : 0.0f;
+            const float sent = loop[channel] * direct + other * crossed;
+            const float source = (float)in[frame * channels + channel];
+            const float other_source = channels == 2u
+                ? (float)in[frame * channels + (1u - channel)] : 0.0f;
             const float fed = source * config->feed_own[channel] +
-                (float)in[frame * 2u + (1u - channel)] *
-                config->feed_other[channel];
+                other_source * config->feed_other[channel];
             state->line[(size_t)channel * length + state->write_frame] =
                 to_s16(fed + config->feedback * sent);
             // The dry path is the channel's own signal, never the panned
             // one: `input_pan` steers what goes round the loop, not what the
             // listener hears straight through.
-            out[frame * 2u + channel] =
+            out[frame * channels + channel] =
                 to_s16(dry * source + wet * loop[channel]);
         }
         state->write_frame = (state->write_frame + 1u) % length;

@@ -629,7 +629,8 @@ static int dynamics_ensure_lookahead(audioif_dynamics_object_t *self) {
     if (wanted == 0 || wanted <= self->state.lookahead_capacity) {
         return 0;
     }
-    int16_t *buffer = PyMem_Calloc((size_t)wanted * 2u, sizeof(int16_t));
+    int16_t *buffer = PyMem_Calloc((size_t)wanted *
+        self->config.channel_count, sizeof(int16_t));
     if (buffer == NULL) {
         PyErr_NoMemory();
         return -1;
@@ -652,15 +653,22 @@ static int dynamics_state_init(audioif_dynamics_object_t *self,
     PyObject *args, PyObject *kwargs) {
     int mode = AUDIOIF_DYNAMICS_COMPRESS;
     unsigned int sample_rate = 48000;
-    static char *keywords[] = {"mode", "sample_rate", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|iI:DynamicsState",
-        keywords, &mode, &sample_rate)) return -1;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"mode", "sample_rate", "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|iII:DynamicsState",
+        keywords, &mode, &sample_rate, &channel_count)) return -1;
     if (sample_rate < 1) {
         PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
         return -1;
     }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
     audioif_dynamics_config_init(&self->config, mode, sample_rate);
     audioif_dynamics_state_init(&self->state);
+    audioif_dynamics_set_channel_count(&self->config, &self->state,
+        channel_count);
     PyMem_Free(self->lookahead);
     self->lookahead = NULL;
     return 0;
@@ -710,17 +718,18 @@ static PyObject *dynamics_state_process(audioif_dynamics_object_t *self,
     PyObject *argument) {
     Py_buffer input = {0};
     if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
-    if (input.len % 4) {
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
         PyBuffer_Release(&input);
         PyErr_SetString(PyExc_ValueError,
-            "input must be whole stereo 16-bit frames");
+            "input must be whole 16-bit frames for the configured channel count");
         return NULL;
     }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
     if (result != NULL) {
         audioif_dynamics_process_s16(&self->config, &self->state,
             (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
-            (uint32_t)(input.len / 4));
+            (uint32_t)(input.len / width));
     }
     PyBuffer_Release(&input);
     return result;
@@ -775,14 +784,21 @@ typedef struct {
 static int splitter_ring_init(audioif_splitter_object_t *self,
     PyObject *args, PyObject *kwargs) {
     int taps = 2;
-    static char *keywords[] = {"taps", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|i:SplitterRing",
-        keywords, &taps)) return -1;
+    int channel_count = 2;
+    static char *keywords[] = {"taps", "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|ii:SplitterRing",
+        keywords, &taps, &channel_count)) return -1;
     if (taps < 1 || taps > (int)AUDIOIF_SPLITTER_MAX_TAPS) {
         PyErr_SetString(PyExc_ValueError, "taps must be 1..4");
         return -1;
     }
     audioif_splitter_init(&self->state, (uint32_t)taps);
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_splitter_set_channel_count(&self->state,
+        (uint32_t)channel_count);
     return 0;
 }
 
@@ -798,8 +814,15 @@ static PyObject *splitter_ring_write(audioif_splitter_object_t *self,
     PyObject *argument) {
     Py_buffer input = {0};
     if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->state.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole frames for the configured channel count");
+        return NULL;
+    }
     audioif_splitter_write(&self->state, (const int16_t *)input.buf,
-        (uint32_t)(input.len / 4));
+        (uint32_t)(input.len / width));
     PyBuffer_Release(&input);
     Py_RETURN_NONE;
 }
@@ -819,8 +842,19 @@ static PyObject *splitter_ring_take(audioif_splitter_object_t *self,
     uint32_t start = 0;
     const uint32_t run = audioif_splitter_take(&self->state, (uint32_t)tap,
         &start);
-    return PyBytes_FromStringAndSize(
-        (const char *)&self->state.ring[start * 2u], (Py_ssize_t)run * 4);
+    if (self->state.channel_count == 2u) {
+        return PyBytes_FromStringAndSize(
+            (const char *)&self->state.ring[start * 2u],
+            (Py_ssize_t)run * 4);
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, (Py_ssize_t)run * 2);
+    if (result == NULL) return NULL;
+    int16_t *out = (int16_t *)PyBytes_AS_STRING(result);
+    for (uint32_t frame = 0; frame < run; ++frame) {
+        out[frame] = self->state.ring[(start + frame) %
+            AUDIOIF_SPLITTER_RING_FRAMES * 2u];
+    }
+    return result;
 }
 
 static PyMethodDef splitter_ring_methods[] = {
@@ -860,16 +894,22 @@ typedef struct {
 static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
     PyObject *args, PyObject *kwargs) {
     unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
     double max_delay_ms = 250.0;
-    static char *keywords[] = {"sample_rate", "max_delay_ms", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|Id:FeedbackDelayState",
-        keywords, &sample_rate, &max_delay_ms)) return -1;
+    static char *keywords[] = {"sample_rate", "max_delay_ms",
+                               "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|IdI:FeedbackDelayState",
+        keywords, &sample_rate, &max_delay_ms, &channel_count)) return -1;
     if (sample_rate < 1) {
         PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
         return -1;
     }
     if (max_delay_ms <= 0.0) {
         PyErr_SetString(PyExc_ValueError, "max_delay_ms must be positive");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
         return -1;
     }
     uint32_t frames = (uint32_t)((double)sample_rate * max_delay_ms / 1000.0);
@@ -882,6 +922,7 @@ static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
     PyMem_Free(self->line);
     self->line = line;
     audioif_feedback_delay_config_init(&self->config, sample_rate, frames);
+    audioif_feedback_delay_set_channel_count(&self->config, channel_count);
     audioif_feedback_delay_state_init(&self->state, line);
     audioif_feedback_delay_configure(&self->config,
         AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_MS, (float)max_delay_ms * 0.5f);
@@ -928,17 +969,18 @@ static PyObject *feedback_delay_state_process(
     audioif_feedback_delay_object_t *self, PyObject *argument) {
     Py_buffer input = {0};
     if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
-    if (input.len % 4) {
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
         PyBuffer_Release(&input);
         PyErr_SetString(PyExc_ValueError,
-            "input must be whole stereo 16-bit frames");
+            "input must be whole 16-bit frames for the configured channel count");
         return NULL;
     }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
     if (result != NULL) {
         audioif_feedback_delay_process_s16(&self->config, &self->state,
             (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
-            (uint32_t)(input.len / 4));
+            (uint32_t)(input.len / width));
     }
     PyBuffer_Release(&input);
     return result;
@@ -983,9 +1025,12 @@ static int convolver_state_init(audioif_convolver_object_t *self,
     unsigned int sample_rate = 48000;
     unsigned int partitions = 1;
     unsigned int ir_channels = 1;
-    static char *keywords[] = {"sample_rate", "partitions", "ir_channels", NULL};
-    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|III:ConvolverState",
-        keywords, &sample_rate, &partitions, &ir_channels)) return -1;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"sample_rate", "partitions", "ir_channels",
+                               "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|IIII:ConvolverState",
+        keywords, &sample_rate, &partitions, &ir_channels,
+        &channel_count)) return -1;
     if (sample_rate < 1) {
         PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
         return -1;
@@ -998,8 +1043,13 @@ static int convolver_state_init(audioif_convolver_object_t *self,
         PyErr_SetString(PyExc_ValueError, "ir_channels must be 1 or 2");
         return -1;
     }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
     audioif_convolve_config_init(&self->config, sample_rate, partitions,
         ir_channels);
+    audioif_convolve_set_channel_count(&self->config, channel_count);
     float *storage = PyMem_Calloc(
         audioif_convolve_float_count(&self->config), sizeof(float));
     if (storage == NULL) {
@@ -1092,17 +1142,18 @@ static PyObject *convolver_state_process(audioif_convolver_object_t *self,
     PyObject *argument) {
     Py_buffer input = {0};
     if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
-    if (input.len % 4) {
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
         PyBuffer_Release(&input);
         PyErr_SetString(PyExc_ValueError,
-            "input must be whole stereo 16-bit frames");
+            "input must be whole 16-bit frames for the configured channel count");
         return NULL;
     }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
     if (result != NULL) {
         audioif_convolve_process_s16(&self->config, &self->state,
             (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
-            (uint32_t)(input.len / 4));
+            (uint32_t)(input.len / width));
     }
     PyBuffer_Release(&input);
     return result;
@@ -1137,25 +1188,34 @@ static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
     Py_buffer signal = {0};
     Py_buffer modulator = {0};
     double mix = 1.0;
-    if (!PyArg_ParseTuple(args, "y*y*d:multiply_s16", &signal, &modulator,
-        &mix)) {
+    unsigned int channel_count = 2;
+    if (!PyArg_ParseTuple(args, "y*y*d|I:multiply_s16", &signal, &modulator,
+        &mix, &channel_count)) {
         return NULL;
     }
-    if (signal.len != modulator.len || signal.len % 4) {
+    if (channel_count < 1 || channel_count > 2) {
+        PyBuffer_Release(&signal);
+        PyBuffer_Release(&modulator);
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return NULL;
+    }
+    const Py_ssize_t width = 2 * (Py_ssize_t)channel_count;
+    if (signal.len != modulator.len || signal.len % width) {
         PyBuffer_Release(&signal);
         PyBuffer_Release(&modulator);
         PyErr_SetString(PyExc_ValueError,
-            "buffers must be the same whole number of stereo 16-bit frames");
+            "buffers must be the same whole number of configured frames");
         return NULL;
     }
     PyObject *result = PyBytes_FromStringAndSize(NULL, signal.len);
     if (result != NULL) {
         audioif_multiply_config_t config;
         audioif_multiply_config_init(&config);
+        audioif_multiply_set_channel_count(&config, channel_count);
         audioif_multiply_set_mix(&config, (float)mix);
         audioif_multiply_process_s16(&config,
             (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)signal.buf,
-            (const int16_t *)modulator.buf, (uint32_t)(signal.len / 4));
+            (const int16_t *)modulator.buf, (uint32_t)(signal.len / width));
     }
     PyBuffer_Release(&signal);
     PyBuffer_Release(&modulator);

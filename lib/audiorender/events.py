@@ -85,7 +85,7 @@ def deliver(instrument, event, sample_position):
     """
     _, kind, data, value = event
     if kind == NOTE_ON:
-        instrument.note_on(data, value * 127.0,
+        instrument.note_on(data, _midi_byte(value),
                            sample_position=sample_position)
     elif kind == NOTE_OFF:
         instrument.note_off(data, sample_position=sample_position)
@@ -94,3 +94,9 @@ def deliver(instrument, event, sample_position):
                              sample_position=sample_position)
     elif kind == PROGRAM:
         instrument.program_change(data, sample_position=sample_position)
+
+
+def _midi_byte(value):
+    """Convert the renderer's normalized scalar to a MIDI data byte."""
+    value = max(0.0, min(1.0, float(value)))
+    return int(value * 127.0 + 0.5)

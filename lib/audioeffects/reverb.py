@@ -52,7 +52,7 @@ class Reverb(_core.Effect):
         self.node = audiofreeverb.Freeverb(
             roomsize=roomsize, damp=damp, mix=mix, **_core.pcm())
         self.node.play(chain_source)
-        self.output = self.node
+        self._output = self.node
 
     def set_mix(self, mix):
         self.node.mix = mix
@@ -132,9 +132,9 @@ class ConvolutionReverb(_core.Effect):
         self._taps = max(int(self.seconds * rate), audioconvolve.FRAMES)
         self.node = audioconvolve.Convolver(
             max_taps=self._taps, ir_channels=2 if stereo else 1,
-            sample_rate=rate)
+            sample_rate=rate, channel_count=_core.channel_count())
         self.node.play(source)
-        self.output = self.node
+        self._output = self.node
 
         # A loaded impulse is the room; the macros that would shape a
         # synthetic one stop applying, and saying so is better than letting a
@@ -160,14 +160,17 @@ class ConvolutionReverb(_core.Effect):
     def set_mix(self, mix):
         self.node.set(mix=mix)
 
-    def program_change(self, index):
+    def program_change(self, index, channel=0, note_id=-1,
+                       sample_position=0):
         # Suppress the per-macro rebuild and do one at the end. A patch moves
         # every knob, and four of the five reshape the impulse.
         if int(index) not in self.PATCHES:
             return
         self._ready = False
         try:
-            _core.Effect.program_change(self, index)
+            _core.Effect.program_change(self, index, channel=channel,
+                                         note_id=note_id,
+                                         sample_position=sample_position)
         finally:
             self._ready = True
         self._rebuild()
