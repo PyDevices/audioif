@@ -32,11 +32,13 @@ jobs:
           ref: v1.28.0
           path: micropython
       - name: Build the unix port with the audioif usermod
+        # USER_C_MODULES is the PARENT directory: py.mk globs
+        # $(USER_C_MODULES)/*/micropython.mk exactly one level down.
         run: |
           make -C micropython/mpy-cross -j2
           make -C micropython/ports/unix submodules
           make -C micropython/ports/unix -j2 \
-            USER_C_MODULES=$GITHUB_WORKSPACE/audioif
+            USER_C_MODULES=$GITHUB_WORKSPACE
       - name: Smoke the result
         run: |
           ./micropython/ports/unix/build-standard/micropython -c "
