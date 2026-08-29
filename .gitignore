@@ -23,3 +23,4 @@ dist/
 # stray .o next to the source is a normal thing to produce.
 *.o
 *.a
+.deps/

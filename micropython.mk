@@ -51,7 +51,17 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
 #     own (mindepth 2/maxdepth 3), but py.mk's Make-port loop only globs
 #     $(USER_C_MODULES)/*/micropython.mk at depth 1, so chain it in here.
 #     USERMOD_DIR is restored below since ulab's makefile does not save it.
+#     Search order: the repo-local .deps/ tree (scripts/fetch_deps.sh,
+#     pinned by DEPENDENCIES.lock) first, then the workspace sibling.
+MPAUDIO_ULAB_CODE_DIR := $(abspath $(MPAUDIO_MOD_DIR)/.deps/ulab/code)
+ifeq ($(wildcard $(MPAUDIO_ULAB_CODE_DIR)/ulab.c),)
 MPAUDIO_ULAB_CODE_DIR := $(abspath $(MPAUDIO_MOD_DIR)/../ulab/code)
+endif
+ifeq ($(wildcard $(MPAUDIO_ULAB_CODE_DIR)/ulab.c),)
+ifneq ($(AUDIOIF_OPTIONAL_DEPS),1)
+$(error audioif: ulab not found (looked in .deps/ulab and ../ulab). Run ./scripts/fetch_deps.sh, or set AUDIOIF_OPTIONAL_DEPS=1 to build without it)
+endif
+endif
 ifneq ($(wildcard $(MPAUDIO_ULAB_CODE_DIR)/ulab.c),)
 USERMOD_DIR := $(MPAUDIO_ULAB_CODE_DIR)
 include $(MPAUDIO_ULAB_CODE_DIR)/micropython.mk
@@ -201,7 +211,15 @@ ifneq ($(MPAUDIO_WASM_PORT),)
 CFLAGS_USERMOD += -DMP3DEC_GENERIC
 endif
 
+MPAUDIO_MP3_SRC_DIR := $(abspath $(MPAUDIO_MOD_DIR)/.deps/mp3/src)
+ifeq ($(wildcard $(MPAUDIO_MP3_SRC_DIR)/mp3dec.c),)
 MPAUDIO_MP3_SRC_DIR := $(abspath $(MPAUDIO_MOD_DIR)/../mp3/src)
+endif
+ifeq ($(wildcard $(MPAUDIO_MP3_SRC_DIR)/mp3dec.c),)
+ifneq ($(AUDIOIF_OPTIONAL_DEPS),1)
+$(error audioif: Adafruit_MP3 not found (looked in .deps/mp3 and ../mp3). Run ./scripts/fetch_deps.sh, or set AUDIOIF_OPTIONAL_DEPS=1 to build without audiomp3)
+endif
+endif
 ifneq ($(wildcard $(MPAUDIO_MP3_SRC_DIR)/mp3dec.c),)
 CFLAGS_USERMOD += -I$(MPAUDIO_MP3_SRC_DIR)
 SRC_USERMOD_C += $(addprefix $(MPAUDIO_MP3_SRC_DIR)/, \

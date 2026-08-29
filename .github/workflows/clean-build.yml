@@ -1,0 +1,49 @@
+# Scenario S1: a stranger builds audioif from this repository, upstream
+# MicroPython, and the declared pinned dependencies -- no cmods, no
+# workspace. This is the standalone contract's proof, run on every push.
+name: Clean standalone build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unix-usermod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: audioif
+      - name: Fetch pinned dependencies
+        working-directory: audioif
+        run: |
+          ./scripts/fetch_deps.sh
+          ./scripts/fetch_deps.sh --check
+      - name: Check out upstream MicroPython v1.28.0
+        uses: actions/checkout@v4
+        with:
+          repository: micropython/micropython
+          ref: v1.28.0
+          path: micropython
+      - name: Build the unix port with the audioif usermod
+        run: |
+          make -C micropython/mpy-cross -j2
+          make -C micropython/ports/unix submodules
+          make -C micropython/ports/unix -j2 \
+            USER_C_MODULES=$GITHUB_WORKSPACE/audioif
+      - name: Smoke the result
+        run: |
+          ./micropython/ports/unix/build-standard/micropython -c "
+          import audiocore, synthio, audiomixer, audiofilters, audiodelays
+          import audiomp3, audiodynamics, audioroute, audiomath, audioecho
+          import ulab.numpy as np
+          s = synthio.Synthesizer(sample_rate=8000); s.press(69)
+          r, b = audiocore.get_buffer(s)
+          assert r == 1 and len(b) == 512
+          print('standalone audioif OK:', len(b), 'bytes of synth output')"
