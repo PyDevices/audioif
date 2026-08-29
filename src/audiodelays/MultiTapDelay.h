@@ -24,7 +24,11 @@ typedef struct {
     synthio_block_slot_t mix;
 
     mp_float_t *tap_positions;
-    mp_float_t *tap_levels;
+    // Always double, not mp_float_t: this is what audioif_multitap_process_s16
+    // (a runtime-neutral shared/ signature) takes, and mp_float_t is float on
+    // an MCU build. Converted once here, when taps are set, so the audio
+    // callback in *_get_buffer never pays for a per-block marshal.
+    double *tap_levels;
     uint32_t *tap_offsets;
     size_t tap_len;
 
@@ -71,7 +75,7 @@ void common_hal_audiodelays_multi_tap_delay_play(audiodelays_multi_tap_delay_obj
 void common_hal_audiodelays_multi_tap_delay_stop(audiodelays_multi_tap_delay_obj_t *self);
 
 void validate_tap_value(mp_obj_t item, qstr arg_name);
-mp_float_t get_tap_value(mp_obj_t item);
+double get_tap_value(mp_obj_t item);
 void recalculate_tap_offsets(audiodelays_multi_tap_delay_obj_t *self);
 
 void audiodelays_multi_tap_delay_reset_buffer(audiodelays_multi_tap_delay_obj_t *self,

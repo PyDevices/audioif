@@ -166,12 +166,12 @@ void validate_tap_value(mp_obj_t item, qstr arg_name) {
     }
 }
 
-mp_float_t get_tap_value(mp_obj_t item) {
-    mp_float_t value;
+double get_tap_value(mp_obj_t item) {
+    double value;
     if (mp_obj_is_small_int(item)) {
-        value = (mp_float_t)mp_obj_get_int(item);
+        value = (double)mp_obj_get_int(item);
     } else {
-        value = mp_obj_float_get(item);
+        value = (double)mp_obj_float_get(item);
     }
     return value;
 }
@@ -226,7 +226,7 @@ void common_hal_audiodelays_multi_tap_delay_set_taps(audiodelays_multi_tap_delay
         self->tap_positions,
         self->tap_len,
         len);
-    self->tap_levels = m_renew(mp_float_t,
+    self->tap_levels = m_renew(double,
         self->tap_levels,
         self->tap_len,
         len);
