@@ -72,6 +72,19 @@ else
     exit 1
 fi
 
+# Oracle pin check (finding 10): warn loudly when the tree is not the
+# declared oracle commit -- a moved pin silently invalidates every golden.
+ORACLE_FILE="$AUDIOIF_DIR/CIRCUITPYTHON_ORACLE"
+if [[ -f "$ORACLE_FILE" ]]; then
+    ORACLE_SHA=$(awk '/^[^#]/ {print $2; exit}' "$ORACLE_FILE")
+    ACTUAL_SHA=$(git -C "$CP_DIR" rev-parse HEAD 2>/dev/null || echo unknown)
+    if [[ "$ACTUAL_SHA" != "$ORACLE_SHA" ]]; then
+        echo "WARNING: CircuitPython tree at $CP_DIR is $ACTUAL_SHA," >&2
+        echo "         but CIRCUITPYTHON_ORACLE declares $ORACLE_SHA (10.2.1)." >&2
+        echo "         Parity goldens are only meaningful against the pin." >&2
+    fi
+fi
+
 PORT_DIR="$CP_DIR/ports/$PORT"
 VARIANT_MK="$PORT_DIR/variants/$VARIANT/mpconfigvariant.mk"
 VARIANT_H="$PORT_DIR/variants/$VARIANT/mpconfigvariant.h"
