@@ -50,7 +50,7 @@ jobs:
     needs:
       - parity
       - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v6
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v7
     with:
       build-kind: native-and-wasm
       distribution-name: pydevices-audioif
@@ -59,11 +59,11 @@ jobs:
       # for MIP to carry. audiorender is excluded as well -- it needs numpy and
       # renders a whole composition in memory, which is a desktop's job.
       mip-profile: audioinstruments,audioeffects
-      # Stays 16 until the org reusable-build-native-and-wasm-wheels.yml
-      # gains macos-latest in its desktop matrix; the moment it does,
-      # this repo's cibuildwheel config adds cp310–cp314 macosx_arm64
-      # and this count must become 21.
-      expected-wheel-count: 16
+      # 21 as of publishing-v7: the org desktop matrix gained
+      # macos-latest, and this repo's cibuildwheel config produces
+      # cp310–cp314 macosx_arm64 (proven by the non-publishing
+      # macos-wheels CI job). 16 linux/windows + 5 macOS.
+      expected-wheel-count: 21
       wheel-filename-prefix: pydevices_audioif
       release-ref: ${{ inputs.release-ref }}
     secrets: inherit
@@ -72,7 +72,7 @@ jobs:
     needs:
       - parity
       - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v6
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v7
     with:
       build-kind: pure-python
       distribution-name: pydevices-audioinstruments
@@ -86,7 +86,7 @@ jobs:
     needs:
       - parity
       - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v6
+    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v7
     with:
       build-kind: pure-python
       distribution-name: pydevices-audioeffects
