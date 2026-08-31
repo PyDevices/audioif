@@ -42,21 +42,27 @@ may use the optional descriptive metadata as needed.
 than a board — numpy throughout, a whole song in memory — so it ships in the
 wheel and is never frozen into firmware.
 
-MicroPython consumes this repository as `USER_C_MODULES`. CPython 3.10+
-installs the separately versioned native distribution from TestPyPI:
+MicroPython consumes this repository as `USER_C_MODULES`. On CPython 3.10+
+the instrument and effect libraries are their own distributions —
+`pydevices-audioinstruments` and `pydevices-audioeffects`, both on TestPyPI
+— and each depends on the native `pydevices-audioif` distribution, so one
+command installs everything the snippet above needs:
 
 ```sh
-python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioif
+python -m pip install --index-url https://test.pypi.org/simple/ \
+    pydevices-audioinstruments pydevices-audioeffects
 ```
 
-The CPython distribution contains `audiocore`, `synthio`, `audiomixer`,
-`audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`,
-`audioroute`, `audiomath`, `audioecho`, `audioconvolve`, and the
-`audioinstruments`,
-`audioeffects` and `audiorender` packages. `audiomp3` remains
-firmware-only. The distribution has no runtime dependencies and does not
-publish an `audioif` import; its version is the `VERSION` file, which is also
-what `_audioif.__version__` reports.
+The `pydevices-audioif` distribution contains `audiocore`, `synthio`,
+`audiomixer`, `audiofilters`, `audiodelays`, `audiofreeverb`, `audiospeed`,
+`audiodynamics`, `audioroute`, `audiomath`, `audioecho`, `audioconvolve`,
+and the `audiorender` package. `audioinstruments` and `audioeffects` are
+deliberately *not* inside it — the same files in two distributions would
+collide in site-packages — which is why the install line above names the
+two library distributions. `audiomp3` remains firmware-only. The native
+distribution has no runtime dependencies and does not publish an `audioif`
+import; its version is the `VERSION` file, which is also what
+`_audioif.__version__` reports.
 
 **MicroPython status:** all module tiers ported and oracle-diffed byte-for-byte against
 `bin/circuitpython` on unix; DSP parity re-verified on windows and wasm;
