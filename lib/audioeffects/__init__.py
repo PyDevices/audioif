@@ -1,4 +1,4 @@
-"""Forty-three effect classes built out of audioif's audio nodes.
+"""Forty-six effect classes built out of audioif's audio nodes.
 
 Every class wires itself from an audio source - a synthesizer, an
 instrument's `output`, a host input, or a previous effect's `output` - and
@@ -31,6 +31,7 @@ from .modulation import (Chorus, Flanger, Phaser, Tremolo, AutoPan,
 from .drive import (Overdrive, Distortion, Fuzz, Saturation, Bitcrusher,
                     Exciter, CabinetSim)
 from .pitch import PitchShifter, Harmonizer, Octaver, StereoWidener
+from .rack import Rack, ShimmerHall, AirSpace
 
 
 def create(name, source, sample_rate, transport=None, **options):
@@ -73,6 +74,8 @@ __all__ = [
     "CabinetSim",
     # pitch and stereo
     "PitchShifter", "Harmonizer", "Octaver", "StereoWidener",
+    # racks
+    "Rack", "ShimmerHall", "AirSpace",
 ]
 
 # Stable provider names, not implementation module names. This is computed

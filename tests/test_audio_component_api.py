@@ -39,7 +39,7 @@ class AudioComponentApiTests(unittest.TestCase):
         self.assertEqual(audioeffects.ALL,
                          tuple(sorted(audioeffects.ALL)))
         self.assertEqual(len(audioinstruments.ALL), 53)
-        self.assertEqual(len(audioeffects.ALL), 43)
+        self.assertEqual(len(audioeffects.ALL), 46)
 
     def test_all_instruments_implement_live_surface(self):
         for name in audioinstruments.ALL:
