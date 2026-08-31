@@ -98,3 +98,15 @@ parity oracle for this whole port).
 
 See [docs/porting-plan.md](docs/porting-plan.md) for the architecture,
 module tiers, phased plan, and testing strategy.
+
+## Sound stability
+
+The API is our contract with you: class names, signatures, metadata, and
+macro surfaces stay stable and change only deliberately. The *sound* is
+not part of that contract. These components sound great, but they are not
+all as accurate as they could be, and implementations will keep being
+refined as the library matures — so a component may render audibly
+differently from one release to the next. If a composition depends on the
+exact sound of a release, pin that release rather than tracking the
+latest; the code of every release stays available for exactly this
+reason.
