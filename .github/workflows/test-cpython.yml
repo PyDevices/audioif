@@ -9,7 +9,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # macos-latest (Apple Silicon) delivers the org macOS posture:
+        # everything CI can prove — build, import, unit/contract tests,
+        # validate_api, parity — runs on the macOS runner too.
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -36,3 +39,17 @@ jobs:
       - run: python tests/parity/verify_effects.py
       - run: python tests/parity/verify_streaming.py
       - run: python tests/parity/verify_biquad.py
+
+  # Non-publishing proof of the macOS wheel claim: run the same cibuildwheel
+  # the release path uses (pypa/cibuildwheel, [tool.cibuildwheel] in
+  # pyproject.toml) on macos-latest, compiling the native extension for
+  # cp310–cp314 arm64 and running the configured import/smoke test-command
+  # in each wheel. Nothing is uploaded anywhere. Release wheels still come
+  # from the org reusable workflow; this job proves they would build.
+  macos-wheels:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS wheels (no publish)
+        uses: pypa/cibuildwheel@v4.2.0
+      - run: ls -l wheelhouse/

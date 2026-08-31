@@ -59,6 +59,10 @@ jobs:
       # for MIP to carry. audiorender is excluded as well -- it needs numpy and
       # renders a whole composition in memory, which is a desktop's job.
       mip-profile: audioinstruments,audioeffects
+      # Stays 16 until the org reusable-build-native-and-wasm-wheels.yml
+      # gains macos-latest in its desktop matrix; the moment it does,
+      # this repo's cibuildwheel config adds cp310–cp314 macosx_arm64
+      # and this count must become 21.
       expected-wheel-count: 16
       wheel-filename-prefix: pydevices_audioif
       release-ref: ${{ inputs.release-ref }}

@@ -53,12 +53,19 @@ version = {file = "VERSION"}
 
 [tool.cibuildwheel]
 build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
-skip = "*musllinux* *-macosx_* *-win32"
+skip = "*musllinux* *-win32"
 test-command = "python -c \"from array import array; import audiocore, synthio; s=synthio.Synthesizer(sample_rate=8000); s.press(69); r,b=audiocore.get_buffer(s); assert r == 1 and b.format == 'B' and len(b) == 512\""
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
 manylinux-x86_64-image = "manylinux_2_28"
+
+# arm64 only, matching the runner: an x86_64 wheel cross-compiled on an
+# Apple Silicon runner could not run its test-command there, and an
+# untested wheel is a claim, not a capability (platform-support-tiers.md).
+# A field report from an Intel Mac is what would add x86_64.
+[tool.cibuildwheel.macos]
+archs = ["arm64"]
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
