@@ -21,24 +21,33 @@ instrument module explicitly declares `NAME`, `MACRO_LABELS`,
 `MACRO_MODES`, and `PATCHES`; percussion modules also declare `NOTE_MAP`.
 The complete provider rules are in `docs/audio-components.md`.
 
-A module is one instrument and exposes `create(sample_rate, transport=None)`;
-`audioinstruments.create(name, sample_rate, transport=None)` is the lookup
-helper for hosts. The returned object has `output` and the note/control
-methods below.
-
-`create(name, sample_rate, transport=None)` returns an `Instrument`:
+A module is one instrument and exposes
+`create(sample_rate, channel_count=2, transport=None)`;
+`audioinstruments.create(name, sample_rate, channel_count=2, transport=None,
+**options)` is the lookup helper for hosts (extra keyword options pass
+through to the module's `create`). Either returns an `Instrument`
+implementing the audio component API — `docs/audio-component-api.md` is the
+authority; this table is the summary:
 
 | Method | |
 |---|---|
-| `note_on(pitch, velocity=127, *, detune=0.0)` | `detune` is a fraction of a semitone |
-| `note_off(pitch)` | |
+| `note_on(pitch, velocity=127, detune=0.0, channel=0, note_id=-1, sample_position=0)` | `detune` offsets the pitch in semitones; velocity 0 releases, as on the wire |
+| `note_off(pitch, channel=0, note_id=-1, sample_position=0)` | releases the matching `(channel, note_id)`, or `(channel, pitch)` when no note id was supplied |
 | `all_notes_off()` | releases everything still held |
-| `set_macro(index, value)` | 0-127, int or float |
-| `program_change(index)` | selects a patch |
-| `channel_pressure(value)` / `poly_pressure(pitch, value)` | the few that read aftertouch |
+| `set_macro(index, value, channel=0, note_id=-1, sample_position=0)` | value 0-127, int or float |
+| `get_macro(index)` | the current value, possibly fractional |
+| `program_change(index, channel=0, note_id=-1, sample_position=0)` | applies a known patch; an unknown index is safely ignored |
+| `pitch_bend(value, channel=0, sample_position=0)` | unsigned `0..16383`, center `8192` |
+| `control_change(controller, value, channel=0, sample_position=0)` | controller and value `0..127` |
+| `channel_pressure(value, channel=0, sample_position=0)` / `poly_pressure(pitch, value, channel=0, note_id=-1, sample_position=0)` | delivered to the few instruments that read aftertouch; safe no-ops elsewhere |
+| `reset()` | releases all notes, clears state, restores patch 0 |
+| `deinit()` | idempotent; any other use afterward raises `RuntimeError` |
 
 `output` is the chain tail to hand to a mixer or an output device; `synth` is
 the underlying `synthio.Synthesizer` for anything the wrapper does not cover.
+The read-only properties `sample_rate`, `channel_count`, `latency_samples`,
+`tail_samples`, `capabilities`, and `patch_index` round out the component
+surface.
 
 Everything is MIDI 0-127, because that is what a keyboard, a sequencer and a
 saved patch all speak. Floats are accepted wherever an int is: an automation
@@ -54,11 +63,13 @@ across the whole MIDI 1.0 controller table.
 | `MACRO_MODES` | index to `UNIPOLAR`, `BIPOLAR`, or `TOGGLE` |
 | `PATCHES` | `{index: (name, (values, 0-127))}`; patch 0 is what a fresh instrument plays |
 | `NOTE_MAP` | percussion only: `((midi_note, label), ...)` for the voices it maps |
-| `create(sample_rate, transport=None)` | |
+| `create(sample_rate, channel_count=2, transport=None)` | |
 
-`transport` is optional, and only the tempo-syncing instruments call it. It
-returns the host's playback position as
-`(playing, seconds, bpm, ts_numerator, ts_denominator)`.
+`transport` is an optional callable returning the host's playback position
+as `(playing, seconds, bpm, ts_numerator, ts_denominator)`. Every
+instrument accepts and stores it, but none reads it yet — no shipped
+instrument is tempo-synced (see the shipped-status note in
+`docs/audio-component-api.md`).
 
 `audioinstruments.ALL`, `DRUM_MACHINES` and `MELODIC` list the modules;
 `load(name)` imports one without instantiating it.
