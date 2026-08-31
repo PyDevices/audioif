@@ -3,10 +3,10 @@
 Six bugs this port found in CircuitPython, written up as issue bodies.
 **Filed 2026-08-28** (all re-verified by inspection of `10.3.0-rc.0` first):
 
-- peaking-eq-sign -> [#11265](https://github.com/adafruit/circuitpython/issues/11265) -> **PR [#11275](https://github.com/adafruit/circuitpython/pull/11275)** (filed 2026-08-31)
-- dds-oscillator-off-by-one -> [#11266](https://github.com/adafruit/circuitpython/issues/11266) -> **PR [#11276](https://github.com/adafruit/circuitpython/pull/11276)** (filed 2026-08-31)
-- distortion-soft-clip-union -> [#11267](https://github.com/adafruit/circuitpython/issues/11267) -> **PR [#11277](https://github.com/adafruit/circuitpython/pull/11277)** (filed 2026-08-31)
-- biquad-reset -> [#11268](https://github.com/adafruit/circuitpython/issues/11268) -> **PR [#11278](https://github.com/adafruit/circuitpython/pull/11278)** (filed 2026-08-31)
+- peaking-eq-sign -> [#11265](https://github.com/adafruit/circuitpython/issues/11265) -> **PR [#11275](https://github.com/adafruit/circuitpython/pull/11275) — MERGED** (filed 2026-08-31)
+- dds-oscillator-off-by-one -> [#11266](https://github.com/adafruit/circuitpython/issues/11266) -> **PR [#11276](https://github.com/adafruit/circuitpython/pull/11276) — MERGED** (filed 2026-08-31)
+- distortion-soft-clip-union -> [#11267](https://github.com/adafruit/circuitpython/issues/11267) -> **PR [#11277](https://github.com/adafruit/circuitpython/pull/11277) — MERGED** (filed 2026-08-31)
+- biquad-reset -> [#11268](https://github.com/adafruit/circuitpython/issues/11268) -> **PR [#11278](https://github.com/adafruit/circuitpython/pull/11278) — MERGED** (filed 2026-08-31)
 - biquad-band-edges -> [#11269](https://github.com/adafruit/circuitpython/issues/11269) — no PR yet: a design discussion (M0+ cost is the maintainers' call), awaiting Brad's framing
 - distortion-overdrive-drive -> **not filed; resolved upstream**: 10.3.0-rc.0's
   OVERDRIVE docstring now states drive has no effect in that mode, which is
