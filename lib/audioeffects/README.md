@@ -1,6 +1,6 @@
 # audioeffects
 
-Forty-three effect classes built out of audioif's audio nodes, for any host
+Forty-six effect classes built out of audioif's audio nodes, for any host
 that can pull an audiosample:
 
 ```python
@@ -148,6 +148,37 @@ scales the whole character, tone shaping included.
 | `Octaver` | one or two octaves either way; only the branches asked for are built |
 | `StereoWidener` | Haas: short-delayed copy panned wide against the dry |
 
+### Effect racks - `rack.py`
+| Class | Notes |
+|---|---|
+| `Rack` | a serial chain of this package's effects, described by a portable `chain` literal; owns its children, borrows the source |
+| `ShimmerHall` | dry + octave-up through a tape echo into a long hall; **patches** |
+| `AirSpace` | swept tone filter into a wobbling tape delay into a hall; **patches** |
+
+A rack is one component with exactly the effect shape, however many effects
+its internal graph holds - which is why racks live here rather than in a
+package of their own. `Rack` is the reusable mechanism, ported from the way
+micropython-vst3's soundtrack builds its custom racks:
+
+```python
+rack = audioeffects.create("Rack", source, 48000, chain=(
+    ("Compressor", {"threshold_db": -24.0, "ratio": 3.0}),
+    ("TapeDelay", {"time_ms": 340.0, "mix": 0.25}),
+    ("Reverb", {"preset": "hall", "mix": 0.3}),
+))
+```
+
+The chain entries are `NAME` strings or `(NAME, options)` pairs - portable
+literals, so a host can carry a rack definition as data. Racks nest: an
+entry may itself be `("Rack", {"chain": (...)})`, and a rack's `.output`
+feeds anything an effect's can. A rack reports its complete graph's
+latency (children summed) and tail (`None` as soon as any child's is
+unbounded), and its `reset()` clears every child's DSP history without
+reapplying the children's own patches over the options the rack built
+them with. `ShimmerHall` and `AirSpace` are the two racks the vst3
+soundtrack shares between pieces, ported whole: fixed topologies whose
+macros move their children's controls.
+
 ## Deliberately absent
 
 - **Pitch correction** - needs pitch detection (YIN or autocorrelation), and
@@ -221,10 +252,9 @@ quantized: `RingMod(src, frequency=440)` gets 440 Hz, while patch 0's nearest
 grid point for the 220 Hz default is 215.7.
 
 An effect rack is one audio component whose internal graph chains or mixes
-multiple effect nodes. It declares the same required metadata at module
-scope, and may implement its control surface with a module-level event
-handler or a factory/object equivalent to an effect class. See
-`docs/audio-components.md` for the complete rack rule.
+multiple effect nodes; `rack.py` above is where this package ships them,
+declaring the same required metadata at class scope like any other effect
+class. See `docs/audio-components.md` for the complete rack rule.
 
 ## A note on chaining after a Mixer
 

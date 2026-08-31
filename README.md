@@ -27,8 +27,9 @@ inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
 audio_out.play(inst.output)
 ```
 
-Two more pure-Python tiers sit on top of it. `lib/audioeffects/` is 43 effect
-classes — compressors, delays, reverbs, EQ, modulation, pitch — each taking a
+Two more pure-Python tiers sit on top of it. `lib/audioeffects/` is 46 effect
+classes — compressors, delays, reverbs, EQ, modulation, pitch, and effect
+racks that chain several of the others as one component — each taking a
 source and exposing its chain tail as `.output`. `lib/audiorender/` renders a
 whole composition offline: tracks, tempo map, notes and automation in, a mixed
 stereo master and a level report out. Each has its own README.

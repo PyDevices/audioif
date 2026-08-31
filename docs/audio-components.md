@@ -139,14 +139,17 @@ adapter, a software-only device, or the audio side of a MIDI controller.
 
 An effect rack is one audio component whose internal graph chains or mixes
 multiple effect nodes. It declares the same required metadata as a single
-effect class, at module scope because a rack is one source file:
+effect class. When the rack is a public class inside an effects package —
+the shipped form — the declarations sit at class scope like every other
+effect class; a standalone rack script file makes the same declarations at
+module scope, because that rack is one source file:
 
 ```python
-NAME = "shimmer_hall"
+NAME = "ShimmerHall"
 DISPLAY_NAME = "Shimmer Hall"
 MACRO_LABELS = ("Shimmer", "Echo", "Space", "Tone")
 MACRO_MODES = {0: "UNIPOLAR", 1: "UNIPOLAR", 2: "UNIPOLAR", 3: "UNIPOLAR"}
-PATCHES = {0: ("Shimmer Hall", (70, 57, 76, 64))}
+PATCHES = {0: ("Shimmer Hall", (70, 57, 76, 79))}
 ```
 
 The rack may implement its control surface with a module-level event handler
@@ -155,11 +158,12 @@ the declarations to build a UI, initialize values, or offer program changes;
 the metadata remains mandatory even when that consumer chooses not to use
 those features.
 
-**Shipped status:** the rack kind is specified but has no implementation
-yet — no rack provider ships in `lib/` or anywhere else. Racks are deferred
-to the planned follow-on component library (the future `audiocomponents`
-effort), not dropped; the rules above are what a rack will be held to when
-one ships.
+**Shipped status:** rack providers ship in `lib/audioeffects/rack.py` —
+`Rack` (the generic serial-chain mechanism, built from a portable `chain`
+literal), `ShimmerHall`, and `AirSpace` (fixed topologies with a macro
+surface, ported from micropython-vst3's shared soundtrack racks). All
+three are ordinary `audioeffects` providers: class-scope metadata,
+validated by `tools/validate_metadata.py` with the other effect classes.
 
 ## Consumer behavior
 

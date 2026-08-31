@@ -24,7 +24,8 @@ for source compatibility; only this repo's own name differs.
   `sys.path`: audioif is a dependency, imported from wherever it is installed.
 - `lib/` — the pure-Python tiers, published to boards by MIP from
   `<repo>/lib/<package>`. `lib/audioinstruments/` (53 `synthio`
-  instruments) and `lib/audioeffects/` (43 effect classes) are standalone
+  instruments) and `lib/audioeffects/` (46 effect classes, effect racks
+  included) are standalone
   PyPI distributions (`pydevices-audioinstruments`,
   `pydevices-audioeffects`, each with its own `pyproject.toml`, depending
   on `pydevices-audioif`) and are deliberately NOT in this repo's wheel —
