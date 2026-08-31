@@ -24,7 +24,7 @@ for source compatibility; only this repo's own name differs.
   `sys.path`: audioif is a dependency, imported from wherever it is installed.
 - `lib/` — the pure-Python tiers, published to boards by MIP from
   `<repo>/lib/<package>`. `lib/audioinstruments/` (53 `synthio`
-  instruments) and `lib/audioeffects/` (41 effect classes) are standalone
+  instruments) and `lib/audioeffects/` (43 effect classes) are standalone
   PyPI distributions (`pydevices-audioinstruments`,
   `pydevices-audioeffects`, each with its own `pyproject.toml`, depending
   on `pydevices-audioif`) and are deliberately NOT in this repo's wheel —
@@ -96,6 +96,14 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   smoke test.
 - See `docs/porting-plan.md`'s "Testing strategy" section for the complete
   methodology.
+- **The parity/oracle gates are workspace-local by design.** They need
+  built interpreters (`bin/circuitpython`, the workspace MicroPython) and
+  golden captures that live outside this repository
+  (`tests/parity/run_instruments_parity.py` defaults to workspace paths),
+  so external contributors cannot run them and CI does not try. What CI
+  covers instead is the structural contract: `test_audio_component_api`,
+  `test_metadata_contract`, `tools/validate_api.py`, and the CPython
+  fixture tests in `tests/test_cpython_*.py`.
 
 ## The CircuitPython oracle — extend, never modify
 

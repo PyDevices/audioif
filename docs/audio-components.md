@@ -114,7 +114,9 @@ second hand-maintained classification list.
 ## Runtime portability and signal shape
 
 An audio component is portable source code. It may run under CircuitPython,
-MicroPython, or CPython on Linux, Windows, WebAssembly, Android, or another
+MicroPython, or CPython on Linux, Windows, WebAssembly, Android (wheels
+build and publish; playback is not yet validated on an emulator or a
+device — see `handoff.md`), or another
 host supported by the surrounding audio stack. Component code must therefore
 use the common Python/audioif surface. When an operation differs by runtime,
 the component supplies another route for the other runtimes rather than

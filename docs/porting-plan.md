@@ -118,7 +118,7 @@ and their source is micropython-vst3 rather than CircuitPython:
   `<repo>/lib/<package>` and into the same wheel for CPython.
   `lib/audioinstruments/` is 53 classic synthesizers, keyboards and drum
   machines written entirely in `synthio` — no samples — and
-  `lib/audioeffects/` is 41 effect classes built on the tiers above, both
+  `lib/audioeffects/` is 43 effect classes built on the tiers above, both
   moved out of micropython-vst3 so they are not tied to a VST host.
   `lib/audiorender/` is the tier above those two: a composition — tracks, a
   tempo map, notes, automation, sections — rendered offline to a mixed
