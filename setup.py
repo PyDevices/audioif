@@ -1,6 +1,17 @@
+import sys
 from pathlib import Path
 
 from setuptools import Extension, setup
+
+# The parity gates hash PCM bit-exactly against the CircuitPython oracle,
+# and Linux (gcc) and Windows (MSVC) builds agree with it. On macOS arm64,
+# clang's default -ffp-contract=on fuses multiply-adds into fmadd (baseline
+# on AArch64, so contraction actually happens there, unlike x86-64 without
+# -mfma), which perturbs last-ulp float results and broke verify_effects.
+# Scoped to macOS the way the single-precision cell scoped its own flags
+# (clean-build.yml): turn contraction off so every shipped wheel computes
+# the same bits the oracle blessed.
+MACOS_COMPILE_ARGS = ["-ffp-contract=off"] if sys.platform == "darwin" else []
 
 # _audioif.__version__ used to be a literal in the C, and drifted from VERSION
 # the first time VERSION moved. There is one version here, and it is this file.
@@ -34,6 +45,7 @@ setup(
             ],
             include_dirs=["src"],
             define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION)],
+            extra_compile_args=MACOS_COMPILE_ARGS,
         )
     ]
 )
