@@ -153,6 +153,12 @@ the declarations to build a UI, initialize values, or offer program changes;
 the metadata remains mandatory even when that consumer chooses not to use
 those features.
 
+**Shipped status:** the rack kind is specified but has no implementation
+yet — no rack provider ships in `lib/` or anywhere else. Racks are deferred
+to the planned follow-on component library (the future `audiocomponents`
+effort), not dropped; the rules above are what a rack will be held to when
+one ships.
+
 ## Consumer behavior
 
 A consumer must use `NAME` as the stable lookup identity and may use

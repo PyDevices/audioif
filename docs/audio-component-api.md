@@ -106,6 +106,15 @@ Names describe meaningful optional behavior, for example
 `"poly_pressure"`, or `"tempo_sync"`. Capability discovery is advisory; the
 optional methods remain safe to call even when a capability is absent.
 
+**Shipped status:** the vocabulary above is specified, but no shipped
+component declares a capability yet — every provider currently reports the
+empty tuple (the `CAPABILITIES = ()` default in `lib/audioeffects/_core.py`
+and the `capabilities=()` default in `lib/audioinstruments/_support.py` are
+never overridden). Hosts therefore cannot yet use capability discovery to
+find, say, pitch-bend-aware or tempo-synced components; declaring
+capabilities across the shipped libraries is deferred to future component
+work, not dropped.
+
 ## MIDI and control methods
 
 All public control values use MIDI-native units:
@@ -151,6 +160,16 @@ MIDI values, but it does not define a hidden CC-to-macro map.
 
 `detune` is a pitch offset in semitones and is not a controller value. A note
 with velocity zero is equivalent to `note_off()`.
+
+**Known seam gap:** this API defines component *methods*, not a MIDI wire
+intake. No shared adapter from MIDI bytes or event streams to these methods
+ships yet: each consumer hand-rolls its own dispatch (micropython-vst3's
+`mpvst_adapter` does, and so does `deliver()` in
+`lib/audiorender/events.py`), and pairings that need a wire decoder in
+front of a component — for example, playing a Standard MIDI File straight
+into an instrument — are consequently undelivered. A shared intake is
+future work owned by this message model; until it exists, budget for
+writing the dispatch loop yourself.
 
 Notes are identified by `(channel, note_id)` when `note_id >= 0`. If no note
 ID is supplied (`note_id == -1`), the identity is `(channel, pitch)`. A note
@@ -200,6 +219,15 @@ It returns:
 When omitted, the component sees `(False, 0.0, 120.0, 4, 4)`. Components may
 ignore transport. A tempo-aware component advertises `"tempo_sync"`.
 
+**Shipped status:** the producer side of this contract exists —
+`lib/audiorender/tempo.py` supplies a real transport during offline
+rendering, and every shipped component accepts the `transport` argument —
+but no shipped component consumes it: instruments and effects store the
+callable and never call it (only the `static_transport` defaults in
+`lib/audioinstruments/_support.py` and `lib/audioeffects/_core.py` exist).
+Tempo-synced effects and instruments are specified here but unimplemented;
+they are deferred to future component work, not excluded by design.
+
 Construction may allocate the complete graph and bounded resources. Pulling
 from `output` must not allocate, block, perform I/O, or depend on garbage
 collection. Event methods may update state and perform bounded voice work, but
@@ -213,6 +241,13 @@ An effect has audio source input and audio output and uses MIDI only for
 control. An effect rack has exactly the effect shape even when its internal
 graph contains serial, parallel, or mixed effects. Racks may contain and be
 used by other racks.
+
+**Shipped status:** the rack kind is fully specified — shape, metadata,
+latency and tail reporting — but no rack provider ships anywhere in `lib/`
+yet. Racks are deferred to the planned follow-on component library (the
+future `audiocomponents` effort), not dropped; until then every published
+component is a single instrument or effect, and a host that wants a chain
+builds it from individual effects.
 
 The provider metadata rules remain authoritative for classification and
 catalog presentation: a `NOTE_MAP` identifies a percussion instrument, while
