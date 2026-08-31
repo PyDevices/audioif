@@ -27,6 +27,14 @@ exact sound of a release, pin that release rather than tracking the
 latest; the code of every release stays available for exactly this
 reason.
 
+Beneath the components sits a harder guarantee: the audioif core — the
+CircuitPython-compatible `synthio`/`audiocore`/effects-module layer — is
+held bit-exact to CircuitPython itself, verified by parity gates, and
+that never changes release to release. Where we find CircuitPython and
+audioif disagree, we treat it as a bug and report it upstream. The
+components are where the sound evolves; the floor they stand on does
+not.
+
 ## The instrument API
 
 This package follows audioif's audio component metadata manifest. Every
