@@ -16,6 +16,34 @@ jobs:
   unix-usermod:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # double is the unix port's default; float mirrors single-precision
+        # MCU targets (ESP32-P4/RP2040), where mp_float_t is 32-bit -- the
+        # class of bug 55c275a fixed (a float*/double* pointer mismatch)
+        # is invisible to the double cell. mpconfigvariant_common.h only
+        # #ifndef-defaults MICROPY_FLOAT_IMPL, so a CFLAGS define overrides
+        # it without touching any build script.
+        #
+        # The two -Wno-error downgrades are unix-cell-only: the unix port
+        # compiles with -Werror plus -Wfloat-conversion/-Wdouble-promotion,
+        # which MCU ports do not enable, and audioif's sources carry benign
+        # double-literal narrowing that trips both under a 32-bit
+        # mp_float_t. They stay warnings (visible in the log), and hard
+        # type errors -- like 55c275a's pointer mismatch -- still fail the
+        # build. TODO: clean up the narrowing conversions in src/ so the
+        # downgrades can be dropped (C changes, out of scope for a
+        # workflow edit).
+        float-impl:
+          - name: double
+            cflags: ""
+          - name: float
+            cflags: >-
+              -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT
+              -Wno-error=float-conversion
+              -Wno-error=double-promotion
+    name: unix-usermod (${{ matrix.float-impl.name }}-precision)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,12 +66,14 @@ jobs:
           make -C micropython/mpy-cross -j2
           make -C micropython/ports/unix submodules
           make -C micropython/ports/unix -j2 \
-            USER_C_MODULES=$GITHUB_WORKSPACE
+            USER_C_MODULES=$GITHUB_WORKSPACE \
+            CFLAGS_EXTRA="${{ matrix.float-impl.cflags }}"
       - name: Smoke the result
         run: |
           ./micropython/ports/unix/build-standard/micropython -c "
           import audiocore, synthio, audiomixer, audiofilters, audiodelays
           import audiomp3, audiodynamics, audioroute, audiomath, audioecho
+          import audiofreeverb, audiospeed, audioconvolve
           import ulab.numpy as np
           s = synthio.Synthesizer(sample_rate=8000); s.press(69)
           r, b = audiocore.get_buffer(s)
