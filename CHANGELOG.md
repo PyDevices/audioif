@@ -1,3 +1,7 @@
+## v0.1.1 (2026-08-31)
+
+- release chain: publishing-v7 -> publishing-v8
+
 ## v0.1.0 (2026-08-31)
 
 - Prepare upstream PRs for dds-oscillator-off-by-one, distortion-soft-clip-union, biquad-reset
