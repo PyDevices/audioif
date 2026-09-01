@@ -438,6 +438,12 @@ static PyObject *envelope_state_release(audioif_envelope_state_object_t *self,
     Py_RETURN_NONE;
 }
 
+static PyObject *envelope_state_reattack(audioif_envelope_state_object_t *self,
+    PyObject *unused) {
+    audioif_envelope_state_reattack(&self->state);
+    Py_RETURN_NONE;
+}
+
 static PyObject *envelope_state_level(audioif_envelope_state_object_t *self,
     void *closure) {
     return PyLong_FromLong(self->state.level);
@@ -451,6 +457,7 @@ static PyObject *envelope_state_kind(audioif_envelope_state_object_t *self,
 static PyMethodDef envelope_state_methods[] = {
     {"step", (PyCFunction)envelope_state_step, METH_O, NULL},
     {"release", (PyCFunction)envelope_state_release, METH_NOARGS, NULL},
+    {"reattack", (PyCFunction)envelope_state_reattack, METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL},
 };
 

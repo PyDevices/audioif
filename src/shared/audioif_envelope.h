@@ -32,6 +32,7 @@ void audioif_envelope_definition_init(audioif_envelope_definition_t *definition,
 void audioif_envelope_state_init(audioif_envelope_state_t *state,
     const audioif_envelope_definition_t *definition);
 void audioif_envelope_state_release(audioif_envelope_state_t *state);
+void audioif_envelope_state_reattack(audioif_envelope_state_t *state);
 void audioif_envelope_state_step(audioif_envelope_state_t *state,
     const audioif_envelope_definition_t *definition, size_t sample_count);
 

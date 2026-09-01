@@ -88,3 +88,10 @@ void audioif_envelope_state_init(audioif_envelope_state_t *state,
 void audioif_envelope_state_release(audioif_envelope_state_t *state) {
     state->state = AUDIOIF_ENVELOPE_RELEASE;
 }
+
+// Re-enter the attack phase from the CURRENT level - CircuitPython's
+// re-press semantics (synthio_span_change_note: "note already playing,
+// re-enter attack phase" mutates only the state, never the level).
+void audioif_envelope_state_reattack(audioif_envelope_state_t *state) {
+    state->state = AUDIOIF_ENVELOPE_ATTACK;
+}

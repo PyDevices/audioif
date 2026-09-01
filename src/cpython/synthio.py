@@ -233,7 +233,34 @@ class Note:
         self._midi_note = None
         self._envelope_state = None
         self._released = False
-        self._filter_state = _audioif.BiquadState()
+        # One state per possible cascade stage (audioif extension #11:
+        # ``filter`` accepts a Biquad or a tuple/list of up to four
+        # Biquads applied in series). A single filter uses stage 0 and
+        # behaves exactly as stock CircuitPython.
+        self._filter_states = tuple(_audioif.BiquadState() for _ in range(4))
+
+    @property
+    def filter(self):
+        return self._filter
+
+    @filter.setter
+    def filter(self, value):
+        if value is not None and not isinstance(value, Biquad):
+            if isinstance(value, (tuple, list)):
+                if len(value) > 4:
+                    raise ValueError("filter cascade too long")
+                for stage in value:
+                    if not isinstance(stage, Biquad):
+                        raise TypeError("filter must be of type Biquad, not %s"
+                                        % type(stage).__name__)
+            else:
+                raise TypeError("filter must be of type Biquad, not %s"
+                                % type(value).__name__)
+        self._filter = value
+
+    def _reset_filter(self):
+        for state in self._filter_states:
+            state.reset()
 
 
 class Synthesizer(_AudioSample):
@@ -270,7 +297,7 @@ class Synthesizer(_AudioSample):
                 self.sample_rate, True, *envelope
             )
         note._released = False
-        note._filter_state.reset()
+        note._reset_filter()
 
     def _coerce(self, note):
         if not isinstance(note, int):
@@ -283,13 +310,29 @@ class Synthesizer(_AudioSample):
         return result
 
     def press(self, notes):
+        # Mirrors CircuitPython's synthio_span_change_note exactly
+        # (shared-module/synthio/__init__.c): a note already playing
+        # re-enters ATTACK from its current level with its oscillator
+        # phase intact (and its filter reset, per synthio_note_start); a
+        # fresh press claims a free channel starting at phase zero; a
+        # press with no free channel is REFUSED, never evicted. The old
+        # code evicted the oldest note - and, on an at-cap re-press,
+        # evicted a bystander and leaked a slot (issues #8/#9).
         if isinstance(notes, (int, Note)): notes = (notes,)
         for item in notes:
             note = self._coerce(item)
             if not isinstance(note, Note): raise TypeError("note must be int or Note")
-            if len(self._notes) >= self.max_polyphony: self._notes.pop(0)
+            if note in self._notes:
+                note._released = False
+                if note._envelope_state is not None:
+                    note._envelope_state.reattack()
+                note._reset_filter()
+                continue
+            if len(self._notes) >= self.max_polyphony:
+                continue
             self._start_note(note)
-            if note not in self._notes: self._notes.append(note)
+            note._accum = 0
+            self._notes.append(note)
 
     def release(self, notes):
         if isinstance(notes, (int, Note)): notes = (notes,)
@@ -383,12 +426,14 @@ class Synthesizer(_AudioSample):
                 waveform, note._accum, dds_rate, start, end, sample_count,
             )
             if note.filter is not None:
-                amplitude = 1.0 if note.filter.A is None else _value(note.filter.A)
-                voice_data = note._filter_state.process_i32(
-                    voice_data, note.filter.mode.value,
-                    _value(note.filter.frequency), _value(note.filter.Q),
-                    amplitude, self.sample_rate,
-                )
+                stages = (note.filter,) if isinstance(note.filter, Biquad) else tuple(note.filter)
+                for stage, state in zip(stages, note._filter_states):
+                    amplitude = 1.0 if stage.A is None else _value(stage.A)
+                    voice_data = state.process_i32(
+                        voice_data, stage.mode.value,
+                        _value(stage.frequency), _value(stage.Q),
+                        amplitude, self.sample_rate,
+                    )
             contribution = _audioif.apply_loudness_i32(
                 voice_data, loudness_left, loudness_right, channels,
             )

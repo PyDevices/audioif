@@ -35,10 +35,28 @@ mp_obj_t common_hal_synthio_note_get_filter_obj(synthio_note_obj_t *self) {
 }
 
 void common_hal_synthio_note_set_filter(synthio_note_obj_t *self, mp_obj_t filter_in) {
+    // audioif extension (#11): also accept a tuple/list of Biquads - a
+    // serial cascade of up to SYNTHIO_NOTE_MAX_FILTER_STAGES stages.
     if (filter_in != mp_const_none && !mp_obj_is_type(filter_in, &synthio_biquad_type_obj)) {
-        mp_raise_TypeError_varg(
-            MP_ERROR_TEXT("%q must be of type %q, not %q"),
-            MP_QSTR_filter, MP_QSTR_Biquad, mp_obj_get_type(filter_in)->name);
+        if (mp_obj_is_type(filter_in, &mp_type_tuple) || mp_obj_is_type(filter_in, &mp_type_list)) {
+            size_t len;
+            mp_obj_t *items;
+            mp_obj_get_array(filter_in, &len, &items);
+            if (len > SYNTHIO_NOTE_MAX_FILTER_STAGES) {
+                mp_raise_ValueError(MP_ERROR_TEXT("filter cascade too long"));
+            }
+            for (size_t i = 0; i < len; i++) {
+                if (!mp_obj_is_type(items[i], &synthio_biquad_type_obj)) {
+                    mp_raise_TypeError_varg(
+                        MP_ERROR_TEXT("%q must be of type %q, not %q"),
+                        MP_QSTR_filter, MP_QSTR_Biquad, mp_obj_get_type(items[i])->name);
+                }
+            }
+        } else {
+            mp_raise_TypeError_varg(
+                MP_ERROR_TEXT("%q must be of type %q, not %q"),
+                MP_QSTR_filter, MP_QSTR_Biquad, mp_obj_get_type(filter_in)->name);
+        }
     }
     self->filter_obj = filter_in;
 }
@@ -174,7 +192,9 @@ void synthio_note_recalculate(synthio_note_obj_t *self, int32_t sample_rate) {
 
 void synthio_note_start(synthio_note_obj_t *self, int32_t sample_rate) {
     synthio_note_recalculate(self, sample_rate);
-    synthio_biquad_filter_reset(&self->filter_state);
+    for (size_t i = 0; i < SYNTHIO_NOTE_MAX_FILTER_STAGES; i++) {
+        synthio_biquad_filter_reset(&self->filter_state[i]);
+    }
 }
 
 // Perform a pitch bend operation

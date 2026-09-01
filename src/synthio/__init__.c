@@ -256,8 +256,22 @@ void synthio_synth_synthesize(synthio_synth_t *synth, uint8_t **bufptr, uint32_t
         mp_obj_t filter_obj = synthio_synth_get_note_filter(note_obj);
         if (filter_obj != mp_const_none) {
             synthio_note_obj_t *note = MP_OBJ_TO_PTR(note_obj);
-            common_hal_synthio_biquad_tick(filter_obj);
-            synthio_biquad_filter_samples(filter_obj, &note->filter_state, tmp_buffer32, dur);
+            if (mp_obj_is_type(filter_obj, &mp_type_tuple) || mp_obj_is_type(filter_obj, &mp_type_list)) {
+                // audioif extension (#11): serial cascade, one state per stage
+                size_t n_stages;
+                mp_obj_t *stages;
+                mp_obj_get_array(filter_obj, &n_stages, &stages);
+                if (n_stages > SYNTHIO_NOTE_MAX_FILTER_STAGES) {
+                    n_stages = SYNTHIO_NOTE_MAX_FILTER_STAGES;
+                }
+                for (size_t s = 0; s < n_stages; s++) {
+                    common_hal_synthio_biquad_tick(stages[s]);
+                    synthio_biquad_filter_samples(stages[s], &note->filter_state[s], tmp_buffer32, dur);
+                }
+            } else {
+                common_hal_synthio_biquad_tick(filter_obj);
+                synthio_biquad_filter_samples(filter_obj, &note->filter_state[0], tmp_buffer32, dur);
+            }
         }
 
         sum_with_loudness(out_buffer32, tmp_buffer32, loudness, dur, synth->base.channel_count);

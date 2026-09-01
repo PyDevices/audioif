@@ -1406,3 +1406,28 @@ oracle -- the golden is captured from the port. It is the most
 float-dependent fixture in the suite: every output sample is a sum of
 hundreds of float products routed through two transforms. All three
 interpreters render it identically, synthesized rooms included.
+
+## Press semantics: two CPython-target divergences fixed (2026-09-01)
+
+Issues #8 and #9, found by the accuracy program's fixed-circuit drum
+rebuilds. The CPython target's `Synthesizer.press` deviated from
+`synthio_span_change_note` three ways: it evicted the oldest note when
+full (upstream refuses the new press), it evicted a bystander and leaked
+a slot when a *member* was re-pressed at the cap, and it re-initialized
+the envelope from zero on re-press where upstream re-enters ATTACK from
+the current level with the oscillator phase intact. All three now mirror
+the oracle and the re-press render is byte-identical with a built
+CircuitPython (`tests/test_cpython_press_semantics.py` holds the
+behaviors). MicroPython was already correct.
+
+## Extension: `Note.filter` accepts a serial Biquad cascade (2026-09-01)
+
+Issue #11, a deliberate extension beyond the oracle (like `audioecho`):
+`Note.filter` also accepts a tuple/list of up to four `Biquad`s applied
+in series, each stage with its own state — steeper slopes than one
+biquad's 12 dB/oct can give a noise voice. A single filter behaves
+exactly as stock CircuitPython, which never sees the extension: code
+that must run on stock CP passes one Biquad (the usual portability
+posture). MicroPython and CPython render cascades byte-identically;
+per-note cost is one biquad pass per stage, and the resident state is
+four biquad states per note on MicroPython (`SYNTHIO_NOTE_MAX_FILTER_STAGES`).
