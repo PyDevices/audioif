@@ -79,6 +79,32 @@ exactly the class an emulator reproduces only by accident. An untested
 wheel is a claim; a wheel tested on emulated hardware is a weaker claim
 than it looks.
 
+**What the ARM lane found on its first run — and it is worth knowing
+whatever happens to ARM wheels.** aarch64 does *not* reproduce audioif's
+effects output byte for byte. Three of the four parity gates
+(`verify_acceptance`, `verify_streaming`, `verify_biquad`) are identical;
+`verify_effects` is not. Measured: **6 of 744 numeric fields differ,
+largest absolute deviation 1 in every case**, confined to `multitap` and
+`pitchshift` — the two effects doing delay-line interpolation, which is
+where a compiler's fused multiply-add changes the rounding. Those fields
+are `sum(data)` over a 512-byte block, so a delta of 1 is one byte off by
+one: **1 LSB of int16, about −90 dBFS.**
+
+The rule this settles (Brad, 2026-09-02): **bit-identical audio is
+required within one CPU architecture, not across them.** So no tolerance
+was introduced anywhere. The gate stays exact everywhere and each
+architecture is held to its own recorded baseline, accepted deliberately
+with its evidence written beside it in
+`tests/parity/golden/effects_component.json`. That is both a faithful
+reading of the rule and a stricter regression detector than a threshold.
+
+One caveat travels with that measurement, filed as
+[#15](https://github.com/PyDevices/audioif/issues/15): the gate hashes
+per-block **sums**, not PCM, so drifts that cancel within a block are
+invisible to it. The 1-LSB figure is therefore a lower bound on agreement,
+not a proof of it — true of every architecture the gate has ever passed,
+x86_64 included.
+
 **Release-time gap, precisely — this one IS open.** The organization
 desktop matrix (`reusable-build-native-and-wasm-wheels.yml`, at
 `publishing-v8`) runs `ubuntu-latest`, `windows-latest` and
