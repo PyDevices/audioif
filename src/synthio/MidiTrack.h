@@ -2,6 +2,8 @@
 // shared-module/synthio/MidiTrack.h (upstream repo:
 // https://github.com/adafruit/circuitpython, MIT), merged into one file.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

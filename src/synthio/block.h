@@ -9,6 +9,8 @@
 // tick-computed once per synthesis block and cached (see
 // synthio_global_tick in synthio/__init__.c).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

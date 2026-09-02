@@ -28,6 +28,10 @@
 // https://github.com/godotengine/godot/blob/master/servers/audio/effects/audio_effect_distortion.cpp)
 //
 // SPDX-License-Identifier: MIT
+//
+// SPDX-FileCopyrightText: Copyright (c) 2024 Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
+// SPDX-License-Identifier: MIT
 
 #include "audiofilters/Distortion.h"
 

@@ -12,6 +12,10 @@
 // upstream's behavior, not a narrower one. The WAV parsing algorithm and
 // audiosample_get_buffer semantics are otherwise unchanged; see WaveFile.c.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

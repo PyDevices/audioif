@@ -5,6 +5,8 @@
 // Type registration adds `attr, cp_compat_attr` for the rate property (see
 // docs/upstream-diff.md, "Property invocation needs an explicit attr slot").
 //
+// SPDX-FileCopyrightText: Copyright (c) 2026 Tod Kurt
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiospeed/SpeedChanger.h"

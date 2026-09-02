@@ -3,6 +3,11 @@
 // https://github.com/adafruit/circuitpython, MIT), merged into one file
 // (this port doesn't keep CP's shared-bindings/shared-module split).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2024 Tim Chinowsky
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

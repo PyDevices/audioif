@@ -5,6 +5,9 @@
 // called anywhere in CircuitPython itself (checked directly) -- dropped
 // here rather than porting a dead declaration.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

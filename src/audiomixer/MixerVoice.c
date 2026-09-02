@@ -10,6 +10,8 @@
 // references a RawSample symbol), same as audiocore/__init__.c's dropped
 // includes -- verified via grep before dropping.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 DeanM for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <stdint.h>

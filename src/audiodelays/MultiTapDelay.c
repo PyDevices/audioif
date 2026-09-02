@@ -5,6 +5,8 @@
 // other effects). `attr, cp_compat_attr` added for delay_ms/decay/mix/
 // taps/playing.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiodelays/MultiTapDelay.h"

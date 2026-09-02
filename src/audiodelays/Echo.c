@@ -7,6 +7,9 @@
 // recalculate_delay(mp_float_t) -- an upstream precision-losing round trip,
 // not a port bug.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2024 Mark Komus, Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2024 Mark Komus
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiodelays/Echo.h"

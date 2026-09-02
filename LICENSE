@@ -19,3 +19,17 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+ATTRIBUTION
+
+Substantial portions of this software are ported from the CircuitPython
+project (https://github.com/adafruit/circuitpython) and are used under the
+MIT License. Every ported file names the upstream file it came from in its
+header and retains the original SPDX-FileCopyrightText lines alongside
+PyDevices'. CircuitPython is a trademark of Adafruit Industries; this
+project is not affiliated with, sponsored by, or endorsed by Adafruit.
+
+The vendored test corpus under tests/vendor/ carries its own LICENSE and
+LICENSES files and its upstream commit in SYNTHTOOLS_COMMIT.txt.

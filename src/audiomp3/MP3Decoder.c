@@ -27,6 +27,13 @@
 // (phase 8d) failed with "use of undeclared identifier 'EINVAL'" without it.
 //
 // SPDX-License-Identifier: MIT
+//
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2019 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
+// SPDX-License-Identifier: MIT
 
 #include <errno.h>
 #include <math.h>

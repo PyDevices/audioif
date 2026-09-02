@@ -13,6 +13,8 @@
 // Fixed point ideas from Paul Stoffregen's Teensy audio library
 // (https://github.com/PaulStoffregen/Audio/blob/master/effect_freeverb.cpp)
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Mark Komus
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiofreeverb/Freeverb.h"

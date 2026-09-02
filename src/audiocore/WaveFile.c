@@ -6,6 +6,10 @@
 // double-buffered refill/get_buffer state machine, end-of-file padding) is
 // an unchanged, mechanical port. Docstrings (`//|` lines) dropped.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <stdint.h>

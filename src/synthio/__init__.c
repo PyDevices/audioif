@@ -12,6 +12,9 @@
 // primitive this port's oracle-diff test strategy needs for Math/LFO, the
 // same reasoning as audiocore.get_buffer in tier 1.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
+// SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <math.h>

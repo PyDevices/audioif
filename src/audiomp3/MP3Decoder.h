@@ -7,6 +7,11 @@
 // dropped (only used by CP for a doc-comment type hint, not actually
 // referenced by this header's declarations).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2019 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

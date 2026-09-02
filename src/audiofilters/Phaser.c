@@ -4,6 +4,8 @@
 // equivalent, see docs/upstream-diff.md). `attr, cp_compat_attr` added for
 // frequency/feedback/mix/stages/playing.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiofilters/Phaser.h"

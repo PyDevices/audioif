@@ -21,6 +21,9 @@ if result.returncode:
     sys.stderr.buffer.write(result.stdout)
     sys.stderr.buffer.write(result.stderr)
     raise SystemExit(result.returncode)
+# Windows CPython writes CRLF from the probe subprocesses, so normalise line
+# endings before hashing. Without this every Windows job fails on a hash
+# mismatch even though the PCM is byte-identical.
 actual = hashlib.sha256(result.stdout.replace(b"\r\n", b"\n")).hexdigest()
 expected = fixture["cpython_stdout_sha256"]
 if actual != expected:

@@ -8,6 +8,8 @@
 // upstream's own micro-optimization for this one type, not a port
 // artifact.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Mark Komus
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiodelays/Chorus.h"

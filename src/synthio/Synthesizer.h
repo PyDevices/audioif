@@ -2,6 +2,9 @@
 // shared-module/synthio/Synthesizer.h (upstream repo:
 // https://github.com/adafruit/circuitpython, MIT), merged into one file.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
+// SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

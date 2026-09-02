@@ -14,6 +14,9 @@
 //   - m_malloc_without_collect -> m_malloc (no mainline equivalent, same
 //     fix as tier 1/2).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiomixer/Mixer.h"

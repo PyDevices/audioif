@@ -14,6 +14,10 @@
 // table + MP_REGISTER_MODULE (moved to module.c once RawSample/WaveFile
 // exist, so this file doesn't have to forward-declare their types).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 Dan Halbert for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2018 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiocore/__init__.h"

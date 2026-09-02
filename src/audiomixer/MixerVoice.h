@@ -8,6 +8,8 @@
 // always has synthio (tier 2), so the block-input path is unconditional and
 // the plain-float fallback fields/branches are dropped.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2018 DeanM for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

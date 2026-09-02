@@ -12,6 +12,8 @@
 // `(single_channel_output && channel == 1) || (!single_channel_output && ...)`
 // pattern) -- upstream's own inconsistency, not a port bug.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiodelays/PitchShift.h"

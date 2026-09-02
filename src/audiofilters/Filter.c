@@ -6,6 +6,8 @@
 // (see docs/upstream-diff.md, "Property invocation needs an explicit attr
 // slot").
 //
+// SPDX-FileCopyrightText: Copyright (c) 2024 Cooper Dalrymple
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "audiofilters/Filter.h"

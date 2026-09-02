@@ -6,6 +6,8 @@
 // module was never guarded behind CIRCUITPY_SYNTHIO upstream, unlike
 // audiomixer -- see docs/upstream-diff.md).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Mark Komus
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

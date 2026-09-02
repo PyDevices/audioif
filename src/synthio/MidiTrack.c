@@ -8,6 +8,8 @@
 // (synthio/__init__.c) reads an actual MIDI file, and that's where the
 // FatFS-vs-generic-stream deviation lives.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <stdint.h>

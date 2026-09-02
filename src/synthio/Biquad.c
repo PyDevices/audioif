@@ -4,6 +4,8 @@
 // Docstrings dropped. See docs/upstream-diff.md: every type using
 // MP_PROPERTY_GETTER/GETSET needs `attr, cp_compat_attr` wired in.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <math.h>

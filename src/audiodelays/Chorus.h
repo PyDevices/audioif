@@ -3,6 +3,8 @@
 // MIT). Merged into one header/source pair -- see audiomixer/Mixer.h for
 // why this port doesn't keep the shared-bindings/shared-module split.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2025 Mark Komus
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once
