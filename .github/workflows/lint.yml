@@ -17,3 +17,9 @@ jobs:
       # Runs on the sources alone - nothing here imports the package, so
       # it needs neither a build nor numpy.
       - run: python -m flake8
+
+      # A ported file that loses its upstream copyright line is an MIT
+      # compliance problem and reads as carelessness to the project we
+      # ported from. Nothing caught 45 of them until a manual sweep.
+      - name: Ported sources name their upstream authors
+        run: python3 scripts/check_attribution.py

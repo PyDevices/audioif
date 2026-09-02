@@ -37,6 +37,12 @@
 // externals. unix is unaffected either way.
 //
 // SPDX-License-Identifier: MIT
+//
+// SPDX-FileCopyrightText: Copyright (c) 2013, 2014 Damien P. George
+// SPDX-FileCopyrightText: Copyright (c) 2024 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2019 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
+// SPDX-License-Identifier: MIT
 
 #include <stdlib.h>
 

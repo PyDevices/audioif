@@ -6,6 +6,9 @@
 // mp_obj_new_exception_msg_vlist() + nlr_raise() instead of CP's private
 // mp_raise_msg_vlist() (mainline doesn't expose that name).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2013, 2014 Damien P. George
+// SPDX-FileCopyrightText: Copyright (c) 2014-2018 Paul Sokolovsky
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <stdarg.h>

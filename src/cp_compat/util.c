@@ -4,6 +4,8 @@
 // https://github.com/adafruit/circuitpython, MIT); path_exists() dropped
 // (see util.h).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2017 Dan Halbert for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "cp_compat/util.h"

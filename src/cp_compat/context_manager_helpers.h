@@ -11,6 +11,8 @@
 // If enter/exit do anything else, such as taking & releasing a lock, these are
 // not suitable.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

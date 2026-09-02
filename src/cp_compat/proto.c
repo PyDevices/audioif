@@ -5,6 +5,8 @@
 // using `mp_obj_get_type(obj)->name` in place of CP's mp_obj_get_type_qstr
 // (mainline doesn't have that helper; it's a one-line inline).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2019 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "cp_compat/argcheck.h"

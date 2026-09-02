@@ -8,6 +8,8 @@
 // `common_hal_os_stat`, CircuitPython's port-specific os HAL, which is out
 // of scope here and unused by anything in the audio/synthio call graph.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2017 Dan Halbert for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

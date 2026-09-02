@@ -4,6 +4,8 @@
 // https://github.com/adafruit/circuitpython, MIT). mp_arg_validate_type
 // comes from cp_compat/argcheck.h.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2020 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "cp_compat/argcheck.h"

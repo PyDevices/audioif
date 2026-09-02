@@ -6,6 +6,8 @@
 // synthio.Biquad.FilterMode) exactly as CircuitPython does: an enum member
 // is an instance of the enum's own type, not a plain int.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2020 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

@@ -4,6 +4,8 @@
 // shared/runtime/context_manager_helpers.c (upstream repo:
 // https://github.com/adafruit/circuitpython, MIT).
 //
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include "cp_compat/context_manager_helpers.h"

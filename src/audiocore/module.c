@@ -11,6 +11,8 @@
 // every audiosample-shaped type from later tiers) without needing a real
 // output device or a Mixer wired up yet.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2017 Scott Shawcroft for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #include <string.h>

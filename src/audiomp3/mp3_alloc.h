@@ -6,6 +6,9 @@
 // these two symbols; every other vendored lib/mp3 source file is unaware of
 // them.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2024 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2019 Jeff Epler for Adafruit Industries
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once

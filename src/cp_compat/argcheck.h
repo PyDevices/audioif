@@ -6,6 +6,9 @@
 // wrappers CP's shared-bindings/shared-module audio sources call directly,
 // so those files can be ported without modification to their call sites.
 //
+// SPDX-FileCopyrightText: Copyright (c) 2013, 2014 Damien P. George
+// SPDX-FileCopyrightText: Copyright (c) 2014-2018 Paul Sokolovsky
+// SPDX-FileCopyrightText: Copyright (c) 2026 PyDevices
 // SPDX-License-Identifier: MIT
 
 #pragma once
