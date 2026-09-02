@@ -8,6 +8,7 @@ Six bugs this port found in CircuitPython, written up as issue bodies.
 - distortion-soft-clip-union -> [#11267](https://github.com/adafruit/circuitpython/issues/11267) -> **PR [#11277](https://github.com/adafruit/circuitpython/pull/11277) — MERGED** (filed 2026-08-31)
 - biquad-reset -> [#11268](https://github.com/adafruit/circuitpython/issues/11268) -> **PR [#11278](https://github.com/adafruit/circuitpython/pull/11278) — MERGED** (filed 2026-08-31)
 - biquad-band-edges -> [#11269](https://github.com/adafruit/circuitpython/issues/11269) — reframed concisely per maintainer feedback and posted 2026-09-01 (three-option ask: full fix / config-gated / trig-only); awaiting maintainer appetite before any PR
+- synthio-note-repress-zero-level -> no issue -> **PR [#11289](https://github.com/adafruit/circuitpython/pull/11289)** — opened 2026-09-02, straight to a PR per tannewt's preference for small fixes
 - distortion-overdrive-drive -> **not filed; resolved upstream**: 10.3.0-rc.0's
   OVERDRIVE docstring now states drive has no effect in that mode, which is
   what the draft asked for.

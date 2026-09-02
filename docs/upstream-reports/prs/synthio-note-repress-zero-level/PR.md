@@ -269,3 +269,10 @@ something other than what the body described. Body now states what the
 test actually does. The two-note asymmetry (one slot reaped and
 reallocated, the other hit at level 0) is why the original finding showed
 2 -> 0 -> 1, and is recorded in audioif#13 rather than the PR.
+
+## SUBMITTED
+
+[adafruit/circuitpython#11289](https://github.com/adafruit/circuitpython/pull/11289)
+— opened 2026-09-02 from `bdbarnett:fix-note-repress-envelope-zero`,
+branched from upstream main `801d77a3`, commit `e1b52a39`. No linked
+issue, per tannewt's preference for small fixes going straight to a PR.
