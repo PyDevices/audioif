@@ -18,9 +18,9 @@ synthio: Fix note dropped when re-pressed after decay
 ## Body
 
 ```markdown
-Press two notes, release both, re-press both: `len(synth.pressed)` goes
-2 -> 0 -> 1. A note re-pressed after its envelope has decayed to 0 is
-silently dropped.
+A note released and then re-pressed after its envelope has run down to 0
+is silently dropped. `synth.pressed` reports it as pressed, and then the
+next render loses it.
 
 `synthio_span_change_note()`'s fast path for a note still on its channel
 re-enters ATTACK without touching `level`. At level 0 the render loop's
@@ -257,3 +257,15 @@ sentence naming the regression and its consequence.
 What was cut is not lost: the mechanism walk-through, the rejected
 alternative and the verification transcript all stay in this file. They
 just do not go in the box a maintainer reads on a phone.
+
+## Correction before submission (Arthur, 2026-09-02)
+
+The body originally opened "Press two notes, release both, re-press both:
+`len(synth.pressed)` goes 2 -> 0 -> 1" -- the two-note shape of the
+original bisection. The committed regression test is a **single-note**
+minimal repro (`release_time=0`, press / render / release / render /
+re-press). A maintainer running the test would have found it doing
+something other than what the body described. Body now states what the
+test actually does. The two-note asymmetry (one slot reaped and
+reallocated, the other hit at level 0) is why the original finding showed
+2 -> 0 -> 1, and is recorded in audioif#13 rather than the PR.
