@@ -1353,6 +1353,73 @@ static PyObject *audioif_oscillator_raw_i32(PyObject *module, PyObject *args) {
     return Py_BuildValue("(NI)", data, next_accumulator);
 }
 
+static PyObject *audioif_ring_multiply_i32(PyObject *module, PyObject *args) {
+    Py_buffer voice = {0};
+    PyObject *waveform_object;
+    unsigned int accumulator, dds_rate, waveform_start, waveform_end;
+    if (!PyArg_ParseTuple(args, "y*OIIII:ring_multiply_i32", &voice,
+        &waveform_object, &accumulator, &dds_rate, &waveform_start,
+        &waveform_end)) return NULL;
+    if (voice.len % sizeof(int32_t)) {
+        PyBuffer_Release(&voice);
+        PyErr_SetString(PyExc_ValueError, "invalid ring voice buffer");
+        return NULL;
+    }
+    Py_buffer waveform = {0};
+    if (PyObject_GetBuffer(waveform_object, &waveform,
+        PyBUF_FORMAT | PyBUF_C_CONTIGUOUS) < 0) {
+        PyBuffer_Release(&voice);
+        return NULL;
+    }
+    const char *format = waveform.format == NULL ? "" : waveform.format;
+    uint32_t waveform_length = (uint32_t)(waveform.len / sizeof(int16_t));
+    if (strcmp(format, "h") != 0 || waveform.len % sizeof(int16_t) ||
+        waveform_start >= waveform_end || waveform_end > waveform_length) {
+        PyBuffer_Release(&waveform);
+        PyBuffer_Release(&voice);
+        PyErr_SetString(PyExc_ValueError, "invalid ring waveform");
+        return NULL;
+    }
+    Py_ssize_t duration = voice.len / sizeof(int32_t);
+    PyObject *data = PyBytes_FromStringAndSize(NULL, voice.len);
+    if (data == NULL) {
+        PyBuffer_Release(&waveform);
+        PyBuffer_Release(&voice);
+        return NULL;
+    }
+    memcpy(PyBytes_AS_STRING(data), voice.buf, (size_t)voice.len);
+
+    // Mirrors the ring stage of the MicroPython usermod's
+    // synth_note_into_buffer() exactly, including two details that are easy
+    // to lose: the accumulator advances BEFORE the sample is read, and the
+    // product is narrowed to int16 before it goes back into the int32 voice
+    // buffer. Dropping either makes the ring sound close but not identical.
+    const int16_t *ring = (const int16_t *)waveform.buf;
+    int32_t *out = (int32_t *)PyBytes_AS_STRING(data);
+    uint32_t offset = waveform_start << 16;
+    uint32_t lim = waveform_end << 16;
+    uint32_t span = lim - offset;
+    uint32_t accum = accumulator;
+    if (accum >= lim) {
+        accum = offset + (accum - offset) % span;
+    }
+    for (Py_ssize_t i = 0; i < duration; i++) {
+        accum += dds_rate;
+        if (accum >= lim) {
+            accum -= span;
+        }
+        // The usermod declares this index int16_t; a wider type is used here
+        // because it is identical for every table below 32768 samples and
+        // avoids signed overflow above that.
+        uint32_t index = accum >> 16;
+        int16_t narrowed = (int16_t)((ring[index] * out[i]) / 32768);
+        out[i] = narrowed;
+    }
+    PyBuffer_Release(&waveform);
+    PyBuffer_Release(&voice);
+    return Py_BuildValue("(NI)", data, accum);
+}
+
 static PyObject *audioif_apply_loudness_i32(PyObject *module, PyObject *args) {
     Py_buffer voice = {0};
     int left, right;
@@ -1642,6 +1709,7 @@ static PyMethodDef audioif_methods[] = {
     {"mix_s16", audioif_mix_s16, METH_VARARGS, PyDoc_STR("Saturating mix of two native-endian signed 16-bit PCM buffers.")},
     {"oscillator_i32", audioif_oscillator_i32, METH_VARARGS, NULL},
     {"oscillator_raw_i32", audioif_oscillator_raw_i32, METH_VARARGS, NULL},
+    {"ring_multiply_i32", audioif_ring_multiply_i32, METH_VARARGS, NULL},
     {"apply_loudness_i32", audioif_apply_loudness_i32, METH_VARARGS, NULL},
     {"mixdown_i32", audioif_mixdown_i32, METH_VARARGS, NULL},
     {"pitch_bend", audioif_pitch_bend_value, METH_VARARGS, NULL},

@@ -230,6 +230,9 @@ class Note:
         self.ring_waveform_loop_start = ring_waveform_loop_start
         self.ring_waveform_loop_end = ring_waveform_loop_end
         self._accum = 0
+        # The usermod keeps this per channel and, unlike `accum`, never
+        # resets it on a press - so it is deliberately not reset here either.
+        self._ring_accum = 0
         self._midi_note = None
         self._envelope_state = None
         self._released = False
@@ -440,6 +443,40 @@ class Synthesizer(_AudioSample):
             voice_data, note._accum = _audioif.oscillator_raw_i32(
                 waveform, note._accum, dds_rate, start, end, sample_count,
             )
+
+            # Ring modulation, mirroring the usermod's own stage: a second
+            # oscillator multiplied into the voice, after the main
+            # oscillator and before the filter. Needs both a non-zero
+            # ring_frequency and a ring_waveform, exactly as the usermod
+            # requires both ring_frequency_scaled and ring_waveform_buf.
+            ring_waveform = note.ring_waveform
+            if (note._midi_note is None and note.ring_frequency
+                    and ring_waveform is not None):
+                ring_length = len(ring_waveform)
+                ring_start = max(0, min(ring_length - 1,
+                                        int(_value(note.ring_waveform_loop_start))))
+                ring_end = max(ring_start + 1,
+                               min(ring_length,
+                                   int(_value(note.ring_waveform_loop_end))))
+                ring_scaled = int(note.ring_frequency * 65536.0 + 0.5)
+                ring_bent = _audioif.pitch_bend(
+                    ring_scaled, scaled(note.ring_bend, -12, 12))
+                ring_dds_rate = (
+                    self.sample_rate // 2 + ring_bent * (ring_end - ring_start)
+                ) // self.sample_rate
+                # Two guards, both from the usermod and both kept as written
+                # there. The first bounds the rate against the RING table;
+                # the second - easy to misread - bounds it against the MAIN
+                # waveform's limit, and skips ringing entirely rather than
+                # clamping.
+                if ring_dds_rate > (ring_end << 16) // 2:
+                    ring_dds_rate = 0
+                if ring_dds_rate and ring_dds_rate <= (end << 16) // 2:
+                    voice_data, note._ring_accum = _audioif.ring_multiply_i32(
+                        voice_data, ring_waveform, note._ring_accum,
+                        ring_dds_rate, ring_start, ring_end,
+                    )
+
             if note.filter is not None:
                 stages = (note.filter,) if isinstance(note.filter, Biquad) else tuple(note.filter)
                 for stage, state in zip(stages, note._filter_states):

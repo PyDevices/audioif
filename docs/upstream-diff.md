@@ -1487,3 +1487,27 @@ note re-pressed one call earlier is not.
 full instrument sequences. That is a series of smaller lifecycle
 differences between the C implementation and the Python reimplementation,
 tracked separately; this entry covers only the dropped-note defect.
+
+
+## Ring modulation was missing from the CPython target (2026-09-02)
+
+Not a deviation — a **gap in our port**, now closed. `Note` accepted and
+stored `ring_frequency`, `ring_bend`, `ring_waveform` and its loop bounds,
+and the render loop never read them: a ringed note rendered byte-identically
+to an unringed one, while the MicroPython usermod and the CircuitPython
+oracle both applied the ring and agreed with each other exactly.
+
+The stage is now ported from the usermod's own `synth_note_into_buffer()`,
+including the parts that are easy to lose: the accumulator advances *before*
+the sample is read; the product is narrowed to `int16` before it returns to
+the `int32` voice buffer; and there are two separate guards, the first
+bounding the rate against the ring table and the second — which reads as a
+copy-paste at first glance but is not — bounding it against the *main*
+waveform's limit and skipping the ring entirely rather than clamping. The
+per-note ring accumulator is deliberately never reset on a press, matching
+the usermod, which resets `accum` there but not `ring_accum`.
+
+Verified bit-identical on all three runtimes. Eight instruments use ring
+modulation (`cs80`, `cp70`, `b3`, `dx7`, `ms20`, `odyssey`, `rhodes`,
+`wurlitzer`), so desktop renders of those were previously missing a feature
+the boards had.
