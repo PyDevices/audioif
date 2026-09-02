@@ -36,15 +36,16 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 32, 0, 0, 44, 48, 24, 29, 64, 1, 51, 0, 0, 24, 41, 64)),
+    0: ('Default', (102, 32, 12, 0, 93, 95, 82, 79, 64, 42, 51, 0, 0, 24,
+                    41, 64)),
 }
 
 import math
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
-    ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
+    make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -140,12 +141,12 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 1: fm_amount = value0 * 2.0
             elif data0 == 2: mod_ratio = 1.0 + math.floor(value0 * 10.0)
             elif data0 == 3: feedback = value0
-            elif data0 == 4: e1_d = 0.1 + value0 * 4.0
-            elif data0 == 5: e2_d = 0.05 + value0 * 2.0
-            elif data0 == 6: e3_d = 0.01 + value0 * 1.0
-            elif data0 == 7: rel_t = 0.05 + value0 * 2.0
+            elif data0 == 4: e1_d = logmap(value0, 0.1, 4.1)
+            elif data0 == 5: e2_d = logmap(value0, 0.05, 2.05)
+            elif data0 == 6: e3_d = logmap(value0, 0.01, 1.01)
+            elif data0 == 7: rel_t = logmap(value0, 0.05, 2.05)
             elif data0 == 8: alg_mix = value0
-            elif data0 == 9: att_t = 0.001 + value0 * 1.0
+            elif data0 == 9: att_t = logmap(value0, 0.001, 1.001)
             elif data0 == 10: brightness = value0 * 2.0
             elif data0 == 11: trem_depth = value0
             elif data0 == 12: vib_depth = value0

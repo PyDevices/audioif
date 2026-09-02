@@ -36,14 +36,15 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 44, 13, 102, 8, 64, 48, 1, 11, 64, 9, 0, 0, 1, 9, 64)),
+    0: ('Default', (102, 44, 13, 102, 8, 64, 48, 38, 55, 64, 72, 0, 0, 38,
+                    72, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    make_table, noise_table, ring_depth_table,
+    logmap, make_table, noise_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -156,14 +157,14 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 4: lpf_peak = 0.5 + value0 * 8.0 # MS-20 is very resonant
             elif data0 == 5: osc2_pitch = 1.0 + (value0 - 0.5)
             elif data0 == 6: eg2_sweep = value0 * 8000.0
-            elif data0 == 7: eg2_a = 0.001 + value0 * 2.0
-            elif data0 == 8: eg2_d = 0.05 + value0 * 3.0
+            elif data0 == 7: eg2_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 8: eg2_d = logmap(value0, 0.05, 3.05)
             elif data0 == 9: eg2_s = value0
-            elif data0 == 10: eg2_r = 0.01 + value0 * 4.0
+            elif data0 == 10: eg2_r = logmap(value0, 0.01, 4.01)
             elif data0 == 11: ring_mod = value0
             elif data0 == 12: noise_lvl = value0
-            elif data0 == 13: vca_a = 0.001 + value0 * 2.0
-            elif data0 == 14: vca_r = 0.01 + value0 * 4.0
+            elif data0 == 13: vca_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 14: vca_r = logmap(value0, 0.01, 4.01)
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

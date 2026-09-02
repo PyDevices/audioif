@@ -36,15 +36,15 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 64, 64, 108, 18, 48, 0, 1, 19, 64, 16, 1, 19, 102, 16,
-                 64)),
+    0: ('Default', (102, 64, 64, 108, 18, 48, 0, 38, 71, 64, 83, 38, 71,
+                    102, 83, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, env_shape_table, key_of,
-    make_table,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -163,14 +163,14 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 4: resonance = 0.5 + value0 * 3.5
             elif data0 == 5: env_amount = value0 * 8000.0
             elif data0 == 6: chorus = value0
-            elif data0 == 7: f_a = 0.001 + value0 * 2.0
-            elif data0 == 8: f_d = 0.05 + value0 * 3.0
+            elif data0 == 7: f_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 8: f_d = logmap(value0, 0.05, 3.05)
             elif data0 == 9: f_s = value0
-            elif data0 == 10: f_r = 0.01 + value0 * 4.0
-            elif data0 == 11: a_a = 0.001 + value0 * 2.0
-            elif data0 == 12: a_d = 0.05 + value0 * 3.0
+            elif data0 == 10: f_r = logmap(value0, 0.01, 4.01)
+            elif data0 == 11: a_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 12: a_d = logmap(value0, 0.05, 3.05)
             elif data0 == 13: a_s = value0
-            elif data0 == 14: a_r = 0.01 + value0 * 4.0
+            elif data0 == 14: a_r = logmap(value0, 0.01, 4.01)
             elif data0 == 15: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

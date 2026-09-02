@@ -30,14 +30,14 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 64, 64, 6, 19, 102, 16, 62, 0, 64, 64)),
+    0: ('Default', (102, 64, 64, 77, 71, 102, 83, 62, 0, 64, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    make_table, noise_table,
+    logmap, make_table, noise_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -122,10 +122,10 @@ def create(sample_rate, channel_count=2, transport=None):
             if data0 == 0: volume = value0
             elif data0 == 1: breath = value0
             elif data0 == 2: brilliance = value0
-            elif data0 == 3: amp_a = 0.001 + value0 * 2.0
-            elif data0 == 4: amp_d = 0.05 + value0 * 3.0
+            elif data0 == 3: amp_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 4: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 5: amp_s = value0
-            elif data0 == 6: amp_r = 0.01 + value0 * 4.0
+            elif data0 == 6: amp_r = logmap(value0, 0.01, 4.01)
             elif data0 == 7: vib_rate = 0.1 + value0 * 10.0
             elif data0 == 8: vib_depth = value0
             elif data0 == 9: f_env = value0

@@ -27,13 +27,13 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 127, 64, 64, 127, 6, 16, 0, 64)),
+    0: ('Default', (102, 127, 64, 64, 127, 77, 83, 0, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -116,8 +116,11 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 2: viola = value0
             elif data0 == 3: cello = value0
             elif data0 == 4: chorus_depth = value0
-            elif data0 == 5: att = 0.001 + value0 * 2.0
-            elif data0 == 6: rel = 0.01 + value0 * 4.0
+            # Time is heard as a ratio, so these travel logarithmically:
+            # the steps crowd into the fast end, where a few milliseconds
+            # change the articulation, instead of stepping over it.
+            elif data0 == 5: att = logmap(value0, 0.001, 2.001)
+            elif data0 == 6: rel = logmap(value0, 0.01, 4.01)
             elif data0 == 7: crescendo = value0
             elif data0 == 8: master_tune = 0.95 + value0 * 0.1
 

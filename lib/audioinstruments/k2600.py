@@ -36,14 +36,14 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 102, 76, 51, 102, 0, 121, 18, 16, 24, 102, 24, 0, 24,
-                 13, 64)),
+    0: ('Default', (102, 102, 76, 51, 102, 0, 121, 18, 95, 82, 102, 95, 0,
+                    24, 13, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -144,10 +144,10 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 5: shimmer = value0
             elif data0 == 6: master_cutoff = 50.0 * (100.0 ** value0)
             elif data0 == 7: master_res = 0.5 + value0 * 3.5
-            elif data0 == 8: a_a = 0.001 + value0 * 4.0
-            elif data0 == 9: a_d = 0.05 + value0 * 5.0
+            elif data0 == 8: a_a = logmap(value0, 0.001, 4.001)
+            elif data0 == 9: a_d = logmap(value0, 0.05, 5.05)
             elif data0 == 10: a_s = value0
-            elif data0 == 11: a_r = 0.01 + value0 * 8.0
+            elif data0 == 11: a_r = logmap(value0, 0.01, 8.01)
             elif data0 == 12: mod_wheel = value0
             elif data0 == 13: mod_rate = 0.1 + value0 * 10.0
             elif data0 == 14: mod_depth = value0

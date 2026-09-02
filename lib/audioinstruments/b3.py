@@ -30,14 +30,14 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 127, 127, 64, 25, 64, 32, 38, 0, 0, 64)),
+    0: ('Default', (102, 127, 127, 64, 25, 64, 75, 38, 0, 0, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
-    noise_table, ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
+    make_table, noise_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -133,7 +133,7 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 3: db4 = value0
             elif data0 == 4: db2 = value0
             elif data0 == 5: perc_lvl = value0
-            elif data0 == 6: perc_dec = 0.05 + value0 * 1.0
+            elif data0 == 6: perc_dec = logmap(value0, 0.05, 1.05)
             elif data0 == 7: key_click = value0
             elif data0 == 8: leslie_fast = value0
             elif data0 == 9: overdrive = 1.0 + value0 * 2.0

@@ -27,14 +27,14 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 51, 64, 62, 0, 64, 48, 102, 64)),
+    0: ('Default', (102, 51, 64, 62, 0, 64, 80, 102, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
-    ring_depth_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap,
+    make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -118,7 +118,7 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 3: trem_rate = 0.1 + value0 * 10.0
             elif data0 == 4: trem_depth = value0
             elif data0 == 5: chorus = value0
-            elif data0 == 6: decay = 0.5 + value0 * 4.0
+            elif data0 == 6: decay = logmap(value0, 0.5, 4.5)
             elif data0 == 7: brilliance = value0
             elif data0 == 8: master_tune = 0.95 + value0 * 0.1
 

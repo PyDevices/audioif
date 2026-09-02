@@ -35,7 +35,8 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 108, 18, 0, 31, 48, 106, 0, 1, 11, 64, 9, 1, 0, 64, 0)),
+    0: ('Default', (102, 108, 18, 0, 31, 48, 106, 0, 38, 55, 64, 72, 19, 0,
+                    64, 0)),
 }
 
 import array
@@ -43,7 +44,7 @@ import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, EVENT_CHANNEL_PRESSURE,
-    FALL, key_of, make_table, ring_depth_table,
+    FALL, key_of, logmap, make_table, ring_depth_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -168,11 +169,11 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 5: env_sweep = value0 * 8000.0
             elif data0 == 6: osc2_detune = 1.0 + (value0 - 0.5) * 0.03
             elif data0 == 7: sync = value0
-            elif data0 == 8: amp_a = 0.001 + value0 * 2.0
-            elif data0 == 9: amp_d = 0.05 + value0 * 3.0
+            elif data0 == 8: amp_a = logmap(value0, 0.001, 2.001)
+            elif data0 == 9: amp_d = logmap(value0, 0.05, 3.05)
             elif data0 == 10: amp_s = value0
-            elif data0 == 11: amp_r = 0.01 + value0 * 4.0
-            elif data0 == 12: hpf_cutoff = 20.0 + value0 * 2000.0
+            elif data0 == 11: amp_r = logmap(value0, 0.01, 4.01)
+            elif data0 == 12: hpf_cutoff = logmap(value0, 20.0, 2020.0)
             elif data0 == 13: ppc = value0
             elif data0 == 14: master_tune = 0.95 + value0 * 0.1
             elif data0 == 15: glide = value0

@@ -26,13 +26,13 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 48, 37, 13, 6, 6, 13, 64)),
+    0: ('Default', (102, 80, 37, 13, 77, 55, 13, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
     noise_table,
 )
 from audioinstruments._support import Instrument
@@ -124,11 +124,11 @@ def create(sample_rate, channel_count=2, transport=None):
             if data0 == 0:
                 volume = value0
                 update_hiss()
-            elif data0 == 1: tone = 500.0 + value0 * 4000.0
+            elif data0 == 1: tone = logmap(value0, 500.0, 4500.0)
             elif data0 == 2: flutter_rate = 0.1 + value0 * 10.0
             elif data0 == 3: flutter_depth = value0
-            elif data0 == 4: att = 0.001 + value0 * 2.0
-            elif data0 == 5: rel = 0.01 + value0 * 2.0
+            elif data0 == 4: att = logmap(value0, 0.001, 2.001)
+            elif data0 == 5: rel = logmap(value0, 0.01, 2.01)
             elif data0 == 6: 
                 tape_hiss = value0
                 update_hiss()

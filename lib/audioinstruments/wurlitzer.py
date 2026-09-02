@@ -28,13 +28,13 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 32, 64, 50, 0, 2, 42, 25, 19, 64)),
+    0: ('Default', (102, 32, 64, 50, 0, 47, 72, 25, 58, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
     ring_depth_table,
 )
 from audioinstruments._support import Instrument
@@ -114,10 +114,13 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 2: bark = value0
             elif data0 == 3: trem_rate = 0.1 + value0 * 10.0
             elif data0 == 4: trem_depth = value0
-            elif data0 == 5: amp_a = 0.001 + value0 * 0.5
-            elif data0 == 6: amp_d = 0.5 + value0 * 3.0
+            # Time is heard as a ratio, so these travel logarithmically:
+            # the steps crowd into the fast end, where a few milliseconds
+            # change the articulation, instead of stepping over it.
+            elif data0 == 5: amp_a = logmap(value0, 0.001, 0.501)
+            elif data0 == 6: amp_d = logmap(value0, 0.5, 3.5)
             elif data0 == 7: amp_s = value0
-            elif data0 == 8: amp_r = 0.1 + value0 * 2.0
+            elif data0 == 8: amp_r = logmap(value0, 0.1, 2.1)
             elif data0 == 9: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

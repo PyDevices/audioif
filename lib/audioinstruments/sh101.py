@@ -26,7 +26,7 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 64, 102, 94, 18, 64, 19, 64)),
+    0: ('Default', (102, 64, 102, 94, 18, 64, 58, 64)),
 }
 
 import math
@@ -34,7 +34,7 @@ import synthio
 
 from audioinstruments._support import (
     EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, FALL, key_of,
-    make_table,
+    logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -117,7 +117,10 @@ def create(sample_rate, channel_count=2, transport=None):
             elif data0 == 3: cutoff_val = 50.0 * (100.0 ** value0)
             elif data0 == 4: res = 0.5 + value0 * 3.5
             elif data0 == 5: env_depth = value0 * 6000.0
-            elif data0 == 6: fast_decay = 0.05 + value0 * 1.0
+            # Time is heard as a ratio, so these travel logarithmically:
+            # the steps crowd into the fast end, where a few milliseconds
+            # change the articulation, instead of stepping over it.
+            elif data0 == 6: fast_decay = logmap(value0, 0.05, 1.05)
             elif data0 == 7: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,

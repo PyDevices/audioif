@@ -29,13 +29,13 @@ MACRO_MODES = {
 # a caller does not set resolves here rather than to the middle of its
 # range.
 PATCHES = {
-    0: ("Default", (102, 64, 64, 42, 62, 0, 6, 13, 22, 64)),
+    0: ('Default', (102, 64, 64, 72, 62, 0, 55, 13, 71, 64)),
 }
 
 import synthio
 
 from audioinstruments._support import (
-    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, make_table,
+    EVENT_NOTE_ON, EVENT_NOTE_OFF, EVENT_PARAMETER, key_of, logmap, make_table,
 )
 from audioinstruments._support import Instrument
 from audioinstruments import _support
@@ -110,12 +110,12 @@ def create(sample_rate, channel_count=2, transport=None):
             if data0 == 0: volume = value0
             elif data0 == 1: pluck_attack = value0
             elif data0 == 2: mellow_tone = value0
-            elif data0 == 3: decay_time = 0.5 + value0 * 3.0
+            elif data0 == 3: decay_time = logmap(value0, 0.5, 3.5)
             elif data0 == 4: vib_rate = 0.1 + value0 * 10.0
             elif data0 == 5: vib_depth = value0
-            elif data0 == 6: amp_a = 0.001 + value0 * 0.2
+            elif data0 == 6: amp_a = logmap(value0, 0.001, 0.201)
             elif data0 == 7: amp_s = value0
-            elif data0 == 8: amp_r = 0.05 + value0 * 2.0
+            elif data0 == 8: amp_r = logmap(value0, 0.05, 2.05)
             elif data0 == 9: master_tune = 0.95 + value0 * 0.1
 
     instrument = Instrument(synth, handle_event, PATCHES, MACRO_LABELS,
