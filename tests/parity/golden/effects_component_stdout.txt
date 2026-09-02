@@ -1,0 +1,139 @@
+phaser_samples (-9373, -18861, -17060, -22637, -22543, -25987, -26554, -28001, -27540, -27658, -27526, -27477, -27400, -27333, -27262, -27193)
+phaser 1 1 0 512 66581
+phaser 1 1 1 512 68903
+phaser 1 1 2 512 68909
+phaser 1 1 3 512 0
+phaser 1 6 0 512 69924
+phaser 1 6 1 512 73704
+phaser 1 6 2 512 66961
+phaser 1 6 3 512 0
+phaser 2 1 0 512 76971
+phaser 2 1 1 512 55493
+phaser 2 1 2 512 72207
+phaser 2 1 3 512 62806
+phaser 2 6 0 512 79060
+phaser 2 6 1 512 59826
+phaser 2 6 2 512 73714
+phaser 2 6 3 512 68954
+chorus 1 1 0 512 67613
+chorus 1 1 1 512 69591
+chorus 1 1 2 512 69639
+chorus 1 1 3 512 0
+chorus 1 3 0 512 73596
+chorus 1 3 1 512 66495
+chorus 1 3 2 512 64331
+chorus 1 3 3 512 0
+chorus 2 1 0 512 85444
+chorus 2 1 1 512 50941
+chorus 2 1 2 512 74335
+chorus 2 1 3 512 55823
+chorus 2 3 0 512 85840
+chorus 2 3 1 512 55350
+chorus 2 3 2 512 70669
+chorus 2 3 3 512 58150
+multitap 1 0 0 512 70203
+multitap 1 0 1 512 70667
+multitap 1 0 2 512 69979
+multitap 1 0 3 512 70549
+multitap 1 0 4 512 66431
+multitap 1 0 5 512 71083
+multitap 1 2 0 512 83626
+multitap 1 2 1 512 73135
+multitap 1 2 2 512 67666
+multitap 1 2 3 512 68954
+multitap 1 2 4 512 64512
+multitap 1 2 5 512 70071
+multitap 2 0 0 512 91635
+multitap 2 0 1 512 44164
+multitap 2 0 2 512 79249
+multitap 2 0 3 512 56906
+multitap 2 0 4 512 77404
+multitap 2 0 5 512 56719
+multitap 2 2 0 512 91635
+multitap 2 2 1 512 71462
+multitap 2 2 2 512 66031
+multitap 2 2 3 512 75195
+multitap 2 2 4 512 61609
+multitap 2 2 5 512 72390
+pitchshift 1 -5 0 512 83917
+pitchshift 1 -5 1 512 51968
+pitchshift 1 -5 2 512 78873
+pitchshift 1 -5 3 512 0
+pitchshift 1 -5 4 512 0
+pitchshift 1 7 0 512 69030
+pitchshift 1 7 1 512 73235
+pitchshift 1 7 2 512 65200
+pitchshift 1 7 3 512 0
+pitchshift 1 7 4 512 0
+pitchshift 2 -5 0 512 85974
+pitchshift 2 -5 1 512 64123
+pitchshift 2 -5 2 512 54076
+pitchshift 2 -5 3 512 68172
+pitchshift 2 -5 4 512 73760
+pitchshift 2 7 0 512 91407
+pitchshift 2 7 1 512 67406
+pitchshift 2 7 2 512 58071
+pitchshift 2 7 3 512 68946
+pitchshift 2 7 4 512 71222
+freeverb 1 0 512 70457
+freeverb 1 1 512 71087
+freeverb 1 2 512 70332
+freeverb 1 3 512 0
+freeverb 1 4 512 63613
+freeverb 1 5 512 66998
+freeverb 1 6 512 33407
+freeverb 1 7 512 64015
+freeverb 1 8 512 95234
+freeverb 1 9 512 72240
+freeverb 1 10 512 58181
+freeverb 1 11 512 62664
+freeverb 2 0 512 91757
+freeverb 2 1 512 44499
+freeverb 2 2 512 79990
+freeverb 2 3 512 56906
+freeverb 2 4 512 67553
+freeverb 2 5 512 69083
+freeverb 2 6 512 34859
+freeverb 2 7 512 51860
+freeverb 2 8 512 94427
+freeverb 2 9 512 84910
+freeverb 2 10 512 40984
+freeverb 2 11 512 67092
+speed 1 0.5 0 1 256 43052
+speed 1 0.5 1 1 256 46156
+speed 1 0.5 2 1 256 30316
+speed 1 0.5 3 1 256 19596
+speed 1 0.5 4 1 256 25520
+speed 1 0.5 5 1 256 43444
+speed 1 0.5 6 1 256 46548
+speed 1 0.5 7 1 256 25586
+speed 1 1 0 1 256 44604
+speed 1 1 1 1 256 24956
+speed 1 1 2 1 256 34482
+speed 1 1 3 1 256 36067
+speed 1 1 4 1 256 24450
+speed 1 1 5 1 256 45898
+speed 1 1 6 0 0 0
+speed 1 2.25 0 1 256 33459
+speed 1 2.25 1 1 256 33449
+speed 1 2.25 2 0 172 26970
+speed 1 2.25 3 0 0 0
+speed 2 0.5 0 1 512 86260
+speed 2 0.5 1 1 512 93044
+speed 2 0.5 2 1 512 50162
+speed 2 0.5 3 1 512 41076
+speed 2 0.5 4 1 512 67420
+speed 2 0.5 5 1 512 90434
+speed 2 0.5 6 1 512 68036
+speed 2 0.5 7 1 512 47168
+speed 2 1 0 1 512 89652
+speed 2 1 1 1 512 45619
+speed 2 1 2 1 512 78927
+speed 2 1 3 1 512 57602
+speed 2 1 4 1 512 67527
+speed 2 1 5 1 512 68560
+speed 2 1 6 0 0 0
+speed 2 2.25 0 1 512 65828
+speed 2 2.25 1 1 512 67043
+speed 2 2.25 2 0 344 47508
+speed 2 2.25 3 0 0 0
