@@ -68,7 +68,37 @@ PATCHES = {
 
 Each patch name is a unique, non-empty human-readable string. Each values
 tuple has exactly one integer per macro, and every value is in MIDI range
-`0..127`. Patch `0` is the component's default state. When there is only one
+`0..127`.
+
+**Patch values are integers deliberately, and this is settled** (Brad,
+2026-09-02, after the question was raised by instruments whose declared
+defaults did not land on a grid point). The live surface and the patch
+surface do different jobs, and the asymmetry is the boundary between them:
+
+- **Live macro values are performance** — continuous, at whatever resolution
+  the host offers. A DAW turning a knob sends a gradual slope, and
+  `get_macro()` returns a fractional value (see `audio-component-api.md`).
+- **Patch values are storage** — discrete, portable, and meant to reproduce.
+
+Opening patches to floats would be comfortable for a DAW and would then
+require special cases for MIDI, which is integer-native for program change
+and patch transfer. Worse, it would make a patch host-dependent: one saved
+from a DAW's continuous control could not be reproduced on a MIDI rig, and a
+patch that does not travel is not a patch. **The 7-bit integer is what makes
+a patch portable**, which is the whole purpose of having one.
+
+The resolution this costs is bought back by **choosing the curve rather than
+widening the type**. A macro whose useful values crowd one end of its range
+should map logarithmically, putting fine grain where the ear needs it and
+coarse where it does not — 128 well-placed points are worth more than 128
+evenly-spaced ones. Engineering ranges are private (`_MACRO_RANGES`), so a
+provider may re-range freely; only the public `0..127` scale is fixed.
+
+Corollary worth stating, because it is easy to get wrong: since construction
+applies patch `0` and a patch supplies every macro, **a source-level default
+for a macro-controlled parameter is never observable.** What ships is patch
+`0`. Where the two disagree, the source is documentation that contradicts the
+artifact — see [audioif#17](https://github.com/PyDevices/audioif/issues/17). Patch `0` is the component's default state. When there is only one
 patch, `Default` is the convention but not a validity requirement. When
 there are multiple patches, patch `0` has a descriptive name like every other
 patch. A macro-less component uses an empty values tuple.
