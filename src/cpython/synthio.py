@@ -375,7 +375,34 @@ class Synthesizer(_AudioSample):
                     note._reset_filter()
                 continue
             if len(self._notes) >= self.max_polyphony:
-                continue
+                # No free channel. The oracle does NOT simply refuse here: at
+                # this point find_channel_with_note (src/synthio/__init__.c:361)
+                # is called with SYNTHIO_SILENCE, and it scans the channels
+                # where the note is *not playing* - released ones, still
+                # sounding out their tails - and takes the quietest. Only when
+                # every channel is genuinely held does it return -1 and the
+                # press is refused.
+                #
+                # This target used to hold a released note's slot for its
+                # ENTIRE release tail, because _render below only drops a note
+                # once its level reaches 0. Measured before this fix: with all
+                # fourteen notes released, a fresh press was still refused, and
+                # the slot came back 758 render blocks later. Driving rhodes
+                # through the parity sequence, 117 of its 122 refusals happened
+                # with NO key held at all - the engine was clogged by its own
+                # decaying voices, not full. See docs/upstream-diff.md.
+                victim = None
+                quietest = None
+                for other in self._notes:
+                    if not other._released:
+                        continue
+                    state = other._envelope_state
+                    level = state.level if state is not None else 0
+                    if quietest is None or level < quietest:
+                        victim, quietest = other, level
+                if victim is None:
+                    continue
+                self._notes.remove(victim)
             self._start_note(note)
             note._accum = 0
             self._notes.append(note)

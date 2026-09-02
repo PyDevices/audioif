@@ -1555,3 +1555,45 @@ re-pressed LONG now decays over 405.3 ms on CPython, MicroPython and the
 CircuitPython oracle alike; LONG then SHORT gives 58.6 ms on all three. Before
 the fix CPython returned exactly the opposite pair. Regression coverage:
 `tests/test_cpython_envelope_reassignment.py`.
+
+## A released note held its channel for its whole tail (2026-09-02)
+
+**Not an upstream issue.** The oracle is correct; this was a divergence in the
+CPython target, now fixed to match it.
+
+At capacity the oracle does **not** simply refuse. `synthio_span_change_note`
+calls `find_channel_with_note` with `SYNTHIO_SILENCE`
+(`src/synthio/__init__.c:361`), which scans the channels where the note is
+*not playing* — released ones, still sounding out their tails — and takes the
+**quietest**. Only when every channel is genuinely held does it return -1 and
+refuse the press.
+
+The CPython target dropped a note from `_notes` only once its envelope reached
+zero (`_render`), while `press` refused at `len(self._notes) >=
+max_polyphony`. So a released note occupied a slot for its entire release
+tail, and a released note was indistinguishable from a held one as far as
+admission was concerned.
+
+Measured before the fix:
+
+| | native engine | CPython target |
+|---|---|---|
+| blocks before a released note's channel returns | 1 | **758** |
+| fresh press with all 14 notes released | accepted | **refused** |
+
+And in use rather than in a probe: driving `rhodes` through the parity
+sequence at capacity, **117 of its 122 refusals happened with no key held at
+all**. The overwhelming majority of dropped notes were not a polyphony limit
+being reached — they were the engine clogged by its own decaying voices. That
+sequence never holds more than a four-note chord.
+
+**Fix.** When no channel is free, `press` now takes the quietest *released*
+note's slot, exactly as the oracle does, and still refuses when every channel
+is held. Verified on all three runtimes with one script: all released → press
+taken, all held → press refused and every held note intact, identical on the
+CPython target, `cmods/bin/micropython` and `cmods/bin/circuitpython`.
+
+Regression coverage: `tests/test_cpython_released_reclaim.py`.
+
+This was most of the difficulty behind audiocomponents#18, where the pianos
+appeared to run out of voices far below the engine's ceiling.
