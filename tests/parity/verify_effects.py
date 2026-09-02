@@ -14,12 +14,24 @@ multiply-add, which rounds once instead of twice) and differing libm
 implementations both legitimately move the last bit, and both differ
 between the two architectures.
 
-"Different" must not be allowed to become a synonym for "wrong", though, so
-a non-reference architecture is not simply excused. It is held to a bounded
-difference from the committed reference output, and this module reports the
-size and location of every deviation rather than only that a hash moved -- a
-gate that says "the hash differs" and nothing else cannot distinguish
-last-bit noise from a broken effect.
+"Different" must not be allowed to become a synonym for "wrong", so an
+architecture is not simply excused -- it is held to **its own exact hash**,
+recorded in `cpython_stdout_sha256_by_arch` only after a human has read the
+deviation report and accepted it. No numeric tolerance is configured
+anywhere, deliberately: the gate stays exact on every architecture, which
+is both a faithful reading of the rule above and a stronger regression
+detector than any threshold. Accepting a new architecture is a deliberate
+act with its evidence written down beside the hash; drifting through a
+tolerance is not.
+
+A tolerance would also have been measuring the wrong thing. **What this
+gate hashes is the probe's stdout, and that stdout carries per-block
+`sum(data)` values, not PCM** -- so two samples drifting in opposite
+directions inside one block leave the sum, and therefore the hash,
+unchanged. The gate is a sum-level check wearing a PCM-level name. That
+predates this change and is tracked separately; strengthening it means
+changing the probe's output format, which invalidates the committed
+CircuitPython oracle capture and so is not a unilateral edit.
 """
 
 import hashlib
@@ -43,6 +55,15 @@ fixture_path = GOLDEN / "effects_component.json"
 fixture = json.loads(fixture_path.read_text())
 reference_path = GOLDEN / "effects_component_stdout.txt"
 
+machine = platform.machine()
+reference_expected = fixture["cpython_stdout_sha256"]
+accepted = fixture.get("cpython_stdout_sha256_by_arch", {}).get(machine)
+# The reference architecture is gated on the oracle hash. Another
+# architecture is gated on its own accepted baseline if one has been
+# recorded, and otherwise on the oracle hash -- which it will fail,
+# printing the report a human needs in order to accept it.
+expected = accepted["sha256"] if accepted else reference_expected
+
 environment = os.environ.copy()
 result = subprocess.run(
     [sys.executable, str(Path(__file__).parent / "effects_component_probe.py")],
@@ -58,17 +79,17 @@ if result.returncode:
 # mismatch even though the PCM is byte-identical.
 actual_bytes = result.stdout.replace(b"\r\n", b"\n")
 actual = hashlib.sha256(actual_bytes).hexdigest()
-expected = fixture["cpython_stdout_sha256"]
 
 # The committed reference text and the committed hash describe the same
 # run. If they ever drift, every number below is measured against the wrong
 # baseline, so check it before trusting either.
 reference_bytes = reference_path.read_bytes().replace(b"\r\n", b"\n")
 reference_hash = hashlib.sha256(reference_bytes).hexdigest()
-if reference_hash != expected:
+if reference_hash != reference_expected:
     raise SystemExit(
         f"{reference_path.name} does not match cpython_stdout_sha256 in "
-        f"{fixture_path.name} ({reference_hash} vs {expected}). One of the "
+        f"{fixture_path.name} ({reference_hash} vs {reference_expected}). One "
+        "of the "
         "two was regenerated without the other; fix that before reading any "
         "comparison below, which would be measured against a stale baseline."
     )
@@ -121,10 +142,11 @@ _rel = [(abs(b - a) / abs(a), n, i, a, b)
 worst_rel = max(_rel) if _rel else (0, 0, 0, 0, 0)
 from_zero = len(moved) - len(_rel)
 
-machine = platform.machine()
 report = [
-    "effect PCM does not match the CircuitPython oracle metadata",
-    f"  expected {expected}",
+    "effect PCM does not match the expected hash for this architecture",
+    f"  expected {expected}"
+    + (f" (this architecture's accepted baseline, {accepted['accepted']})"
+       if accepted else " (the x86_64 oracle hash)"),
     f"  got      {actual}",
     f"  machine  {machine} (reference architecture: {REFERENCE_MACHINE})",
     "",
@@ -151,22 +173,37 @@ for n in seen[:8]:
     report.append(f"      reference: {ref_text.splitlines()[n - 1]}")
     report.append(f"      got:       {got_text.splitlines()[n - 1]}")
 
+report.append("")
 if machine == REFERENCE_MACHINE:
-    report.append("")
     report.append(
-        "  This is the REFERENCE architecture, where the gate is exact. A "
-        "deviation here is a real regression, however small -- do not widen "
-        "a tolerance to absorb it."
+        "  This is the REFERENCE architecture, where the hash IS the oracle "
+        "agreement the accuracy program rests on. A deviation here is a real "
+        "regression, however small. Do not record it as a baseline."
+    )
+elif accepted:
+    report.append(
+        f"  {machine} has an accepted baseline (recorded "
+        f"{accepted['accepted']}) and no longer matches it. That is a "
+        "regression on this architecture, not cross-architecture drift -- "
+        "bit-identity IS required within one architecture."
     )
 else:
+    report.append(
+        f"  {machine} has no accepted baseline yet, so it was compared "
+        "against the x86_64 oracle hash, which it is not expected to match. "
+        "Cross-architecture bit-identity is not required (Brad, 2026-09-02)."
+    )
     report.append("")
     report.append(
-        f"  {machine} is not the reference architecture. Cross-architecture "
-        "bit-identity is NOT required (Brad, 2026-09-02), but the size of "
-        "the difference above is what decides whether this is last-bit "
-        "floating-point divergence or a real defect. No tolerance is "
-        "configured yet: it will be set from measured evidence, not chosen "
-        "to make this pass."
+        "  To accept this architecture: read the deviations above and judge "
+        "whether they are last-bit floating-point divergence or a defect, "
+        "then add an entry to cpython_stdout_sha256_by_arch in "
+        f"{fixture_path.name} with the hash, the date, and the evidence you "
+        "judged on. Note the limits of what you are reading: these fields "
+        "are per-block sum(data) over 512 bytes, so a delta of 1 is one "
+        "byte off by one (1 LSB of int16, about -90 dBFS) -- but equal sums "
+        "do NOT prove equal samples, since two bytes drifting oppositely "
+        "cancel. Accepting is a judgement, not a formality."
     )
 
 raise SystemExit("\n".join(report))

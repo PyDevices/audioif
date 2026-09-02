@@ -7,5 +7,12 @@
     "audiofreeverb"
   ],
   "cpython_stdout_sha256": "fe1e6b8c997ee7c5dfacb7eb8193a98c74c0896189e4afffd88c98ca0acdd2cd",
-  "audiospeed_oracle": "CircuitPython 10.2.1 source plus MicroPython executable regression"
+  "audiospeed_oracle": "CircuitPython 10.2.1 source plus MicroPython executable regression",
+  "cpython_stdout_sha256_by_arch": {
+    "aarch64": {
+      "sha256": "5ac626e67e26e8cd4cccaf9c48ea0fb5c4511c4a7d8a348f1b514a43e1a0a717",
+      "accepted": "2026-09-02",
+      "evidence": "6 of 744 numeric fields differ from the x86_64 reference; largest absolute deviation 1, in every case. The fields are sum(data) over a 512-byte block (256 int16 samples), so a delta of 1 is one byte off by one -- 1 LSB of int16, about -90 dBFS. Confined to multitap (5 fields) and pitchshift (1); phaser, chorus, freeverb and speed are bit-identical, as are the 16 real decoded samples on the phaser_samples line. Consistent with floating-point contraction in delay-line interpolation, not a defect."
+    }
+  }
 }
