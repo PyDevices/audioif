@@ -202,3 +202,11 @@ A consumer must use `NAME` as the stable lookup identity and may use
 note maps when useful. It must not assume optional metadata exists. It may
 also provide a generic UI when macros or patches are empty, although every
 provider still declares those fields explicitly.
+
+<!-- Home: this document and audio-component-api.md exist identically in
+     audioif/docs/ and audiocomponents/docs/. Brad, 2026-09-02: when
+     audiocomponents goes public, audiocomponents becomes their ONLY home and
+     audioif's copies go, because the docs address components rather than
+     audioif. Until then the duplication is deliberate and harmless; edit
+     audioif's copy and mirror it, since audioif still ships the packages.
+     Part of the rewiring listed in the audio-stack-vision memory. -->
