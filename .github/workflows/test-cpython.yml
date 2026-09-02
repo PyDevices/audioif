@@ -12,7 +12,14 @@ jobs:
         # macos-latest (Apple Silicon) delivers the org macOS posture:
         # everything CI can prove — build, import, unit/contract tests,
         # validate_api, parity — runs on the macOS runner too.
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        #
+        # ubuntu-24.04-arm is the same posture for aarch64, and it is the
+        # SBC story: Raspberry Pi OS 64-bit is aarch64. A native ARM runner
+        # rather than QEMU, so the parity suite actually executes on the
+        # architecture the wheels target — the class of bug worth catching
+        # here is arithmetic that differs by architecture, which emulation
+        # would reproduce faithfully only by accident.
+        os: [ubuntu-latest, windows-latest, macos-latest, ubuntu-24.04-arm]
         python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
@@ -51,5 +58,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build macOS wheels (no publish)
+        uses: pypa/cibuildwheel@v4.2.0
+      - run: ls -l wheelhouse/
+
+  # The same non-publishing proof for Linux aarch64, on a native ARM
+  # runner. This job is currently the ONLY thing that builds an ARM wheel:
+  # the org release matrix (reusable-build-native-and-wasm-wheels.yml, at
+  # publishing-v8) runs ubuntu-latest, windows-latest and macos-latest, so
+  # releases still ship no aarch64 wheel. See docs/building-wheels.md for
+  # what closing that gap costs. Proving the build here first means the org
+  # change, when it comes, is a matrix line rather than a discovery.
+  linux-arm-wheels:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      # No CIBW_ARCHS override: pyproject's auto64 already resolves to
+      # aarch64 on this runner, which is the property that makes the org
+      # matrix change a one-line addition.
+      - name: Build Linux aarch64 wheels (no publish)
         uses: pypa/cibuildwheel@v4.2.0
       - run: ls -l wheelhouse/

@@ -56,9 +56,23 @@ build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
 skip = "*musllinux* *-win32"
 test-command = "python -c \"from array import array; import audiocore, synthio; s=synthio.Synthesizer(sample_rate=8000); s.press(69); r,b=audiocore.get_buffer(s); assert r == 1 and b.format == 'B' and len(b) == 512\""
 
+# auto64 -- the runner's own 64-bit architecture -- NOT ["x86_64",
+# "aarch64"]. Naming both would make the x86_64 release runner try to
+# build aarch64 under QEMU, which no workflow here configures; the release
+# path would slow to emulation speed or fail outright. auto64 resolves to
+# x86_64 on an x86_64 runner and aarch64 on an ARM one (verified against
+# cibuildwheel's own Architecture.parse_config, 2026-09-02), so one config
+# is correct on both and adding an ARM runner to a matrix is all it takes
+# to get ARM wheels.
+#
+# aarch64 is the Raspberry Pi and every 64-bit SBC -- the audience the
+# org's platform-support tiers already claim desktop-Linux coverage for.
+# musllinux stays skipped above: the test that admits aarch64 is what
+# excludes it, since we can name aarch64's users and cannot name Alpine's.
 [tool.cibuildwheel.linux]
-archs = ["x86_64"]
+archs = ["auto64"]
 manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
 
 # arm64 only, matching the runner: an x86_64 wheel cross-compiled on an
 # Apple Silicon runner could not run its test-command there, and an
