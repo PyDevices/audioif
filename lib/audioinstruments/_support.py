@@ -87,7 +87,16 @@ def _build_table(parts, length, gain, asym, fast):
         for mult, amp in parts:
             acc = acc + amp * np.sin(idx * (TAU * mult / length))
         if asym:
-            acc = acc + asym * acc * np.abs(acc)
+            # np.maximum(acc, -acc), not np.abs: ulab.numpy has neither abs
+            # nor fabs, so np.abs raised AttributeError on any interpreter
+            # shipping ulab. Latent until now only because all six asym=
+            # call sites also pass fast=False -- it would have fired the
+            # moment the two paths were unified.
+            #
+            # maximum() rather than sqrt(acc*acc) because it is pure
+            # selection: no float round trip, so it is exactly abs() rather
+            # than merely close to it.
+            acc = acc + asym * acc * np.maximum(acc, -acc)
         peak = np.max(acc * acc) ** 0.5
         if peak <= 0.0:
             peak = 1.0

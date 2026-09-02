@@ -17,6 +17,22 @@ def linspace(start, stop, num=50, endpoint=True, dtype=None):
     return _np.linspace(start, stop, num=num, endpoint=endpoint, dtype=dtype)
 
 
+# Names below were checked one at a time against real ulab, by
+# introspection on the workspace MicroPython (2026-09-02) -- not assumed.
+# The allowlist is the point of this module: a name ulab lacks is absent
+# here too, so a test importing this bridge fails the way a board would.
+# It is a SUBSET, though, and adding to it is normal: absence here means
+# "not yet needed", not "ulab lacks it". Verify before you add, and never
+# add a name real ulab does not have.
+#
+# ulab HAS: arange max maximum sqrt (as well as everything already listed).
+# ulab LACKS: abs, fabs -- which is the whole reason _build_table's asym
+# stage uses maximum(acc, -acc). See test_cpython_asym_table.py.
+arange = _np.arange
+max = _np.max  # noqa: A001 - mirrors ulab's own name
+maximum = _np.maximum
+sqrt = _np.sqrt
+
 concatenate = _np.concatenate
 frombuffer = _np.frombuffer
 int16 = _np.int16
