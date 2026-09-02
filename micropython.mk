@@ -99,8 +99,16 @@ SRC_USERMOD_C += \
 # (CP's own conservative default -- see the comment there), which caps
 # concurrent Notes across an entire Synthesizer, not per-key. Any
 # realistic polyphonic patch blows past 2 immediately (two notes held on a
-# 2-oscillator/detuned voice is already 4 concurrent Notes), silently
-# stealing/truncating voices well before it looks polyphonic. Upstream
+# 2-oscillator/detuned voice is already 4 concurrent Notes), and the excess
+# is silently REFUSED -- not stolen, not truncated. Corrected 2026-09-02
+# (audioif#14): this comment used to say "silently stealing/truncating",
+# which describes a gentler failure than the one that happens.
+# find_channel_with_note (src/synthio/__init__.c:361) scans only channels
+# where the note is NOT playing and takes the quietest, so it reclaims from
+# RELEASED notes only; with every channel held it returns -1 and
+# synthio_span_change_note drops the press at :425. The difference matters:
+# a stolen note is one you hear cut short, a refused note never sounds at
+# all, and only the second is inaudible as a fault. Upstream
 # handles this per-port (ports/raspberrypi/mpconfigport.mk: 24,
 # ports/nordic: 12, ...); this workspace's CircuitPython parity oracle
 # (cmods/circuitpython's unix `coverage` variant, bin/circuitpython) is

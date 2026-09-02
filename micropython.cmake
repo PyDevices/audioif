@@ -175,7 +175,12 @@ target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBP
 # header default of 2 is not just conservative, it is *broken* for
 # essentially any real patch -- confirmed in phase 7/8d, two notes held on
 # a plain 2-oscillator/detuned voice is already 4 concurrent Notes, and the
-# excess silently steals/truncates rather than erroring. CircuitPython's
+# excess is silently REFUSED rather than erroring. Corrected 2026-09-02
+# (audioif#14): this said "silently steals/truncates", which is the wrong
+# failure. find_channel_with_note (src/synthio/__init__.c:361) reclaims only
+# from RELEASED channels; when every channel is held the press is dropped
+# outright (:425). A note that never sounds is the one you cannot hear go
+# wrong. CircuitPython's
 # own more-capable boards all raise it well past 2 (raspberrypi: 24,
 # nordic/mimxrt10xx: 12) -- 2 is really only survivable on the most
 # memory-starved boards, not a sane default for anything with real RAM.
