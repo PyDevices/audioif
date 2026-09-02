@@ -12,32 +12,22 @@ on 2026-09-02.
 ## Title
 
 ```
-Fix synthio dropping a note re-pressed after its envelope hit 0
+synthio: Fix note dropped when re-pressed after decay
 ```
 
 ## Body
 
 ```markdown
-A note that's re-pressed while it's still sitting on its channel, but
-has already decayed to 0 (note-off immediately followed by note-on on
-the same voice), gets silently dropped instead of re-attacking.
+Press two notes, release both, re-press both: `len(synth.pressed)` goes
+2 -> 0 -> 1. A note re-pressed after its envelope has decayed to 0 is
+silently dropped.
 
-`synthio_span_change_note()`'s fast path for "note already on this
-channel" re-enters `ATTACK` without touching `level`. That's right for
-a note that's still sounding -- it swells back up from where it is.
-But if `level` is already 0, the render loop's own `level == 0` check
-(its "note is truly finished" test) reaps the channel before the
-envelope is ever stepped, so the re-press never sounds. Press two
-notes, release both, re-press both: `len(synth.pressed)` goes
-`2 -> 0 -> 1`, not back to `2`.
+`synthio_span_change_note()`'s fast path for a note still on its channel
+re-enters ATTACK without touching `level`. At level 0 the render loop's
+"note is truly finished" check reaps the channel before the envelope is
+stepped, so the re-press never sounds.
 
-Fix: when the fast path finds a note at level 0, run it through the
-same envelope init a fresh press already uses, instead of only setting
-the state.
-
-Includes a regression test
-(`tests/circuitpython/synthio_note_repress_after_decay.py`) with that
-exact scenario; it fails on current `main` and passes with the fix.
+Test included; fails on main, passes with the fix.
 ```
 
 ## Why it matters (not for the PR body -- context for us)
@@ -246,3 +236,24 @@ fetched fresh from GitHub rather than read from our 10.2.1 pin.
   will run.
 
 No corrections needed to the public body.
+
+## Why this body is short (Arthur, 2026-09-02)
+
+Trimmed from 163 words to 75 at Brad's direction, after measuring what
+these maintainers actually merge. Median body length in merged PRs:
+tannewt **16 words** (6 of 30 bodies empty), jepler **24** (2 of 30
+empty), todbot 36, gamblor21 92, dhalbert 123. Restricted to bug-fix PRs
+across tannewt/jepler/dhalbert the median is **43 words**; only three in
+the sample exceed 200, two of them dhalbert on multi-bug BLE work. The
+first draft was longer than every maintainer's median including the most
+verbose one.
+
+Their house style, from their own bodies: lead with the symptom or the
+cause in plain prose, no section headings, no code blocks quoting
+upstream's own source back at them, and no "Fix:" label -- the fix is the
+diff. jepler's longest cause-and-effect fix (#10803) opens with one
+sentence naming the regression and its consequence.
+
+What was cut is not lost: the mechanism walk-through, the rejected
+alternative and the verification transcript all stay in this file. They
+just do not go in the box a maintainer reads on a phone.
