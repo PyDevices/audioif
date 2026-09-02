@@ -380,7 +380,32 @@ static int find_channel_with_note(synthio_synth_t *synth, mp_obj_t note) {
 bool synthio_span_change_note(synthio_synth_t *synth, mp_obj_t old_note, mp_obj_t new_note) {
     int channel;
     if (new_note != SYNTHIO_SILENCE && (channel = find_channel_with_note(synth, new_note)) != -1) {
-        synth->envelope_state[channel].state = SYNTHIO_ENVELOPE_STATE_ATTACK;
+        // Re-pressing a note that still holds its slot. Upstream sets ATTACK
+        // unconditionally, which is right only while the note is still
+        // sounding: it swells back up from where it is, keeping its
+        // oscillator phase, and no click is introduced.
+        //
+        // A note whose envelope has already run down to 0 is a different
+        // thing. It is finished, merely not yet collected - and a press on
+        // it is a NEW hit, not a swell. Upstream's unconditional ATTACK
+        // leaves the level at 0, and the reaper at the top of the render
+        // then sees level == 0 and frees the slot before anything steps the
+        // envelope, so the note is deleted without ever sounding: the press
+        // renders byte-identical to never having pressed. That is a
+        // one-block race - a block earlier the level is still above 0, a
+        // block later the slot is already free and the press takes the
+        // init path below and works.
+        //
+        // Treating a finished note as a fresh press fixes it at the cause
+        // and matches what the CPython target already does. See
+        // docs/upstream-diff.md; reported upstream.
+        if (synth->envelope_state[channel].level == 0) {
+            synthio_envelope_state_init(&synth->envelope_state[channel],
+                synthio_synth_get_note_envelope(synth, new_note));
+            synth->accum[channel] = 0;
+        } else {
+            synth->envelope_state[channel].state = SYNTHIO_ENVELOPE_STATE_ATTACK;
+        }
         return true;
     }
     channel = find_channel_with_note(synth, old_note);

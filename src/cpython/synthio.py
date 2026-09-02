@@ -323,10 +323,25 @@ class Synthesizer(_AudioSample):
             note = self._coerce(item)
             if not isinstance(note, Note): raise TypeError("note must be int or Note")
             if note in self._notes:
-                note._released = False
-                if note._envelope_state is not None:
-                    note._envelope_state.reattack()
-                note._reset_filter()
+                # A note still sounding swells back up from where it is,
+                # keeping its oscillator phase. A note whose envelope has
+                # already run down to 0 is finished - merely not collected
+                # yet - and a press on it is a NEW hit, not a swell, so it
+                # starts fresh with its phase reset. Making both targets
+                # agree on this is what makes the *timing* of collection
+                # unobservable: a silent note contributes nothing either
+                # way, and the only thing that could ever depend on whether
+                # its slot had been reclaimed was which of these two
+                # branches a later press took.
+                if (note._envelope_state is not None
+                        and note._envelope_state.level == 0):
+                    self._start_note(note)
+                    note._accum = 0
+                else:
+                    note._released = False
+                    if note._envelope_state is not None:
+                        note._envelope_state.reattack()
+                    note._reset_filter()
                 continue
             if len(self._notes) >= self.max_polyphony:
                 continue

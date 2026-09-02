@@ -1431,3 +1431,55 @@ that must run on stock CP passes one Biquad (the usual portability
 posture). MicroPython and CPython render cascades byte-identically;
 per-note cost is one biquad pass per stage, and the resident state is
 four biquad states per note on MicroPython (`SYNTHIO_NOTE_MAX_FILTER_STAGES`).
+
+## Re-pressing a finished note drops it entirely (2026-09-02)
+
+**Deviation from the oracle** (the sixth), and reported upstream.
+
+Pressing a note that still holds its channel slot takes the fast path in
+`synthio_span_change_note`, which sets `ATTACK` but deliberately leaves
+`level` alone — correct while the note is still sounding, so it swells
+back up from where it is and keeps its oscillator phase. But a note whose
+envelope has already run down to 0 is *finished, merely not yet
+collected*, and upstream treats it the same way: `ATTACK` with the level
+left at 0. The reaper at the top of the render then tests `level == 0`
+before anything steps the envelope, frees the slot and `continue`s, and
+the envelope-advance loop skips freed slots — so the note is deleted
+without ever being stepped. **The press renders byte-identical to never
+having pressed at all.**
+
+It is a one-block race: a block earlier the level is still above 0 and
+the note re-attacks normally; a block later the slot has already been
+reclaimed and the press takes the init path and works. Measured window,
+sweeping the re-press block and reading the level at press time (oracle
+and, before this fix, our MicroPython port):
+
+| re-press at | level at press | note audible after |
+|---|---|---|
+| block 2 | 0.289 | yes |
+| **block 3** | **0.000** | **no — silently dropped** |
+| block 4+ | 0.000 (slot already reclaimed) | yes |
+
+Musically this is a missed drum hit: every fixed-circuit instrument
+presses several notes per circuit (a bass drum is body + noise click),
+and a note-off followed by a re-strike onto the same circuit lands in
+that window often enough to be heard.
+
+**The fix, in both targets:** a re-press of a note whose level is 0 is a
+*new hit*, not a swell — re-initialise its envelope and reset its phase,
+exactly as a press on an already-reclaimed slot does. Applying the same
+rule to both targets also makes the *timing* of slot collection
+unobservable, which is why it does not matter that the C implementation
+frees a slot as soon as the level reaches 0 while the CPython
+reimplementation keeps a note until it is released: a silent note
+contributes nothing either way, and the only thing that could depend on
+whether its slot had been reclaimed was which press branch ran later.
+
+`level == 0` is being used as a proxy for "finished", and during ATTACK it is
+not one — the reaper's own comment says "note is truly finished", and a
+note re-pressed one call earlier is not.
+
+**Not closed by this:** the two targets are still not bit-identical on
+full instrument sequences. That is a series of smaller lifecycle
+differences between the C implementation and the Python reimplementation,
+tracked separately; this entry covers only the dropped-note defect.
