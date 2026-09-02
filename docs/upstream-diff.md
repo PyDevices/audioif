@@ -5,10 +5,14 @@ CircuitPython's, or needed a workspace-side fix that isn't a plain port.
 Goal: keep this list short. Python-level API and behavior match CP unless
 noted here.
 
-Six of the entries below are upstream bugs rather than divergences, and have
-issue drafts ready to post in [upstream-reports/](upstream-reports/). None has
-been filed. **The numbers here were measured on this port and are not
-upstream's** -- the drafts carry figures measured on a build of upstream
+Six of the entries below are upstream bugs rather than divergences, written up
+in [upstream-reports/](upstream-reports/). **Five have been filed with
+CircuitPython and four are merged** (see that directory's README for the
+issue and PR numbers): peaking-eq-sign, dds-oscillator-off-by-one,
+distortion-soft-clip-union and biquad-reset are fixed upstream;
+biquad-band-edges remains open, awaiting maintainer appetite on a
+three-option ask. **The numbers here were measured on this port and are not
+upstream's** -- the reports carry figures measured on a build of upstream
 `main`, which differ.
 
 ## Property invocation needs an explicit `attr` slot (tier 0/1, all tiers after)
