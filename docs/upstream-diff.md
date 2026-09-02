@@ -1511,3 +1511,47 @@ Verified bit-identical on all three runtimes. Eight instruments use ring
 modulation (`cs80`, `cp70`, `b3`, `dx7`, `ms20`, `odyssey`, `rhodes`,
 `wurlitzer`), so desktop renders of those were previously missing a feature
 the boards had.
+
+## Envelope reassignment was not live on the CPython target (2026-09-02)
+
+**Not an upstream issue.** MicroPython, CircuitPython and the built oracle are
+all correct; this was a divergence in this repository's CPython
+reimplementation, now fixed to match them.
+
+The C builds fetch a note's envelope on **every render block** —
+`synthio_synth_get_note_envelope(synth, note_obj)` is called from the render
+loop itself (`src/synthio/__init__.c:295`), and `synthio_envelope_state_t`
+carries only the running state (level, substep, phase), never the parameters.
+So assigning `note.envelope` is live: the next block steps the new envelope.
+
+The CPython target built the definition **once, at press time**, and stored it
+inside `note._envelope_state` (`_start_note`). A re-press took the reattack
+path, which sets the phase back to ATTACK but never rebuilt the definition — so
+the note kept stepping the envelope it was pressed with, no matter what had
+been assigned since.
+
+Invisible to a one-shot render. It only appears when **one circuit is shared by
+two voices with different decays**, which is the idiom several `audioinstruments`
+kits use for closed/open hats and for clap/maracas. Measured on a shared
+claves+cowbell circuit:
+
+| | alone | overlapped, before the fix | after |
+|---|---|---|---|
+| claves | 53 ms | 207 ms — inherited the cowbell's tail | 53 ms |
+| cowbell | 203 ms | 55 ms — cut to the claves' tail | 203 ms |
+
+The same code under `cmods/bin/micropython` was already correct (57.3 / 204.3),
+which is what identified the target rather than the instrument as the fault.
+
+**Fix.** `_audioif.EnvelopeState` gains `set_definition(...)`, which replaces the
+envelope parameters while leaving level, substep and phase untouched.
+`Synthesizer._refresh_envelope` calls it from the render loop when
+`note.envelope` is no longer the object the definition was built from —
+`Envelope` is an immutable namedtuple, so identity is a sound and cheap guard,
+and an unchanged envelope costs one comparison per note per block.
+
+Verified on all three runtimes with the same script: a note pressed SHORT then
+re-pressed LONG now decays over 405.3 ms on CPython, MicroPython and the
+CircuitPython oracle alike; LONG then SHORT gives 58.6 ms on all three. Before
+the fix CPython returned exactly the opposite pair. Regression coverage:
+`tests/test_cpython_envelope_reassignment.py`.

@@ -235,6 +235,7 @@ class Note:
         self._ring_accum = 0
         self._midi_note = None
         self._envelope_state = None
+        self._envelope_seen = None
         self._released = False
         # One state per possible cascade stage (audioif extension #11:
         # ``filter`` accepts a Biquad or a tuple/list of up to four
@@ -299,8 +300,35 @@ class Synthesizer(_AudioSample):
             note._envelope_state = _audioif.EnvelopeState(
                 self.sample_rate, True, *envelope
             )
+        note._envelope_seen = envelope
         note._released = False
         note._reset_filter()
+
+    def _refresh_envelope(self, note):
+        """Re-read ``note.envelope`` if it has been reassigned since the
+        definition was built, keeping the running state (level, substep,
+        phase) intact.
+
+        The MicroPython and CircuitPython builds fetch a note's envelope on
+        every render block, so assigning ``note.envelope`` takes effect at
+        once - which is what makes one circuit shared by two voices with
+        different decays behave correctly there. This target caches the
+        definition in the state object at press time, so without this it
+        would keep stepping the *previous* envelope and the two voices would
+        swap decays. ``Envelope`` is an immutable namedtuple, so identity is
+        a sound and cheap guard.
+        """
+        state = note._envelope_state
+        if state is None:
+            return
+        envelope = note.envelope if note.envelope is not None else self.envelope
+        if envelope is note._envelope_seen:
+            return
+        if envelope is None:
+            state.set_definition(self.sample_rate, False)
+        else:
+            state.set_definition(self.sample_rate, True, *envelope)
+        note._envelope_seen = envelope
 
     def _coerce(self, note):
         if not isinstance(note, int):
@@ -494,6 +522,7 @@ class Synthesizer(_AudioSample):
                 mixed[index] += value
 
         for note in tuple(self._notes):
+            self._refresh_envelope(note)
             note._envelope_state.step(sample_count)
             if note._released and note._envelope_state.level == 0:
                 self._notes.remove(note)

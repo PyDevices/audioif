@@ -444,6 +444,30 @@ static PyObject *envelope_state_reattack(audioif_envelope_state_object_t *self,
     Py_RETURN_NONE;
 }
 
+// Replace the envelope PARAMETERS while leaving the running state (level,
+// substep, phase) untouched. The MicroPython and CircuitPython builds re-read
+// a note's envelope on every render block (synthio_synth_get_note_envelope,
+// called from the render loop), so reassigning `note.envelope` takes effect
+// immediately there. This target caches the definition inside the state object
+// at press time, so it needs this to stay faithful. See docs/upstream-diff.md.
+static PyObject *envelope_state_set_definition(
+    audioif_envelope_state_object_t *self, PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate;
+    int enabled;
+    double attack_time = 0, decay_time = 0, release_time = 0;
+    double attack_level = 1, sustain_level = 1;
+    static char *keywords[] = {
+        "sample_rate", "enabled", "attack_time", "decay_time",
+        "release_time", "attack_level", "sustain_level", NULL
+    };
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "Ip|ddddd:set_definition",
+        keywords, &sample_rate, &enabled, &attack_time, &decay_time,
+        &release_time, &attack_level, &sustain_level)) return NULL;
+    audioif_envelope_definition_init(&self->definition, sample_rate, enabled,
+        attack_time, decay_time, release_time, attack_level, sustain_level);
+    Py_RETURN_NONE;
+}
+
 static PyObject *envelope_state_level(audioif_envelope_state_object_t *self,
     void *closure) {
     return PyLong_FromLong(self->state.level);
@@ -458,6 +482,8 @@ static PyMethodDef envelope_state_methods[] = {
     {"step", (PyCFunction)envelope_state_step, METH_O, NULL},
     {"release", (PyCFunction)envelope_state_release, METH_NOARGS, NULL},
     {"reattack", (PyCFunction)envelope_state_reattack, METH_NOARGS, NULL},
+    {"set_definition", (PyCFunction)envelope_state_set_definition,
+     METH_VARARGS | METH_KEYWORDS, NULL},
     {NULL, NULL, 0, NULL},
 };
 
