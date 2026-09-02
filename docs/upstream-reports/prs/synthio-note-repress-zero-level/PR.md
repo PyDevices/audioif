@@ -212,3 +212,37 @@ two sentences that would do it:
 > `synthio_span_change_note()`'s fast path re-enters ATTACK without
 > resetting `level`, and the render loop reaps anything at level 0
 > before stepping it. PR to follow.
+
+## Independent mechanism check (Arthur, 2026-09-02 -- not for posting)
+
+Checked because the drafting session cannot safely read the oracle C. Every
+claim in the public body verified against upstream `main` at `801d77a3`,
+fetched fresh from GitHub rather than read from our 10.2.1 pin.
+
+- **Commit is real and on main.** `801d77a3f445`, 2026-09-01T23:40:23Z.
+- **Every cited line is exact.** Reaper and its "note is truly finished"
+  comment at 369-370; `synthio_span_change_note` at 497 with the fast path
+  at 500-501; the fresh-press `synthio_envelope_state_init` call at 510;
+  the init definition at 128.
+- **The mechanism holds on main, not just on our pin.** The decisive
+  property is loop order: the reap-and-render loop is at 363 and the
+  envelope-advance loop at 403, so the `level == 0` test runs before
+  anything steps the envelope, and the advance loop then skips the channel
+  it just silenced. Re-press at level 0 is therefore deleted before it can
+  sound.
+- **The patch matches the fresh-press path it claims to reuse**, including
+  `accum[channel] = 0`. Without that the re-pressed note would resume
+  mid-waveform instead of from the start, which a fresh press does not do.
+- **The rejected alternative is rejected for the right reason.** Gating the
+  reaper on ATTACK instead would skip the synchronous
+  `synthio_envelope_state_step(..., SYNTHIO_MAX_DUR)` that
+  `synthio_envelope_state_init` performs at line 133, leaving a re-pressed
+  note permanently one envelope step behind a fresh one. Confirmed on main.
+  If a maintainer proposes that alternative, this is the answer.
+- **The regression test follows upstream's own pattern.** `from audiocore
+  import get_buffer` is gated behind `CIRCUITPY_AUDIOCORE_DEBUG`, so it was
+  worth confirming: upstream's existing `synthio_note_info.py` opens with
+  the identical two imports, so the test config enables it and the new test
+  will run.
+
+No corrections needed to the public body.
