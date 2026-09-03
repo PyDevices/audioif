@@ -95,6 +95,20 @@ class Mixer(_AudioSample):
             return GET_BUFFER_MORE_DATA, memoryview(silence)
         for voice in active:
             output = bytearray()
+            # A source may claim GET_BUFFER_MORE_DATA and hand back nothing.
+            # That takes 0 bytes, grows `output` not at all, and satisfies
+            # neither exit below - so the loop spins forever and the whole
+            # render hangs rather than failing. Seen for real: a probe whose
+            # effect returned a zero-length buffer while still reporting
+            # MORE_DATA made verify_acceptance run until it was killed at 45 s
+            # with no output, where verify_streaming failed in 0.07 s. In CI
+            # that is an untimed job hang, not a named failure.
+            #
+            # One empty chunk is tolerated, because a source is allowed a beat
+            # to produce; a second consecutive one means it is not going to.
+            # The voice stops, its remainder is zero-filled like any other
+            # short voice, and the mix continues. See issue #24.
+            empty_fetches = 0
             while len(output) < self._render_size and voice._sample is not None:
                 take = min(self._render_size - len(output), len(voice._remaining))
                 output += voice._remaining[:take]
@@ -114,6 +128,13 @@ class Mixer(_AudioSample):
                         if not voice._remaining and not voice._source_more:
                             voice.stop()
                             break
+                        if not voice._remaining:
+                            empty_fetches += 1
+                            if empty_fetches > 1:
+                                voice.stop()
+                                break
+                        else:
+                            empty_fetches = 0
             data = bytes(output) + bytes(self._render_size - len(output))
             if self.bits_per_sample == 16:
                 import array
