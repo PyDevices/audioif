@@ -10,8 +10,8 @@ jobs:
       fail-fast: false
       matrix:
         # macos-latest (Apple Silicon) delivers the org macOS posture:
-        # everything CI can prove — build, import, unit/contract tests,
-        # validate_api, parity — runs on the macOS runner too.
+        # everything CI can prove — build, import, unit tests, parity —
+        # runs on the macOS runner too.
         #
         # ubuntu-24.04-arm is the same posture for aarch64, and it is the
         # SBC story: Raspberry Pi OS 64-bit is aarch64. A native ARM runner
