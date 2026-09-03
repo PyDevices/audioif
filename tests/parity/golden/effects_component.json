@@ -8,5 +8,12 @@
   ],
   "cpython_stdout_sha256": "544d29ca31973613163977b2f1ef7b6e2ab04bc4881cc25f3df3acafcdfd95a3",
   "audiospeed_oracle": "CircuitPython 10.2.1 source plus MicroPython executable regression",
-  "cpython_stdout_sha256_by_arch_note": "Removed 2026-09-02: the recorded aarch64 baseline described the probe's pre-checksum output format and cannot be regenerated off an aarch64 machine. An aarch64 run will now fail against the oracle hash and print the report a human needs in order to accept it, which is the documented path for a new architecture."
+  "cpython_stdout_sha256_by_arch_note": "Removed 2026-09-02: the recorded aarch64 baseline described the probe's pre-checksum output format and cannot be regenerated off an aarch64 machine. An aarch64 run will now fail against the oracle hash and print the report a human needs in order to accept it, which is the documented path for a new architecture.",
+  "cpython_stdout_sha256_by_arch": {
+    "aarch64": {
+      "sha256": "3ec1c31fb45476b0d8d2a1c8df2f5b2746ee9834a2bb31fa54d8109dd322d9e1",
+      "accepted": "2026-09-03",
+      "evidence": "Re-accepted under the byte-checksum probe format (e304ae0) from the CI report of run 33787147404 (ubuntu-24.04-arm, all five Python cells identical). 12 of 882 numeric fields differ from x86_64: the same six blocks as the 2026-09-02 acceptance -- multitap 1/0/2, 1/2/1, 2/0/5, 2/2/1, 2/2/2 and pitchshift 1/-5/1 -- each showing a byte-sum delta of exactly 1 and a different FNV byte checksum. Stated plainly: the checksums differing means the bytes differ in those six blocks; the sum deltas bound nothing about sample magnitude, and no dBFS figure is inferred. Confined to the two delay-line interpolators, consistent with fused multiply-add rounding; phaser, chorus, freeverb and speed identical, and the 16 decoded phaser samples identical. Acceptance rests on Brad's rule (bit-identity within an architecture, not across) and on the divergence being confined to those six blocks."
+    }
+  }
 }

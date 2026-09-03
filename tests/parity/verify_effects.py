@@ -199,11 +199,11 @@ else:
         "whether they are last-bit floating-point divergence or a defect, "
         "then add an entry to cpython_stdout_sha256_by_arch in "
         f"{fixture_path.name} with the hash, the date, and the evidence you "
-        "judged on. Note the limits of what you are reading: these fields "
-        "are per-block sum(data) over 512 bytes, so a delta of 1 is one "
-        "byte off by one (1 LSB of int16, about -90 dBFS) -- but equal sums "
-        "do NOT prove equal samples, since two bytes drifting oppositely "
-        "cancel. Accepting is a judgement, not a formality."
+        "judged on. Note the limits of what you are reading: the sum "
+        "fields are per-block sum(data) over unsigned bytes and bound nothing "
+        "about sample magnitude (a +256/-1 pair passes them); the checksum "
+        "fields differing means the bytes differ. Do not infer a dBFS figure "
+        "from a sum delta. Accepting is a judgement, not a formality."
     )
 
 raise SystemExit("\n".join(report))
