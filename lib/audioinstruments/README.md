@@ -5,6 +5,26 @@ machines, each a self-contained `synthio` program. No samples: every voice is
 oscillators, envelopes and filters, so the whole library is a few hundred
 kilobytes of Python and runs anywhere audioif does.
 
+## Installation
+
+CPython 3.10+ installs from TestPyPI:
+
+```sh
+python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioinstruments
+```
+
+This pulls in `pydevices-audioif` automatically — see the
+[audioif README](../../README.md#installation) for what that distribution
+provides.
+
+On MicroPython, `audioinstruments` arrives by `mip` from
+`<repo>/lib/audioinstruments`, like the rest of PyDevices' Python tiers. It
+can also be frozen into firmware with `AUDIOIF_FREEZE_LIBS=1` — about
+236 KB of bytecode — see `manifest.py`; `mip` stays the default so a frozen
+copy can't shadow a newer installed one.
+
+## Quick start
+
 ```python
 import audioinstruments
 
@@ -13,7 +33,6 @@ inst.note_on(36)                 # bass drum, full velocity
 inst.set_macro(2, 96)            # BD Tune
 audio_out.play(inst.output)
 ```
-
 
 ## Sound stability
 

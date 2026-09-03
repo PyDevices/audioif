@@ -1,7 +1,27 @@
 # audioeffects
 
 Forty-six effect classes built out of audioif's audio nodes, for any host
-that can pull an audiosample:
+that can pull an audiosample.
+
+## Installation
+
+CPython 3.10+ installs from TestPyPI:
+
+```sh
+python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioeffects
+```
+
+This pulls in `pydevices-audioif` automatically — see the
+[audioif README](../../README.md#installation) for what that distribution
+provides.
+
+On MicroPython, `audioeffects` arrives by `mip` from `<repo>/lib/audioeffects`,
+like the rest of PyDevices' Python tiers. It can also be frozen into firmware
+with `AUDIOIF_FREEZE_LIBS=1` — see `manifest.py` — which trades flash for
+load time; `mip` stays the default so a frozen copy can't shadow a newer
+installed one.
+
+## Quick start
 
 ```python
 import audioeffects
@@ -15,9 +35,15 @@ hall = audioeffects.create("Reverb", tape.output, 48000,
 audio_out.play(hall.output)
 ```
 
-The package factory is the host-facing construction boundary: it receives the
-source and sample rate explicitly. Direct class construction remains
-supported for local code after a call to `configure()`.
+## Usage
+
+Every public effect class has an explicit factory
+`EffectClass.create(source, sample_rate, **options)`, and the package
+helper `audioeffects.create(name, source, sample_rate, **options)` looks
+it up by name — this factory is the host-facing construction boundary,
+receiving the source and sample rate explicitly. Direct class
+construction remains supported for local code after a call to
+`configure()`.
 
 Every class takes its audio source as the first argument - a synthesizer, an
 `audioinstruments` instrument's `output`, a host input, or another effect's
@@ -32,10 +58,7 @@ Every public effect class explicitly declares `NAME`, `MACRO_LABELS`,
 all effects in that source file. The complete provider rules are in
 `docs/audio-components.md`.
 
-For host integration, every public class also has the explicit factory
-`EffectClass.create(source, sample_rate, **options)`, and the package helper
-`audioeffects.create(name, source, sample_rate, **options)`. Direct class
-construction remains supported for local code after a call to `configure()`.
+## Nodes beyond CircuitPython
 
 Five nodes make the deeper processors possible: `audiodynamics.Dynamics` (an
 envelope-follower gain computer with sidechain filtering, lookahead and
@@ -45,7 +68,6 @@ another, which is ring modulation), `audioecho.FeedbackDelay` (a delay with
 a filter, a soft-clip and a cross-feed inside its loop) and
 `audioconvolve.Convolver` (an impulse response applied by partitioned FFT).
 None of the five is CircuitPython's; a stock board does not have them.
-
 
 ## Sound stability
 
