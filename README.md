@@ -58,53 +58,34 @@ This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 dependencies and does not itself publish an `audioif` import; its version is
 the `VERSION` file, which is also what `_audioif.__version__` reports.
 
-To also get the instrument and effect libraries described below, install
-those distributions instead — each depends on `pydevices-audioif`
-automatically, so one command pulls in everything shown below:
-
-```sh
-python -m pip install --index-url https://test.pypi.org/simple/ \
-    pydevices-audioinstruments pydevices-audioeffects
-```
-
-`audioinstruments` and `audioeffects` are deliberately *not* inside the
-`pydevices-audioif` distribution — the same files in two distributions would
-collide in site-packages — which is why they're installed separately.
+The instrument and effect libraries — `audioinstruments` (53 synthesizers,
+keyboards and drum machines) and `audioeffects` (46 effect classes, racks
+included) — are not part of this distribution. They live in the
+[audiocomponents](https://github.com/PyDevices/audiocomponents) repository
+as their own packages, each depending on `pydevices-audioif`; see that
+repository for how to install them.
 
 ## What's here
 
-Three pure-Python tiers sit on top of the CircuitPython-compatible core:
-
-- **`lib/audioinstruments/`** — 53 classic synthesizers, keyboards and drum
-  machines built entirely out of `synthio`, no samples, with a MIDI-shaped
-  API:
-
-  ```python
-  import audioinstruments
-  inst = audioinstruments.create("tr808", 48000)
-  inst.note_on(36)                 # bass drum, full velocity
-  inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
-  audio_out.play(inst.output)      # audio_out: any player of audiosamples --
-                                   # a board's I2S/PWM output, or on a desktop
-                                   # pydevices' audiodev.AudioOut
-  ```
-
-- **`lib/audioeffects/`** — 46 effect classes: compressors, delays, reverbs,
-  EQ, modulation, pitch, and effect racks that chain several of the others
-  as one component, each taking a source and exposing its chain tail as
-  `.output`.
+One pure-Python tier sits on top of the CircuitPython-compatible core:
 
 - **`lib/audiorender/`** — renders a whole composition offline: tracks,
   tempo map, notes and automation in, a mixed stereo master and a level
   report out. This is the one part of the repository written for a desktop
   rather than a board — numpy throughout, a whole song in memory — so it
-  ships in the wheel and is never frozen into firmware.
+  ships in the wheel and is never frozen into firmware. It has its own
+  README.
 
-Each library has its own README. The instrument and effect libraries share
-the audio component metadata manifest described in
-[docs/audio-components.md](docs/audio-components.md); `audioif` is the
-provider and validates every published component, and consumers may use the
-optional descriptive metadata as needed.
+The instrument and effect libraries that used to sit beside it —
+`audioinstruments` and `audioeffects` — now live in the
+[audiocomponents](https://github.com/PyDevices/audiocomponents) repository,
+together with the audio component contract they implement: the metadata
+manifest
+([docs/audio-components.md](https://github.com/PyDevices/audiocomponents/blob/main/docs/audio-components.md))
+and the runtime API
+([docs/audio-component-api.md](https://github.com/PyDevices/audiocomponents/blob/main/docs/audio-component-api.md)).
+`audiorender` drives any component that speaks that API and does not need
+those packages installed.
 
 ## Additions beyond CircuitPython
 

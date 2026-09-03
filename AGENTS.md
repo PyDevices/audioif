@@ -22,16 +22,14 @@ for source compatibility; only this repo's own name differs.
   …). They install as top-level modules, so it is `import audiocore` no matter
   which of the three runtimes is underneath. Nothing puts this directory on
   `sys.path`: audioif is a dependency, imported from wherever it is installed.
-- `lib/` — the pure-Python tiers, published to boards by MIP from
-  `<repo>/lib/<package>`. `lib/audioinstruments/` (53 `synthio`
-  instruments) and `lib/audioeffects/` (46 effect classes, effect racks
-  included) are standalone
-  PyPI distributions (`pydevices-audioinstruments`,
-  `pydevices-audioeffects`, each with its own `pyproject.toml`, depending
-  on `pydevices-audioif`) and are deliberately NOT in this repo's wheel —
-  the same files in two distributions would collide. `lib/audiorender/`
-  (whole-composition offline rendering — numpy, desktop-only, never
-  frozen) still ships inside the `pydevices-audioif` wheel.
+- `lib/` — the pure-Python tier: `lib/audiorender/` (whole-composition
+  offline rendering — numpy, desktop-only, never frozen), which ships inside
+  the `pydevices-audioif` wheel. The instrument and effect libraries that
+  used to sit beside it — `audioinstruments` (53 `synthio` instruments) and
+  `audioeffects` (46 effect classes, racks included) — live in
+  [audiocomponents](https://github.com/PyDevices/audiocomponents) now, as
+  their own distributions depending on `pydevices-audioif`; nothing in this
+  repository builds, tests, publishes or freezes them.
 - `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics`,
   `audioroute`, `audiomath` and `audioecho` to a CircuitPython tree. None of
   the four is a CircuitPython port: the first two come from micropython-vst3's
@@ -65,42 +63,37 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   `tests/parity/` runs unchanged against this port and `bin/circuitpython`,
   rendering PCM and diffing byte-for-byte (or documenting the exact,
   bounded exception in `docs/upstream-diff.md`).
-- Two tiers have a different oracle, because CircuitPython is not where they
-  came from. Both are the micropython-vst3 sibling checkout, and neither
+- One tier has a different oracle, because CircuitPython is not where it
+  came from. It is the micropython-vst3 sibling checkout, and the gate never
   touches it:
-  - `.venv/bin/python tests/parity/run_instruments_parity.py --verify --batch all \
-    --micropython ../cmods/bin/micropython --circuitpython ../cmods/bin/circuitpython`
-    renders each original `vstaudio` instrument script and holds the ported
-    module to it. Comparison is always within one interpreter — `ulab`'s
-    vectorized sine and libm's are different functions.
-    Instruments listed in `REBUILT` are reported as `rebuilt` and excluded:
-    their sound was changed **on purpose**, so the original is no longer what
-    they should match, and `--capture-old` cannot express that — it re-reads
-    the original, which has not moved. `--include-rebuilt` compares them
-    anyway. Adding a name there is a record of a decision and is Brad's call.
-    Re-capturing a digest is the *other* repair, for a reference that drifted
-    under an unchanged port.
-  - `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/bin/micropython \
-    --circuitpython ../cmods/bin/circuitpython \
-    --oracle ../cmods/micropython/ports/unix/build-vstaudio-oracle/micropython`
-    does the same for `audiodynamics` and
-    `audioroute` against `vstaudio_dsp.c` compiled unmodified by
-    `MP_UNIX=../cmods/micropython/ports/unix ULAB_DIR=../cmods/ulab
-    tests/parity/build_vstaudio_oracle.sh`. One hash covers every
-    interpreter here: the arithmetic is all in `src/shared/`, so two
-    interpreters disagreeing would itself be the finding. `audiomath` rides
-    along in the same file with no oracle at all — captured from the port,
-    it pins cross-interpreter agreement rather than fidelity to something
-    older.
-- Those two oracles are the *original* scripts and `vstaudio_dsp.c`, which
-  micropython-vst3 no longer carries — it imports these packages now. Both
-  are read out of its git history, so they stay fixed no matter what that
-  checkout does next. What covers the cutover itself is
-  `python3 tests/parity/capture_render_reference.py --verify`: it renders
-  the plug-in's six soundtrack pieces and compares them with what they
-  sounded like beforehand. Slow (~15 min) and not part of the default gate,
-  but **re-capture it after any DSP change here** or it stops meaning
-  anything.
+  `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/bin/micropython \
+  --circuitpython ../cmods/bin/circuitpython \
+  --oracle ../cmods/micropython/ports/unix/build-vstaudio-oracle/micropython`
+  holds `audiodynamics` and `audioroute` to `vstaudio_dsp.c` compiled
+  unmodified by `MP_UNIX=../cmods/micropython/ports/unix
+  ULAB_DIR=../cmods/ulab tests/parity/build_vstaudio_oracle.sh`. One hash
+  covers every interpreter here: the arithmetic is all in `src/shared/`, so
+  two interpreters disagreeing would itself be the finding. `audiomath`
+  rides along in the same file with no oracle at all — captured from the
+  port, it pins cross-interpreter agreement rather than fidelity to
+  something older.
+- The instruments parity gate — `run_instruments_parity.py`, its two probes,
+  `instrument_sequences.py` and the `instruments_*.json` digests — lives in
+  [audiocomponents](https://github.com/PyDevices/audiocomponents) now, under
+  its `tests/parity/`, beside the packages it renders. Its `REBUILT` rule (a
+  name there records a sound changed **on purpose**, and adding one is
+  Brad's call, never an agent's) is documented in that repository's
+  AGENTS.md. It is not run from here.
+- That oracle is `vstaudio_dsp.c`, which micropython-vst3 no longer carries
+  — it imports audioif now. It is read out of that checkout's git history,
+  so it stays fixed no matter what the checkout does next. What covers the
+  cutover itself is `python3 tests/parity/capture_render_reference.py
+  --verify`: it renders the plug-in's six soundtrack pieces and compares
+  them with what they sounded like beforehand. The interpreter it renders
+  with needs `audioinstruments` and `audioeffects` installed from
+  audiocomponents (or `--components-lib <checkout>/lib`); they are no
+  longer in this tree. Slow (~15 min) and not part of the default gate, but
+  **re-capture it after any DSP change here** or it stops meaning anything.
 - `python3 -m flake8` is the lint gate (`.flake8`, defect checks only —
   layout is deliberately not gated). It runs in CI on every push.
 - Full regression after any change: rebuild interpreters
@@ -118,30 +111,37 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   workspace has — so in *this* workspace every parity command needs the
   explicit `--micropython`/`--circuitpython`/`--oracle` (or `CP_DIR`,
   `MP_UNIX`, `ULAB_DIR`) override shown above. Run one bare and it does not
-  fail loudly: `run_instruments_parity.py` prints `skipping micropython`
-  and verifies only the cpython leg. That is not a pass. What CI
-  covers instead is the structural contract: `test_audio_component_api`,
-  `test_metadata_contract`, `tools/validate_api.py`, and the CPython
-  fixture tests in `tests/test_cpython_*.py`.
-- **Two kinds of golden, two rules (Brad, 2026-09-03).** The digests under
-  `tests/parity/golden/` record that *the port matches the pre-rewrite original
-  script, within one interpreter* — `run_instruments_parity.py` renders the
-  originals from micropython-vst3 at `DEFAULT_OLD_REV` and never consults the
-  CircuitPython oracle. So a change to `src/cpython/` that is *right* still
-  stales the cpython digests (audioif#25: `b420dac` did exactly this). Rule:
-  a CPython-target fix may re-capture the affected cpython digests **in the
-  same commit only if it carries independent evidence against the built
-  oracle** — a test in `tests/test_cpython_*.py` run against
-  `bin/circuitpython` and cited in the message. A fix that merely *asserts*
-  oracle intent does not qualify; that would let it rewrite its own
-  reference. The accuracy program's *listening* goldens (audiocomponents) are
-  a different authority — Brad's ear — and move only at his phrase. The
-  stored digest is also the only thing in this gate that notices the engine
-  moving under both original and port — which is why it stays: a live
-  original-vs-port comparison was measured, approved and then reversed the
-  same day (audioif#26), because it would have stayed green through
-  `b420dac`. Each alarm costs one adjudication; that is the price of the
-  signal.
+  fail loudly: `verify_dsp.py` prints `skipping micropython (not built at
+  ...)` and carries on with whatever is left. That is not a pass. What CI
+  covers instead is what needs only the wheel: the CPython fixture tests in
+  `tests/test_cpython_*.py` and the four in-repo parity gates
+  (`verify_acceptance`, `verify_effects`, `verify_streaming`,
+  `verify_biquad`), whose goldens are committed here. The component
+  contract tests (`test_audio_component_api`, `test_metadata_contract`,
+  `tools/validate_api.py`) went to audiocomponents with the packages they
+  check.
+- **Two kinds of golden, two rules (Brad, 2026-09-03).** The instruments
+  digests — `instruments_*.json`, now under audiocomponents'
+  `tests/parity/golden/` — record that *the port matches the pre-rewrite
+  original script, within one interpreter*: `run_instruments_parity.py`
+  there renders the originals from micropython-vst3 at `DEFAULT_OLD_REV` and
+  never consults the CircuitPython oracle. So a change to `src/cpython/`
+  *here* that is *right* still stales those cpython digests (audioif#25:
+  `b420dac` did exactly this). Rule: a CPython-target fix may re-capture the
+  affected cpython digests **only if it carries independent evidence against
+  the built oracle** — a test in `tests/test_cpython_*.py` run against
+  `bin/circuitpython` and cited in the message. The digests living in the
+  other repository changes only the mechanics: the audiocomponents
+  re-capture names the audioif commit that carries that evidence. A fix that
+  merely *asserts* oracle intent does not qualify; that would let it rewrite
+  its own reference. The accuracy program's *listening* goldens
+  (audiocomponents) are a different authority — Brad's ear — and move only
+  at his phrase. The stored digest is also the only thing in that gate that
+  notices the engine moving under both original and port — which is why it
+  stays: a live original-vs-port comparison was measured, approved and then
+  reversed the same day (audioif#26), because it would have stayed green
+  through `b420dac`. Each alarm costs one adjudication; that is the price of
+  the signal.
 
 ## The CircuitPython oracle — extend, never modify
 

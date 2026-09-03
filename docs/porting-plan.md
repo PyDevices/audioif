@@ -83,8 +83,8 @@ tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
 tier 7  audiodynamics, audioroute, audiomath, audioecho, audioconvolve:
         native, NOT ports
-tier 8  lib/: pure-Python libraries built on the tiers above
-        (audioinstruments, audioeffects, audiorender)
+tier 8  lib/: pure Python built on the tiers above (audiorender here;
+        audioinstruments and audioeffects have since moved to audiocomponents)
 dep     ulab: cloned sibling in the parent workspace, pinned to CP's 6.5.2
 ```
 
@@ -114,32 +114,36 @@ and their source is micropython-vst3 rather than CircuitPython:
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —
   the only direction in this repo where CircuitPython is the recipient. See
   `docs/upstream-diff.md` for what changed in the moves and what was kept.
-- **tier 8** is pure Python under `lib/`, published to boards by MIP from
-  `<repo>/lib/<package>` and into the same wheel for CPython.
-  `lib/audioinstruments/` is 53 classic synthesizers, keyboards and drum
-  machines written entirely in `synthio` — no samples — and
-  `lib/audioeffects/` is 46 effect classes built on the tiers above, both
-  moved out of micropython-vst3 so they are not tied to a VST host.
-  `lib/audiorender/` is the tier above those two: a composition — tracks, a
-  tempo map, notes, automation, sections — rendered offline to a mixed
-  master and the level report a render is judged by. It is the one part of
-  this repository written for a desktop rather than a board (numpy
-  throughout, the whole song in memory), so it ships in the wheel and
-  `manifest.py` never freezes it. Loading a track's sound stays the
-  caller's job: `render()` asks for a `voice_for(track, clock)` and only
+- **tier 8** is pure Python under `lib/`. `audioinstruments` — 53 classic
+  synthesizers, keyboards and drum machines written entirely in `synthio`,
+  no samples — and `audioeffects` — 46 effect classes built on the tiers
+  above — were moved out of micropython-vst3 here so they are not tied to a
+  VST host, and have since moved once more, to the
+  [audiocomponents](https://github.com/PyDevices/audiocomponents)
+  repository, which develops and publishes them as their own distributions.
+  What remains here is `lib/audiorender/`, the tier above those two: a
+  composition — tracks, a tempo map, notes, automation, sections — rendered
+  offline to a mixed master and the level report a render is judged by. It
+  is the one part of this repository written for a desktop rather than a
+  board (numpy throughout, the whole song in memory), so it ships in the
+  wheel and `manifest.py` never freezes it. Loading a track's sound stays
+  the caller's job: `render()` asks for a `voice_for(track, clock)` and only
   requires `deliver()` and `pull_frames()` back, which is what lets
   micropython-vst3 keep driving its own script loader through it.
 
-Both have their own oracle, and it is the micropython-vst3 checkout rather
-than `bin/circuitpython`: `tests/parity/verify_dsp.py` and
-`tests/parity/run_instruments_parity.py`. Neither writes to that tree.
+Tier 7 has its own oracle, and it is the micropython-vst3 checkout rather
+than `bin/circuitpython`: `tests/parity/verify_dsp.py`, which never writes
+to that tree. The instruments' gate, `run_instruments_parity.py`, went to
+audiocomponents with the instruments.
 
 micropython-vst3 has since been cut over to import these packages instead
 of carrying its own copies, so that checkout is no longer an independent
 oracle for them: it *is* them. What still holds it honest is
 `tests/parity/golden/vst3_render_reference.json`, captured from the
 plug-in's six soundtrack pieces before the cutover and compared with
-`tests/parity/capture_render_reference.py --verify`. Re-capture it after
+`tests/parity/capture_render_reference.py --verify` — whose interpreter
+now needs `audioinstruments` and `audioeffects` installed from
+audiocomponents, since they are no longer in this tree. Re-capture it after
 any DSP change here, or it stops meaning anything.
 
 ### Output devices (the only new design work)
