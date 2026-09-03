@@ -184,15 +184,34 @@ target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBP
 # own more-capable boards all raise it well past 2 (raspberrypi: 24,
 # nordic/mimxrt10xx: 12) -- 2 is really only survivable on the most
 # memory-starved boards, not a sane default for anything with real RAM.
-# 8 is a deliberately modest middle ground for CMake/mcu ports generally
-# (well above the broken value, well below desktop/wasm's 14) rather than
-# copying the desktop number outright, since flash/RAM headroom varies a
-# lot more across mcu boards than across this workspace's three host
-# targets. A board with more headroom (the ESP32-P4 has plenty of PSRAM)
-# or less can still override via CFLAGS_EXTRA/board-specific
-# target_compile_definitions; per-board tuning is the fuller phase 10 (port
+# Raised 8 -> 14 on 2026-09-03 (Brad: "14 everywhere"). 8 was chosen as a
+# modest middle ground before the instrument library existed to measure
+# against. It does now, and 14 is not a preference but a fact about it:
+# counted live, the resident permanent Note objects per drum kit are
+# cr78 14, tr808 13, tr909 13, drumtraks 13, linndrum 13, sp1200 12,
+# simmons_sdsv 12, dmx 11, tr707 11, tr606 8. At 8 -- and at 12 -- half the
+# kits refuse notes, and by the paragraph above that refusal is silent. A
+# ceiling below 14 is therefore a bug in this workspace, not a conservative
+# choice; cr78 needs exactly 14.
+#
+# It also collapses the three-numbers problem: header, Make and CMake now
+# all read 14, so a patch behaves the same wherever it is built, and the
+# desktop value keeps matching the parity oracle's own build (14) as
+# micropython.mk:116-122 requires.
+#
+# The cost is 20 bytes of GC heap per channel -- +120 bytes per Synthesizer
+# against a 1024/2048-byte render buffer the same object already allocates
+# unconditionally (src/synthio/__init__.c:327-329). Idle channels cost one
+# pointer compare per block (:244-246). No gate anywhere exercises this
+# constant: nothing in .github/ or tools/ invokes CMake.
+#
+# A board with less headroom can still override via CFLAGS_EXTRA or
+# board-specific target_compile_definitions -- on CMake ports CFLAGS_EXTRA
+# must be an ENVIRONMENT variable, which is how the shared infrastructure
+# reads it (cmods/micropython/py/mkrules.cmake:79-86), not a make variable
+# as on the unix Make path. Per-board tuning is the fuller phase 10 (port
 # matrix) job, not this one.
-target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=8)
+target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=14)
 
 target_link_libraries(usermod INTERFACE usermod_mpaudio)
 

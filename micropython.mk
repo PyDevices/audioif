@@ -115,11 +115,20 @@ SRC_USERMOD_C += \
 # (the parent workspace's circuitpython checkout, unix `coverage` variant,
 # bin/circuitpython) is itself built with 14
 # (ports/unix/variants/coverage/mpconfigvariant.mk).
-# unix/windows/wasm (every port this Make-based file covers) match that so
-# oracle-diff parity tests (see tests/parity/synthtools_acceptance.py, phase
-# 7) exercise -- and byte-diff -- genuine polyphony instead of silently
-# degrading it; an mcu board's own value (micropython.cmake, CMake ports)
-# is a phase 10 (port matrix) decision, not this one.
+# so this file matches that, and the oracle-diff parity tests (see
+# tests/parity/synthtools_acceptance.py, phase 7) exercise -- and byte-diff
+# -- genuine polyphony instead of silently degrading it.
+#
+# CORRECTION 2026-09-03: this comment used to say "unix/windows/wasm (every
+# port this Make-based file covers)". That is wrong about its own reach and
+# had been since it was written. py/py.mk globs every usermod .mk file in,
+# so this line lands on EVERY Make port -- verified: samd, stm32, nrf,
+# mimxrt, esp8266, renesas-ra, alif, cc3200, rp2, unix, windows,
+# webassembly. It is not the desktop file; it is the default for everything
+# not built through CMake, SAMD51 audio boards included. That mattered when
+# this said 14 and CMake said 8, because a proposal to raise "desktop" here
+# would silently have raised those mcu boards too. It matters less now that
+# all three paths read 14 on purpose, but the comment should be true.
 CFLAGS_USERMOD += -DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/synthio/__init__.c \

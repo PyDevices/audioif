@@ -7,9 +7,35 @@
 //
 // CIRCUITPY_SYNTHIO_MAX_CHANNELS: CP wires this from
 // py/circuitpy_mpconfig.mk (default 2 -- the minimum polyphony CP
-// guarantees on every port; some CP boards raise it to 12). Same default
-// here; override via CFLAGS_EXTRA=-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=N if a
-// board needs more voices once this reaches the mcu port matrix.
+// guarantees on every port; its own boards raise it to 12, and
+// raspberrypi to 24). This port deliberately does NOT inherit that 2.
+//
+// Raised 2 -> 14 on 2026-09-03 (Brad: "14 everywhere"). 2 was carried over
+// as an upstream-matching marker, but micropython.cmake's own comment
+// already calls it "*broken* for essentially any real patch" -- two notes
+// held on a detuned 2-oscillator voice is 4 concurrent Notes -- and the
+// excess is silently REFUSED, never stolen (see find_channel_with_note,
+// __init__.c:361, and the dropped press at :425). Keeping a value our own
+// build files describe as broken, purely to match upstream's number, buys
+// a marker at the cost of any build that sets nothing starting broken.
+//
+// 14 is what this workspace's instrument library needs: the cr78 kit holds
+// exactly 14 permanent Notes and four more kits hold 13. All three build
+// paths now agree -- this header, micropython.mk (Make ports) and
+// micropython.cmake (CMake ports) -- so the number no longer depends on
+// how audioif was built.
+//
+// A FOURTH copy of this number lives outside these build paths: the CPython
+// target carries its own `max_polyphony = 14` (src/cpython/synthio.py:271),
+// which does not read this header -- setup.py builds _audioif from
+// src/cpython/ and src/shared/ only, never from src/synthio/. It already
+// says 14, so nothing diverges today, but the number is not defined once
+// and a future change here will not follow it there. Whoever unifies them
+// should treat that as the real fix; audioif#14 is the place for it.
+//
+// Override via CFLAGS_EXTRA=-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=N for a board
+// that needs fewer voices; on CMake ports that must be an environment
+// variable (cmods/micropython/py/mkrules.cmake:79-86).
 //
 // SPDX-FileCopyrightText: Copyright (c) 2021 Artyom Skrobov
 // SPDX-FileCopyrightText: Copyright (c) 2023 Jeff Epler for Adafruit Industries
@@ -19,7 +45,7 @@
 #pragma once
 
 #ifndef CIRCUITPY_SYNTHIO_MAX_CHANNELS
-#define CIRCUITPY_SYNTHIO_MAX_CHANNELS (2)
+#define CIRCUITPY_SYNTHIO_MAX_CHANNELS (14)
 #endif
 
 #include "cp_compat/enum.h"
