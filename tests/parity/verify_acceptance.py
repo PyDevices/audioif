@@ -29,10 +29,22 @@ fixture_path = Path(__file__).parent / "golden" / "synthtools_acceptance.json"
 fixture = json.loads(fixture_path.read_text())
 environment = os.environ.copy()
 # tests/support (the ulab shim) and tests/vendor (synthtools) are test-only and
-# ship in no wheel, so they still come from the tree. audioif itself is imported
-# from the installed package.
+# ship in no wheel, so they still come from the tree. audioif itself normally
+# comes from the installed package.
+#
+# The caller's PYTHONPATH is PREPENDED rather than discarded, and that is
+# load-bearing. This line used to assign over it, so pointing the gate at a
+# checkout did nothing and it certified the installed build instead - silently,
+# while reporting on the tree you thought you were testing. Demonstrated: with
+# a checkout whose audiodelays.Echo returned pure silence,
+# `PYTHONPATH=src/cpython python tests/parity/verify_acceptance.py` printed
+# "CPython acceptance matches" and exited 0, while verify_streaming.py on the
+# identical command line went red. The other four verify_*.py gates all pass
+# os.environ through untouched; this was the only one. See issue #22.
+_test_only = (str(ROOT / "tests" / "support"), str(ROOT / "tests" / "vendor"))
+_caller = environment.get("PYTHONPATH")
 environment["PYTHONPATH"] = os.pathsep.join(
-    (str(ROOT / "tests" / "support"), str(ROOT / "tests" / "vendor"))
+    ((_caller,) if _caller else ()) + _test_only
 )
 result = subprocess.run(
     [sys.executable, str(Path(__file__).parent / "synthtools_acceptance.py")],
