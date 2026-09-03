@@ -65,8 +65,6 @@ if [[ -n "${CP_DIR:-}" && -d "${CP_DIR}/ports" ]]; then
     CP_DIR=$(cd "$CP_DIR" && pwd)
 elif [[ -d "$WORKSPACE_DIR/circuitpython/ports" ]]; then
     CP_DIR=$(cd "$WORKSPACE_DIR/circuitpython" && pwd)
-elif [[ -d "$WORKSPACE_DIR/cmods/circuitpython/ports" ]]; then
-    CP_DIR=$(cd "$WORKSPACE_DIR/cmods/circuitpython" && pwd)
 else
     echo "CircuitPython tree not found (set CP_DIR)." >&2
     exit 1
@@ -389,5 +387,5 @@ else
     echo
     echo "Next:"
     echo "  cd $PORT_DIR && make -j VARIANT=$VARIANT"
-    echo "  or, in this workspace: cmods/build_interpreters.sh --only cp-unix"
+    echo "  or, in this workspace: run the parent workspace's own build-interpreters script"
 fi
