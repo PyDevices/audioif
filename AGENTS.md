@@ -130,8 +130,11 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   reference. The accuracy program's *listening* goldens (audiocomponents) are
   a different authority — Brad's ear — and move only at his phrase. The
   stored digest is also the only thing in this gate that notices the engine
-  moving under both original and port; whether to keep it or compare live is
-  audioif#26.
+  moving under both original and port — which is why it stays: a live
+  original-vs-port comparison was measured, approved and then reversed the
+  same day (audioif#26), because it would have stayed green through
+  `b420dac`. Each alarm costs one adjudication; that is the price of the
+  signal.
 
 ## The CircuitPython oracle — extend, never modify
 
