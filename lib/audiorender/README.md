@@ -2,7 +2,30 @@
 
 Renders a whole composition offline through audioif's own DSP: tracks,
 tempo map, notes, automation and sections in, a mixed stereo master and a
-level report out.
+level report out. This is the tier above `audioinstruments` and
+`audioeffects`, and unlike them it is unapologetically a desktop library:
+numpy throughout, the whole song held in memory. What it renders is the
+same audio a board would play, sample for sample - the DSP underneath is
+the same C.
+
+## Installation
+
+`audiorender` ships inside the `pydevices-audioif` distribution itself,
+not as a separate package, and is never frozen into firmware or meant for
+a board:
+
+```sh
+python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioif
+```
+
+It needs `numpy`, which `pydevices-audioif` does not declare as a
+dependency (the native distribution has none) — install it separately if
+it isn't already present. The quick start below also renders through
+`audioinstruments` voices; see the
+[audioinstruments README](../audioinstruments/README.md#installation) to
+install that too.
+
+## Quick start
 
 ```python
 import audioinstruments, audiorender
@@ -15,12 +38,6 @@ master = audiorender.render(composition, voice_for, out=print)
 audiorender.report(master)
 audiorender.write_wav("out.wav", master.data, master.sample_rate)
 ```
-
-This is the tier above `audioinstruments` and `audioeffects`, and unlike
-them it is unapologetically a desktop library: numpy throughout, the whole
-song held in memory. It is not frozen into firmware and not meant for a
-board. What it renders is the same audio a board would play, sample for
-sample - the DSP underneath is the same C.
 
 ## The composition contract
 
