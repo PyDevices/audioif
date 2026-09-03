@@ -52,7 +52,28 @@ BUFFER_SIZE = 1024
 
 
 def checksum(data):
+    """Order-independent sum, kept so the older records stay comparable.
+
+    On its own this was the ENTIRE channel through which ~48 KB of rendered
+    PCM reached the gate, and it is invariant under any permutation of the
+    bytes: a render with every mixer block rotated by one frame, and a render
+    with every block TIME-REVERSED, both left this gate byte-identically
+    green. See issue #19.
+    """
     return sum(data) % 1000000007
+
+
+def order_checksum(data):
+    """FNV-1a over the same bytes - order- and magnitude-sensitive.
+
+    This is what actually pins the PCM. `instruments_probe_new.py:26` uses the
+    same function for the same reason, and the effects and biquad probes
+    gained it for the same reason again.
+    """
+    value = 2166136261
+    for byte in data:
+        value = ((value ^ byte) * 16777619) & 0xffffffff
+    return value
 
 
 def pull(source, n):
@@ -121,7 +142,8 @@ for i, n in enumerate(notes1):
         lead.filt_f = 1600
         lead.wave = "ASQU"
 
-print("lead nbytes", len(out), "checksum", checksum(out))
+print("lead nbytes", len(out), "checksum", checksum(out),
+      "order", order_checksum(out))
 
 lead.pitch_bend(0.02)
 lead.note_on(45, velocity=110)
@@ -130,7 +152,8 @@ lead.pitch_bend(0.0)
 out2 += pull(mixer, 4)
 lead.note_off(45)
 out2 += pull(mixer, 6)
-print("bend nbytes", len(out2), "checksum", checksum(out2))
+print("bend nbytes", len(out2), "checksum", checksum(out2),
+      "order", order_checksum(out2))
 
 patch_json = patch1.to_json()
 lead2 = SubtractiveSynth(synthesizer, Patch.from_json(patch_json))
@@ -177,7 +200,8 @@ for note, slide, accent in steps:
     bass.note_off(note)
     out3 += pull(mixer, 3)
 
-print("bass nbytes", len(out3), "checksum", checksum(out3))
+print("bass nbytes", len(out3), "checksum", checksum(out3),
+      "order", order_checksum(out3))
 print("echo delay_ms", echo.delay_ms)
 
 lead.all_notes_off()
@@ -185,7 +209,8 @@ bass.all_notes_off()
 mixer.voice[0].stop()
 mixer.voice[1].stop()
 out4 = pull(mixer, 4)
-print("tail nbytes", len(out4), "checksum", checksum(out4))
+print("tail nbytes", len(out4), "checksum", checksum(out4),
+      "order", order_checksum(out4))
 
 print("mixer playing", mixer.playing)
 print("done")
