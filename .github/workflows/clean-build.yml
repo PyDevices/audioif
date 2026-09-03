@@ -45,7 +45,7 @@ jobs:
               -Wno-error=double-promotion
     name: unix-usermod (${{ matrix.float-impl.name }}-precision)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: audioif
       - name: Fetch pinned dependencies
@@ -54,7 +54,7 @@ jobs:
           ./scripts/fetch_deps.sh
           ./scripts/fetch_deps.sh --check
       - name: Check out upstream MicroPython v1.28.0
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: micropython/micropython
           ref: v1.28.0
