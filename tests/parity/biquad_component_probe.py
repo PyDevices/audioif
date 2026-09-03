@@ -26,6 +26,30 @@ Q = 1.0
 CENTER = 1200
 RATE = 8000
 
+#: Q and A were CONSTANT across all 182 fixtures, so three of the five
+#: arguments to audioif_biquad_configure could be hardcoded to the probe's own
+#: value without moving the hash - two of them silently untested. Frequency was
+#: the one scalar that varied. These sweep them.
+Q_VALUES = (0.4, 1.0, 4.0)
+A_VALUES = (0.7079, 1.4125)
+
+
+def checksum(data):
+    """FNV-1a over the bytes.
+
+    `sum(data)` is invariant under any permutation of a block and under any set
+    of byte deltas that cancel, so 168 of this probe's 182 lines certified 4096
+    samples with a statistic that could not see them reordered - demonstrated
+    with 90.6% of samples wrong at an identical byte-sum. This is order- and
+    magnitude-sensitive; `instruments_probe_new.py:26` uses the same function
+    for the same reason. Both are printed: the sum stays comparable with the
+    older records, the checksum is what actually pins the PCM.
+    """
+    value = 2166136261
+    for byte in data:
+        value = ((value ^ byte) * 16777619) & 0xffffffff
+    return value
+
 MODES = (
     ("low_pass", synthio.FilterMode.LOW_PASS),
     ("high_pass", synthio.FilterMode.HIGH_PASS),
@@ -72,7 +96,8 @@ for name, mode in MODES:
                 decoded = tuple(word - 65536 if word >= 32768 else word
                                 for word in words)
                 print("biquad_samples", name, channels, decoded)
-            print("biquad", name, channels, index, len(data), sum(data))
+            print("biquad", name, channels, index, len(data),
+                  sum(data), checksum(data))
 
 
 #: Centers spanning the usable band at RATE (Nyquist 4000). The middle two are
@@ -93,4 +118,57 @@ for name, mode in MODES:
         effect.play(source(2))
         for index in range(4):
             data = bytes(audiocore.get_buffer(effect)[1])
-            print("biquad_edge", name, center, index, len(data), sum(data))
+            print("biquad_edge", name, center, index, len(data),
+                  sum(data), checksum(data))
+
+
+# --- Q and A, which no fixture above varies -----------------------------------
+# Three of the five arguments to the filter were pinned only at one value each.
+# A resonance that is ignored, or a shelf gain wired to a constant, moved
+# nothing in this gate before these lines existed.
+
+for name, mode in MODES:
+    for q_value in Q_VALUES:
+        for a_value in A_VALUES:
+            biquad = synthio.Biquad(mode, CENTER, q_value, A=a_value)
+            effect = audiofilters.Filter(
+                filter=biquad, mix=1.0, buffer_size=512, sample_rate=RATE,
+                bits_per_sample=16, samples_signed=True, channel_count=2,
+            )
+            effect.play(source(2))
+            for index in range(2):
+                data = bytes(audiocore.get_buffer(effect)[1])
+                print("biquad_qa", name, "%.4f" % q_value, "%.4f" % a_value,
+                      index, len(data), sum(data), checksum(data))
+
+
+# --- synthio.Note.filter, which this gate has never exercised at all ----------
+# The probe only ever built audiofilters.Filter. `Note.filter` is a different
+# path - it accepts a Biquad or a tuple of up to four, applied per voice inside
+# the synthesizer - and it is audioif's own extension over the oracle. It could
+# be reduced to a total no-op and nothing here would notice. The cascade is the
+# part most worth pinning: a dropped fourth stage is exactly the defect a
+# level-based check misses, and the only other coverage
+# (test_cpython_press_semantics.py::FilterCascade) compares 1 stage against 2.
+
+CASCADE_MODES = (synthio.FilterMode.LOW_PASS, synthio.FilterMode.HIGH_PASS,
+                 synthio.FilterMode.BAND_PASS, synthio.FilterMode.PEAKING_EQ)
+
+for stages in (1, 2, 3, 4):
+    synth = synthio.Synthesizer(sample_rate=RATE, channel_count=2)
+    stack = tuple(
+        synthio.Biquad(CASCADE_MODES[i], CENTER * (i + 1), Q, A=GAIN_A)
+        for i in range(stages)
+    )
+    note = synthio.Note(220.0, amplitude=0.6,
+                        filter=stack[0] if stages == 1 else stack)
+    synth.press(note)
+    for index in range(4):
+        data = bytes(audiocore.get_buffer(synth)[1])
+        if index == 0:
+            words = tuple(int.from_bytes(data[pos:pos + 2], "little")
+                          for pos in range(0, 24, 2))
+            print("note_filter_samples", stages,
+                  tuple(w - 65536 if w >= 32768 else w for w in words))
+        print("note_filter", stages, index, len(data), sum(data),
+              checksum(data))
