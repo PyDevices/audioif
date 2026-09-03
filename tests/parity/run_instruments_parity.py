@@ -62,6 +62,70 @@ DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
 #: the originals come out of its history instead, where they cannot drift.
 DEFAULT_OLD_REV = "ac87f13"
 
+#: Instruments whose sound was changed ON PURPOSE, so the pre-rewrite original
+#: at DEFAULT_OLD_REV is no longer the thing they are supposed to match.
+#:
+#: This gate asks one question - does the port render what the original script
+#: rendered - and for these that answer is now "no", correctly and permanently.
+#: `--capture-old` cannot express it: it re-reads the ORIGINAL, which has not
+#: moved, so re-capturing leaves the comparison failing exactly as before.
+#: Measured on 2026-09-02 after `af837de`: rhodes original 4637b6c5 vs port
+#: 53df3217, wurlitzer 6ea2081b vs 10a00f9c, tb303 a9a28559 vs 085842c7.
+#:
+#: They are reported as `rebuilt` and excluded from the failure count.
+#: Everything NOT listed here is still held to the original exactly as before,
+#: and `--include-rebuilt` compares these anyway.
+#:
+#: Adding a name here says "this instrument deliberately left the old
+#: behaviour". It is a record of a decision, not a way to quiet a failure, and
+#: it is Brad's call - never an agent's. Each entry names the change and why.
+#:
+#: NOTE this is a different act from re-capturing a digest. A digest that drifted
+#: under an UNCHANGED port is repaired with `--capture-old` (see f7a370a, the 19
+#: stranded by b420dac). Retirement is for a port that changed on purpose.
+REBUILT = {
+    "andromeda": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "arp2600": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "b3": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "clavinet": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cp70": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cs80": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "cz101": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "d50": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "dx7": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "emulator2": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "fairlight": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "fs1r": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "jp8000": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "juno106": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "jupiter8": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "k2600": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "karplus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "mellotron": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "microwave": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ms20": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ms2000": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "music_easel": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "nord_lead": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "obxa": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "odyssey": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "pianet": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "polysix": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "ppg_wave": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "prophet5": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "prophet_vs": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "rhodes": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "sh101": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "solina": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "taurus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "tb303": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "virus": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "vl1": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "vp330": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "wasp": "af837de - time and filter macros log-mapped, 2026-09-02",
+    "wurlitzer": "af837de - time and filter macros log-mapped, 2026-09-02",
+}
+
 
 def interpreter_table(args):
     """Map interpreter name -> argv prefix, keeping only the ones present."""
@@ -164,12 +228,17 @@ def capture(args, interpreters):
 
 def verify(args, interpreters):
     failures = []
+    retired = []
     checked = 0
     for batch in args.batch:
         key, names, _, new_rel = BATCHES[batch]
         fixture = load_golden(key)
         module_dir = str(Path(args.old_root) / new_rel) if new_rel else None
         for name in select(names, args.modules):
+            if name in REBUILT and not args.include_rebuilt:
+                print("rebuilt  %-16s %s" % (name, REBUILT[name]))
+                retired.append(name)
+                continue
             record = fixture["modules"].get(name)
             if record is None:
                 failures.append("%s: nothing captured for it" % name)
@@ -191,7 +260,8 @@ def verify(args, interpreters):
                     print("FAIL     %-14s %-14s %s != %s"
                           % (name, interpreter, actual[:16], expected[:16]))
                     failures.append("%s on %s" % (name, interpreter))
-    print("\n%d comparisons, %d failures" % (checked, len(failures)))
+    print("\n%d comparisons, %d failures, %d rebuilt (not compared)"
+          % (checked, len(failures), len(retired)))
     if failures:
         for line in failures:
             print("  %s" % line)
@@ -228,6 +298,9 @@ def main():
                         help="fail if a requested interpreter is missing")
     parser.add_argument("--capture-old", action="store_true")
     parser.add_argument("--verify", action="store_true")
+    parser.add_argument("--include-rebuilt", action="store_true",
+                        help="also compare instruments listed in "
+                             "REBUILT, which are expected to fail")
     args = parser.parse_args()
 
     if args.capture_old == args.verify:

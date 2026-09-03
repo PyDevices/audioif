@@ -73,6 +73,13 @@ Both are expected as siblings in the parent workspace (`cmods/` in
     renders each original `vstaudio` instrument script and holds the ported
     module to it. Comparison is always within one interpreter — `ulab`'s
     vectorized sine and libm's are different functions.
+    Instruments listed in `REBUILT` are reported as `rebuilt` and excluded:
+    their sound was changed **on purpose**, so the original is no longer what
+    they should match, and `--capture-old` cannot express that — it re-reads
+    the original, which has not moved. `--include-rebuilt` compares them
+    anyway. Adding a name there is a record of a decision and is Brad's call.
+    Re-capturing a digest is the *other* repair, for a reference that drifted
+    under an unchanged port.
   - `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/bin/micropython \
     --circuitpython ../cmods/bin/circuitpython \
     --oracle ../cmods/micropython/ports/unix/build-vstaudio-oracle/micropython`
