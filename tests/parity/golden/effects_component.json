@@ -1,18 +1,12 @@
 {
   "oracle": "CircuitPython 10.2.1 unix coverage",
-  "circuitpython_stdout_sha256": "36d47204e6eea9b07c44c63ecd2f81c6b7e032402a4aedac8e435b325c3597aa",
+  "circuitpython_stdout_sha256": "da2b78a80b408239f3a77ff3a784855dd6597103cae87cfe064a85d1885d8810",
   "circuitpython_modules": [
     "audiofilters",
     "audiodelays",
     "audiofreeverb"
   ],
-  "cpython_stdout_sha256": "fe1e6b8c997ee7c5dfacb7eb8193a98c74c0896189e4afffd88c98ca0acdd2cd",
+  "cpython_stdout_sha256": "544d29ca31973613163977b2f1ef7b6e2ab04bc4881cc25f3df3acafcdfd95a3",
   "audiospeed_oracle": "CircuitPython 10.2.1 source plus MicroPython executable regression",
-  "cpython_stdout_sha256_by_arch": {
-    "aarch64": {
-      "sha256": "5ac626e67e26e8cd4cccaf9c48ea0fb5c4511c4a7d8a348f1b514a43e1a0a717",
-      "accepted": "2026-09-02",
-      "evidence": "6 of 744 numeric fields differ from the x86_64 reference; largest absolute deviation 1, confined to multitap (5 fields) and pitchshift (1); phaser, chorus, freeverb and speed identical, and the 16 real decoded samples on the phaser_samples line identical. CORRECTED 2026-09-03: an earlier version of this note inferred '1 LSB, about -90 dBFS' from the sum delta. That inference is false -- the fields are sum(data) over UNSIGNED BYTES, so a delta of 1 is equally consistent with one sample off by +257 and another by -256 (planted and demonstrated, audioif fault-planting pass 2026-09-02). The sum bounds nothing about sample error. This acceptance therefore rests on Brad's rule (bit-identity within an architecture, not across) and on the 16 decoded samples matching, not on the delta magnitude. See the effects-gate issues filed 2026-09-03."
-    }
-  }
+  "cpython_stdout_sha256_by_arch_note": "Removed 2026-09-02: the recorded aarch64 baseline described the probe's pre-checksum output format and cannot be regenerated off an aarch64 machine. An aarch64 run will now fail against the oracle hash and print the report a human needs in order to accept it, which is the documented path for a new architecture."
 }

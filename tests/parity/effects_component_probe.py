@@ -12,6 +12,26 @@ except ImportError:
     audiospeed = None
 
 
+def checksum(data):
+    """FNV-1a over the bytes.
+
+    `sum(data)` is a sum over UNSIGNED BYTES, so it is invariant under any
+    permutation of a block AND under any set of byte deltas that cancel - at
+    any magnitude, with a sample's high and low byte weighted equally. A
+    +256-LSB sample error (about -42 dBFS, plainly audible) paid for by a
+    single -1-LSB error was invisible here. 138 of this probe's 139 lines
+    carried only that statistic, so the gate checked 16 of 32,002 samples at
+    PCM level - 0.05%. See issue #20 and audioif#15.
+
+    This is order- and magnitude-sensitive. `instruments_probe_new.py:26` uses
+    the same function for the same reason. The sum is printed alongside so the
+    older per-architecture records stay comparable.
+    """
+    value = 2166136261
+    for byte in data:
+        value = ((value ^ byte) * 16777619) & 0xffffffff
+    return value
+
 def source(channel_count=1):
     values = array("h")
     for frame in range(768):
@@ -35,7 +55,8 @@ for channels in (1, 2):
                 decoded = tuple(word - 65536 if word >= 32768 else word
                                 for word in words)
                 print("phaser_samples", decoded)
-            print("phaser", channels, stages, index, len(data), sum(data))
+            print("phaser", channels, stages, index, len(data), sum(data),
+                  checksum(data))
 
 for channels in (1, 2):
     for voices in (1, 3):
@@ -46,7 +67,8 @@ for channels in (1, 2):
         effect.play(source(channels))
         for index in range(4):
             data = bytes(audiocore.get_buffer(effect)[1])
-            print("chorus", channels, voices, index, len(data), sum(data))
+            print("chorus", channels, voices, index, len(data), sum(data),
+                  checksum(data))
 
 for channels in (1, 2):
     for taps in (None, ((.25, .8), (.75, .4))):
@@ -58,7 +80,7 @@ for channels in (1, 2):
         for index in range(6):
             data = bytes(audiocore.get_buffer(effect)[1])
             print("multitap", channels, 0 if taps is None else 2,
-                  index, len(data), sum(data))
+                  index, len(data), sum(data), checksum(data))
 
 for channels in (1, 2):
     for semitones in (-5, 7):
@@ -70,7 +92,7 @@ for channels in (1, 2):
         for index in range(5):
             data = bytes(audiocore.get_buffer(effect)[1])
             print("pitchshift", channels, semitones, index,
-                  len(data), sum(data))
+                  len(data), sum(data), checksum(data))
 
 for channels in (1, 2):
     effect = audiofreeverb.Freeverb(
@@ -80,7 +102,8 @@ for channels in (1, 2):
     effect.play(source(channels))
     for index in range(12):
         data = bytes(audiocore.get_buffer(effect)[1])
-        print("freeverb", channels, index, len(data), sum(data))
+        print("freeverb", channels, index, len(data), sum(data),
+              checksum(data))
 
 if audiospeed is not None:
     for channels in (1, 2):
@@ -90,5 +113,5 @@ if audiospeed is not None:
                 result, view = audiocore.get_buffer(changer)
                 data = bytes(view)
                 print("speed", channels, rate, index,
-                      result, len(data), sum(data))
+                      result, len(data), sum(data), checksum(data))
                 if not data: break
