@@ -44,7 +44,7 @@ lightly — it may well be intentional, and a docs fix would settle it.
 ## Provenance of the numbers
 
 Everything was measured **on a build of upstream `main`** — the CircuitPython
-checkout at `cmods/circuitpython`, which this repo treats as a read-only
+checkout in the parent workspace, which this repo treats as a read-only
 oracle and never patches.
 
 That matters for the biquad ones: `docs/upstream-diff.md` carries a different

@@ -152,8 +152,8 @@ notes:
   and rebuilding into a scratch `ports/unix/build-coverage-audiospeed/`
   directory (never touching the canonical `build-coverage/`), diffed
   byte-for-byte, then reverted the variant-file edit and deleted the
-  scratch build -- `cmods/circuitpython` is back to its pre-existing local
-  patch state, unmodified beyond that one-off test. Also needed the same
+  scratch build -- the parent workspace's circuitpython checkout is back to
+  its pre-existing local patch state, unmodified beyond that one-off test. Also needed the same
   `0.001`/`1000.0` -> `0`/`1000` literal-truncation fix as this port's
   `rate_to_fp` for `mp_arg_validate_obj_float_range`'s int-typed min/max
   (this is a *stock upstream* compile hazard under `-Wfloat-conversion
@@ -223,8 +223,8 @@ concurrent `Note`s across one `Synthesizer`, not per-key) defaulting to 2 --
 correctly mirroring CP's own conservative default
 (`py/circuitpy_mpconfig.mk`). But this port's unix/windows build never
 overrode it, while this workspace's CircuitPython oracle
-(`cmods/circuitpython`'s unix `coverage` variant, `bin/circuitpython`) is
-itself built with `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14`
+(the parent workspace's circuitpython checkout, unix `coverage` variant,
+`bin/circuitpython`) is itself built with `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14`
 (`ports/unix/variants/coverage/mpconfigvariant.mk`). At 2, anything past
 the first two concurrently-alive `Note`s (e.g. two held notes on a
 detuned/dual-oscillator patch -- already 4 `Note`s) silently truncates
@@ -268,8 +268,9 @@ state) is identical after the `CIRCUITPY_SYNTHIO_MAX_CHANNELS` fix.
 
 ## Tier 5 audiomp3: license
 
-CircuitPython's `lib/mp3` (upstream `adafruit/Adafruit_MP3`, cloned here as
-`cmods/mp3` pinned to the same commit, `aac02afd9f24d2ee930f650156654ab9211a306a`)
+CircuitPython's `lib/mp3` (upstream `adafruit/Adafruit_MP3`, cloned as a
+parent workspace sibling pinned to the same commit,
+`aac02afd9f24d2ee930f650156654ab9211a306a`)
 is the Helix fixed-point MP3 decoder, originally developed by RealNetworks in
 2003. Every core decoder source file (`bitstream.c` through `statname.h`,
 i.e. everything actually compiled -- not `Adafruit_MP3.cpp`/`.h`, Adafruit's
@@ -290,10 +291,11 @@ CircuitPython itself (MIT overall) carries this dependency: unmodified,
 under its own original headers, no relicensing attempted, no separate
 top-level LICENSE entry for it either (confirmed -- CircuitPython's own repo
 has no `lib/mp3`-specific license documentation beyond the per-file
-headers). This port does the same: `cmods/mp3` is vendored verbatim (one
-local patch, see below, kept as narrow as possible and documented inline),
-its RPSL/RCSL headers untouched, and this section is the disclosure.
-`cmods/mp3/examples/test.mp3` (Adafruit's own bundled test fixture, used for
+headers). This port does the same: the parent workspace's `mp3` sibling is
+vendored verbatim (one local patch, see below, kept as narrow as possible
+and documented inline), its RPSL/RCSL headers untouched, and this section
+is the disclosure.
+Its `mp3/examples/test.mp3` (Adafruit's own bundled test fixture, used for
 oracle-diff verification below) ships alongside it, license unclear but
 not carried into this repo's own source tree -- it's a test fixture read at
 test time from the cloned sibling, not vendored content.
@@ -304,7 +306,7 @@ All three were found only when building/running this workspace's Windows
 MicroPython target (`mp-windows`/mingw-w64) -- CircuitPython has no Windows
 port, so none was ever reachable upstream:
 
-- **`cmods/mp3/src/assembly.h`** picks an MSVC-only inline-`__asm{}` code
+- **the parent workspace's `mp3/src/assembly.h`** picks an MSVC-only inline-`__asm{}` code
   path (plus an MSVC-only `#pragma warning`) whenever `_WIN32` is defined
   and `_WIN32_WCE` isn't. mingw-w64 GCC also defines `_WIN32` (confirmed:
   `echo | x86_64-w64-mingw32-gcc -dM -E - | grep _WIN32` -> `#define _WIN32
@@ -381,7 +383,7 @@ callers never have in scope).
 ## Tier 5 audiomp3 verified against the oracle
 
 `MP3Decoder` oracle-diffed byte-for-byte against `bin/circuitpython` using
-`cmods/mp3/examples/test.mp3` (Adafruit's own bundled fixture, ID3v2.3,
+the parent workspace's `mp3/examples/test.mp3` (Adafruit's own bundled fixture, ID3v2.3,
 MPEG1 Layer III, 40 kbps CBR, 44.1 kHz stereo, ~12s): full-track decode via
 `reset_buffer`/`get_buffer` (checksum + byte count identical), `rms_level`
 and `samples_decoded` at multiple points, construction from a filename
@@ -405,13 +407,13 @@ up `audioif` automatically once built; it just hadn't been
 rebuilt since the usermod landed) surfaced a batch of portability bugs,
 none reachable on unix or windows before now:
 
-- **`cmods/mp3/src/mp3dec.h`** picks its fixed-point/asm path from a closed
+- **the parent workspace's `mp3/src/mp3dec.h`** picks its fixed-point/asm path from a closed
   list of `(__GNUC__, arch)` combinations, `#error`ing on anything else --
   with an explicit `MP3DEC_GENERIC` escape hatch for exactly this case.
   wasm32 matches none of the listed architectures. Fixed in
   `micropython.mk`: `-DMP3DEC_GENERIC` added, but only when building for
   the `webassembly` port specifically (detected the same way
-  `cmods/wasmbridge/micropython.mk` detects it: `$(findstring
+  the parent workspace's `wasmbridge/micropython.mk` detects it: `$(findstring
   /ports/webassembly,$(abspath $(CURDIR)))`) -- unix and windows both
   already match a named `__GNUC__`/arch branch and must keep using it, not
   silently fall back to the generic path.
@@ -522,7 +524,7 @@ everywhere), so it remains kept verbatim.
 
 Wiring tier 5 into `micropython.cmake` (deferred at phase 8e, closed at
 phase 10 -- see docs/porting-plan.md) surfaced two separate issues, one
-upstream (Adafruit_MP3/Helix, vendored as `cmods/mp3`) and one in mainline
+upstream (Adafruit_MP3/Helix, vendored as the parent workspace's `mp3`) and one in mainline
 MicroPython's own CMake glue (`py/mkrules.cmake`, `py/py.cmake`).
 
 **`mp3dec.h`'s closed `(__GNUC__, arch)` platform list has no Xtensa
@@ -662,7 +664,7 @@ Every other module here is CircuitPython's, moved. These two are not: they come
 from micropython-vst3's `vstaudio` usermod (`usermods/vstaudio/vstaudio_dsp.c`),
 where its effects library's compressors, limiters, gates, de-essers and
 parallel branches were built. CircuitPython has no equivalent and never had
-one, so there is no oracle in `cmods/circuitpython` to diff against and nothing
+one, so there is no oracle in the parent workspace's circuitpython checkout to diff against and nothing
 in this section is an upstream deviation. What it records instead is where the
 port differs from *its* original.
 
@@ -1540,7 +1542,7 @@ claves+cowbell circuit:
 | claves | 53 ms | 207 ms — inherited the cowbell's tail | 53 ms |
 | cowbell | 203 ms | 55 ms — cut to the claves' tail | 203 ms |
 
-The same code under `cmods/bin/micropython` was already correct (57.3 / 204.3),
+The same code under the parent workspace's built `micropython` was already correct (57.3 / 204.3),
 which is what identified the target rather than the instrument as the fault.
 
 **Fix.** `_audioif.EnvelopeState` gains `set_definition(...)`, which replaces the
@@ -1591,7 +1593,7 @@ sequence never holds more than a four-note chord.
 note's slot, exactly as the oracle does, and still refuses when every channel
 is held. Verified on all three runtimes with one script: all released → press
 taken, all held → press refused and every held note intact, identical on the
-CPython target, `cmods/bin/micropython` and `cmods/bin/circuitpython`.
+CPython target, and the parent workspace's built `micropython` and `circuitpython`.
 
 Regression coverage: `tests/test_cpython_released_reclaim.py`.
 

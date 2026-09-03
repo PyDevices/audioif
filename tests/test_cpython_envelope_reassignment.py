@@ -13,8 +13,8 @@ on a shared claves+cowbell circuit before the fix: claves inherited the
 cowbell's 203 ms tail (53 ms alone) and cowbell was cut to the claves' 55 ms.
 Both runtimes and the built oracle were correct; only this target was wrong.
 
-Verified against ``cmods/bin/circuitpython`` and ``cmods/bin/micropython``:
-all three now agree to the sample.
+Verified against the parent workspace's built ``circuitpython`` and
+``micropython``: all three now agree to the sample.
 """
 
 import array

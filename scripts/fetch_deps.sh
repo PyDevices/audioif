@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fetch audioif's pinned native dependencies into .deps/ for standalone
-# builds (a workspace checkout with cmods siblings needs none of this --
-# the build glue prefers .deps/ and falls back to the siblings).
+# builds (a workspace checkout with sibling clones already in place needs
+# none of this -- the build glue prefers .deps/ and falls back to the
+# siblings).
 #
 #   ./scripts/fetch_deps.sh          # clone/checkout pins, apply patches
 #   ./scripts/fetch_deps.sh --check  # verify only; nonzero on any mismatch

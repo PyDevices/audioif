@@ -2,7 +2,8 @@
 # For CMake-based ports (esp32, rp2, …), see micropython.cmake in this dir.
 #
 # Discovered via USER_C_MODULES pointing at the workspace directory that
-# contains this repo (its parent) — see cmods/build_mp.sh.
+# contains this repo (its parent) — see the parent workspace's own build
+# script.
 
 MPAUDIO_MOD_DIR := $(USERMOD_DIR)
 MPAUDIO_SRC_DIR := $(MPAUDIO_MOD_DIR)/src
@@ -111,8 +112,9 @@ SRC_USERMOD_C += \
 # all, and only the second is inaudible as a fault. Upstream
 # handles this per-port (ports/raspberrypi/mpconfigport.mk: 24,
 # ports/nordic: 12, ...); this workspace's CircuitPython parity oracle
-# (cmods/circuitpython's unix `coverage` variant, bin/circuitpython) is
-# itself built with 14 (ports/unix/variants/coverage/mpconfigvariant.mk).
+# (the parent workspace's circuitpython checkout, unix `coverage` variant,
+# bin/circuitpython) is itself built with 14
+# (ports/unix/variants/coverage/mpconfigvariant.mk).
 # unix/windows/wasm (every port this Make-based file covers) match that so
 # oracle-diff parity tests (see tests/parity/synthtools_acceptance.py, phase
 # 7) exercise -- and byte-diff -- genuine polyphony instead of silently
@@ -188,15 +190,16 @@ SRC_USERMOD_C += \
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #
-# lib/mp3: a cloned sibling dependency at cmods/mp3 (the upstream
-# adafruit/Adafruit_MP3 repo, pinned to the exact commit
-# cmods/circuitpython/lib/mp3 vendors), not a port -- same treatment as
-# ulab above. Its `src/` is the Helix fixed-point MP3 decoder (RealNetworks,
-# 2003), under RPSL 1.0/RCSL 1.0 per-file headers, NOT MIT; CircuitPython
-# itself carries it unmodified under those terms rather than relicensing it,
-# and so does this port -- see docs/upstream-diff.md, "Tier 5 audiomp3:
-# license" for the full check. One local patch was needed on top of the
-# pinned commit (cmods/mp3/src/assembly.h): its MSVC-only inline-asm branch
+# lib/mp3: a cloned sibling dependency in the parent workspace (the upstream
+# adafruit/Adafruit_MP3 repo, pinned to the exact commit the parent
+# workspace's circuitpython checkout vendors in its own lib/mp3), not a
+# port -- same treatment as ulab above. Its `src/` is the Helix
+# fixed-point MP3 decoder (RealNetworks, 2003), under RPSL 1.0/RCSL 1.0
+# per-file headers, NOT MIT; CircuitPython itself carries it unmodified
+# under those terms rather than relicensing it, and so does this port --
+# see docs/upstream-diff.md, "Tier 5 audiomp3: license" for the full check.
+# One local patch was needed on top of the pinned commit
+# (mp3/src/assembly.h in that sibling clone): its MSVC-only inline-asm branch
 # guards on `defined _WIN32`, which mingw-w64 GCC (this workspace's Windows
 # MicroPython target) also defines, so it now also excludes __GNUC__ and
 # falls through to the portable C path instead -- CircuitPython itself never
@@ -211,8 +214,8 @@ SRC_USERMOD_C += \
 # already covered by the same __GNUC__ branches unix uses) both match a
 # named branch already and must NOT get this -- it would silently swap
 # their working platform-specific path for the portable fallback. Detect
-# the wasm port the same way cmods/wasmbridge/micropython.mk does, since
-# there's no other reliable way to ask "which port is this" from inside a
+# the wasm port the same way the parent workspace's wasmbridge module does,
+# since there's no other reliable way to ask "which port is this" from inside a
 # Make port's shared USER_C_MODULES glue.
 MPAUDIO_WASM_PORT := $(findstring /ports/webassembly,$(abspath $(CURDIR)))
 ifneq ($(MPAUDIO_WASM_PORT),)

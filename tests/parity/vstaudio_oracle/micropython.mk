@@ -1,5 +1,6 @@
 # Oracle-only usermod: see module.c. Built by capture_dynamics_oracle.sh into
-# its own scratch workspace, never by cmods/build_mp.sh.
+# its own scratch workspace, never by the parent workspace's own build
+# script.
 #
 # VSTAUDIO_DSP is the unmodified DSP source in the sibling micropython-vst3
 # checkout. Override it if that tree lives somewhere else.

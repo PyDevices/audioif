@@ -1,9 +1,8 @@
 """Freeze audioif's pure-Python tier into firmware, on request.
 
-The workspace freeze manifests (``cmods/manifest-micropython.py`` and
-``cmods/manifest-circuitpython.py``) include this file for every build they
-make, so anything unconditional here lands in every interpreter in the
-workspace. ``audioinstruments`` alone is about 236 KB of bytecode at
+The parent workspace's freeze manifests (one per interpreter) include this
+file for every build they make, so anything unconditional here lands in
+every interpreter in the workspace. ``audioinstruments`` alone is about 236 KB of bytecode at
 ``opt=3``: worth it on a board actually playing the instruments, and pure
 cost everywhere else - including on rp2040-class CircuitPython builds, which
 have around 1 MB for the whole firmware.

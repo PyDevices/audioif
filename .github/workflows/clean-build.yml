@@ -1,6 +1,6 @@
 # Scenario S1: a stranger builds audioif from this repository, upstream
-# MicroPython, and the declared pinned dependencies -- no cmods, no
-# workspace. This is the standalone contract's proof, run on every push.
+# MicroPython, and the declared pinned dependencies -- no parent workspace
+# of any kind. This is the standalone contract's proof, run on every push.
 name: Clean standalone build
 
 on:

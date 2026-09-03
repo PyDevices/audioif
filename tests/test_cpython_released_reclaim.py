@@ -14,8 +14,8 @@ and the slot returned 758 render blocks later. Driving ``rhodes`` through the
 parity sequence, **117 of its 122 refusals happened with no key held at all** —
 the engine clogged by its own decaying voices rather than full.
 
-Verified against ``cmods/bin/circuitpython`` and ``cmods/bin/micropython``:
-all three now report the same pair of outcomes.
+Verified against the parent workspace's built ``circuitpython`` and
+``micropython``: all three now report the same pair of outcomes.
 """
 
 import unittest

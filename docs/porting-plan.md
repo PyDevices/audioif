@@ -32,8 +32,8 @@ unmodified.
 - **ulab needs no porting.** CP's `extmod/ulab` submodule IS upstream
   [v923z/micropython-ulab](https://github.com/v923z/micropython-ulab)
   (pinned 6.5.2), which ships MicroPython usermod build glue at
-  `code/micropython.mk` / `code/micropython.cmake`. Clone into `cmods/ulab`,
-  pin to CP's revision for parity.
+  `code/micropython.mk` / `code/micropython.cmake`. Clone as a sibling in
+  the parent workspace, pin to CP's revision for parity.
 - **CP's protocol machinery maps onto mainline.** `py/proto.h` (60 lines
   total with `proto.c`) implements named protocols; mainline MicroPython has
   the same concept as the `protocol` type slot (used by `mp_stream_p_t`).
@@ -85,7 +85,7 @@ tier 7  audiodynamics, audioroute, audiomath, audioecho, audioconvolve:
         native, NOT ports
 tier 8  lib/: pure-Python libraries built on the tiers above
         (audioinstruments, audioeffects, audiorender)
-dep     ulab: cloned sibling at cmods/ulab, pinned to CP's 6.5.2
+dep     ulab: cloned sibling in the parent workspace, pinned to CP's 6.5.2
 ```
 
 ### Tiers 7 and 8 run the other way round
@@ -201,8 +201,9 @@ audioif/
     test_*.py                  # MP-only unit tests (protocol, outputs, lifecycle)
 ```
 
-Build-glue detail: the cmods CMake aggregator finds `*/micropython.cmake` at
-depth ≤ 3, so `cmods/ulab/code/micropython.cmake` is picked up as-is; but
+Build-glue detail: the parent workspace's CMake aggregator finds
+`*/micropython.cmake` at depth ≤ 3, so its ulab sibling's own
+`code/micropython.cmake` is picked up as-is; but
 Make ports glob only `$(USER_C_MODULES)/*/micropython.mk` (depth 1), so this
 module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
 (or a one-line wrapper) for unix/windows builds.
@@ -210,8 +211,9 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
 ## Phases
 
 1. **Scaffolding** *(done)* — tracked dir, plan.
-2. **ulab dep + tier 0 + skeleton** *(done)*. `cmods/ulab` cloned and pinned
-   to CP's exact revision (`1d3ddd8`); both build flavors wired;
+2. **ulab dep + tier 0 + skeleton** *(done)*. `ulab` cloned as a parent
+   workspace sibling and pinned to CP's exact revision (`1d3ddd8`); both
+   build flavors wired;
    `import ulab.numpy` works on unix MP (needed
    `MICROPY_MODULE_BUILTIN_SUBPACKAGES`, off by default on mainline — see
    micropython.mk). `cp_compat` built: `argcheck`, `enum`, `objproperty`,
@@ -387,8 +389,8 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
      8d) to 8 for CMake/mcu ports generally -- a deliberately modest choice
      versus desktop/wasm's 14, since mcu RAM headroom varies far more than
      across this workspace's three host targets; audiomp3 deliberately still
-     not wired for CMake ports (a concrete new blocker found: `cmods/mp3/src
-     /mp3dec.h`'s platform list has no RISC-V branch, and the P4 is
+     not wired for CMake ports (a concrete new blocker found: the parent
+     workspace's `mp3/src/mp3dec.h`'s platform list has no RISC-V branch, and the P4 is
      RISC-V -- would need the same `MP3DEC_GENERIC` treatment as wasm, not
      worth building for a board with no MP3 demo). Firmware **built**
      (`./build_mp.sh --port esp32 --board ESP32_GENERIC_P4 --variant
@@ -430,16 +432,17 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
    docs/upstream-diff.md, "Tier 5 audiomp3: license"): the Helix decoder
    core is RPSL 1.0/RCSL 1.0, not MIT, and this port carries it unmodified
    under those terms rather than relicensing it -- same as CircuitPython
-   itself. Cloned `cmods/mp3` (upstream `adafruit/Adafruit_MP3`) as a
-   sibling dependency pinned to the exact commit
-   `cmods/circuitpython/lib/mp3` vendors, same treatment as `cmods/ulab`.
+   itself. Cloned `mp3` (upstream `adafruit/Adafruit_MP3`) as a parent
+   workspace sibling dependency pinned to the exact commit its
+   `circuitpython/lib/mp3` vendors, same treatment as `ulab`.
    `MP3Decoder` ported to `src/audiomp3/` (merged shared-bindings +
    shared-module, matching every other tier); needed a `background_callback`
    compat stub (`cp_compat/background_callback.h`) -- CircuitPython's own
    unix coverage build (this port's oracle) already collapses that whole
    API to a synchronous same-thread call, so there was nothing to actually
    port, only to make permanent. Oracle-diffed byte-for-byte against
-   `bin/circuitpython` on a real MP3 file (`cmods/mp3/examples/test.mp3`):
+   `bin/circuitpython` on a real MP3 file (the parent workspace's
+   `mp3/examples/test.mp3`):
    full-track decode, RMS level, samples-decoded count, the
    `reset_buffer`-driven loop-to-start behavior (including a faithfully
    reproduced, non-obvious quirk -- a second pass decodes a different byte
@@ -447,8 +450,9 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
    bug), a pre-allocated user buffer, stream-object input, `file`
    get/set, explicit `open()`, and error paths (text-mode file, malformed
    MP3 data). Needed two Windows-only local fixes with no unix impact: a
-   patch to the vendored `cmods/mp3/src/assembly.h` (its MSVC-only
-   inline-asm branch also matched mingw-w64, which also defines `_WIN32`)
+   patch to the vendored `mp3/src/assembly.h` in the parent workspace
+   (its MSVC-only inline-asm branch also matched mingw-w64, which also
+   defines `_WIN32`)
    and dropping `MP_WEAK` from this port's own `mp3_alloc`/`mp3_free`
    (mingw-w64's PE-COFF linker doesn't resolve a lone weak definition the
    way ELF does). Full regression clean (`build_interpreters.sh` for both
@@ -473,8 +477,9 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
     0-4/6), not audio in isolation; tier 5 (audiomp3) is excluded on RP2040
     for the same reason it's excluded on the P4: not wired for any CMake
     port yet (see below), not a board-specific limitation -- RP2040's
-    Cortex-M0+ is `__ARMEL__`, which `cmods/mp3/src/mp3dec.h` already
-    recognizes, so audiomp3 has no RP2040-specific blocker once someone
+    Cortex-M0+ is `__ARMEL__`, which the parent workspace's
+    `mp3/src/mp3dec.h` already recognizes, so audiomp3 has no
+    RP2040-specific blocker once someone
     does the CMake-port-detection work tier 8e deferred for RISC-V.
     Per-port enable flags, as they exist today:
     - **`CIRCUITPY_SYNTHIO_MAX_CHANNELS`** (max concurrent `Note`s per
@@ -547,7 +552,8 @@ module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
       then just fails on that module, matching real CircuitPython's own
       `CIRCUITPY_AUDIOFOO=0` behavior).
 11. **Spin-off.** Split into its own PyDevices repo, symlink back into
-    cmods like `pygraphics`/`displayif`, re-ignore the path here.
+    the parent workspace like `pygraphics`/`displayif`, re-ignore the
+    path here.
 
 ## Testing strategy (recap)
 

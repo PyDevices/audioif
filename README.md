@@ -124,10 +124,11 @@ committed synthesis, mixer, MIDI, streaming, and effects fixtures match
 CircuitPython 10.2.1 PCM byte-for-byte. Import/API smoke success is not used
 as a substitute for those oracle comparisons.
 
-`ulab` and `cmods/mp3` (the vendored Adafruit_MP3/Helix decoder `audiomp3`
+`ulab` and `mp3` (the vendored Adafruit_MP3/Helix decoder `audiomp3`
 depends on, RPSL/RCSL-licensed — not MIT, carried unmodified per upstream's
-own terms) are consumed as cloned sibling dependencies, same pattern as
-`pygraphics`/`displayif`, not vendored into this repo.
+own terms) are consumed as cloned sibling dependencies in the parent
+workspace, same pattern as `pygraphics`/`displayif`, not vendored into this
+repo.
 
 The playback-facing pull protocol (`audiocore.get_buffer`/`reset_buffer`)
 is consumed by `pydevices`' `lib/audiodev` package (`AudioOut` in

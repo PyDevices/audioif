@@ -3,8 +3,8 @@
 #
 # Point USER_C_MODULES at this repo (or this file) directly, e.g.:
 #   idf.py build -DUSER_C_MODULES=<path to audioif>
-# Or let the workspace aggregator (cmods/micropython.cmake) discover it
-# alongside other usermods.
+# Or let the parent workspace's own aggregator discover it alongside
+# other usermods.
 
 set(MPAUDIO_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(MPAUDIO_SRC_DIR ${MPAUDIO_MOD_DIR}/src)
@@ -86,10 +86,10 @@ target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #
-# See micropython.mk for the full rationale (license, the cloned cmods/mp3
-# sibling, the allocator wiring, the mp3dec.h platform-detection escape
-# hatch) -- only the CMake-specific parts (target-arch detection, per-file
-# compile flags) are re-explained here.
+# See micropython.mk for the full rationale (license, the cloned mp3
+# sibling in the parent workspace, the allocator wiring, the mp3dec.h
+# platform-detection escape hatch) -- only the CMake-specific parts
+# (target-arch detection, per-file compile flags) are re-explained here.
 #
 # mp3dec.h's closed (__GNUC__, arch) list covers ARM (both `ARM` and
 # `__ARMEL__`) and x86 (`__i386__`/`__amd64__`) but nothing else -- crucially,
@@ -197,8 +197,8 @@ target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANN
 target_link_libraries(usermod INTERFACE usermod_mpaudio)
 
 # ulab (numpy-alike): a cloned sibling dependency (see docs/porting-plan.md),
-# not part of this module. The workspace CMake aggregator
-# (cmods/micropython.cmake) already finds cmods/ulab/code/micropython.cmake
-# on its own (it globs mindepth 2/maxdepth 3), so nothing to chain here --
+# not part of this module. The parent workspace's own CMake aggregator
+# already finds its ulab checkout's code/micropython.cmake on its own
+# (it globs mindepth 2/maxdepth 3), so nothing to chain here --
 # unlike the Make flavor, which only globs one level deep and needs the
 # explicit include in micropython.mk.

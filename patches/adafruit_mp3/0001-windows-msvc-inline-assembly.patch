@@ -11,8 +11,9 @@ never hits this: CircuitPython has no Windows port, so the branch was
 only ever reached by real MSVC.
 
 Provenance: written for the audioif Windows MicroPython port (originally
-carried in cmods/patches/adafruit_mp3; ownership moved here in Phase 2
-of the modernization program). Full rationale: docs/upstream-diff.md in
+carried in the parent workspace's own patches/adafruit_mp3; ownership
+moved here in Phase 2 of the modernization program). Full rationale:
+docs/upstream-diff.md in
 the audioif repository, "Tier 5 audiomp3: three Windows-only local
 fixes, no unix impact".
 Upstream-version: authored against Adafruit_MP3
