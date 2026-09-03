@@ -54,44 +54,17 @@ jobs:
     with:
       build-kind: native-and-wasm
       distribution-name: pydevices-audioif
-      # The pure-Python tier only. The native modules are firmware: MicroPython
-      # and CircuitPython build them from src/ as a usermod, so there is nothing
-      # for MIP to carry. audiorender is excluded as well -- it needs numpy and
-      # renders a whole composition in memory, which is a desktop's job.
-      mip-profile: audioinstruments,audioeffects
+      # No mip-profile: nothing here is MIP-published any more. The native
+      # modules are firmware -- MicroPython and CircuitPython build them from
+      # src/ as a usermod, so there is nothing for MIP to carry -- and
+      # audiorender needs numpy and renders a whole composition in memory,
+      # which is a desktop's job. The instrument and effect libraries this
+      # profile used to carry publish from PyDevices/audiocomponents now.
       # 21 as of publishing-v7: the org desktop matrix gained
       # macos-latest, and this repo's cibuildwheel config produces
       # cp310–cp314 macosx_arm64 (proven by the non-publishing
       # macos-wheels CI job). 16 linux/windows + 5 macOS.
       expected-wheel-count: 21
       wheel-filename-prefix: pydevices_audioif
-      release-ref: ${{ inputs.release-ref }}
-    secrets: inherit
-
-  publish-audioinstruments:
-    needs:
-      - parity
-      - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v8
-    with:
-      build-kind: pure-python
-      distribution-name: pydevices-audioinstruments
-      import-name: audioinstruments
-      install-dependencies: true
-      working-directory: lib/audioinstruments
-      release-ref: ${{ inputs.release-ref }}
-    secrets: inherit
-
-  publish-audioeffects:
-    needs:
-      - parity
-      - credentials
-    uses: PyDevices/.github/.github/workflows/reusable-publish-release-packages.yml@publishing-v8
-    with:
-      build-kind: pure-python
-      distribution-name: pydevices-audioeffects
-      import-name: audioeffects
-      install-dependencies: true
-      working-directory: lib/audioeffects
       release-ref: ${{ inputs.release-ref }}
     secrets: inherit
