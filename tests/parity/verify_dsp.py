@@ -59,9 +59,9 @@ PROBES = (
     ("convolve_probe.py", "audioconvolve", None, {}),
 )
 
-DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
-DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
-DEFAULT_ORACLE = (WORKSPACE / "cmods" / "micropython" / "ports" / "unix" /
+DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"
+DEFAULT_CIRCUITPYTHON = WORKSPACE / "bin" / "circuitpython"
+DEFAULT_ORACLE = (WORKSPACE / "micropython" / "ports" / "unix" /
                   "build-vstaudio-oracle" / "micropython")
 
 

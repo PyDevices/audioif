@@ -4,7 +4,8 @@
 # vstaudio_oracle/module.c for what it contains and why it exists.
 #
 #   tests/parity/build_vstaudio_oracle.sh
-#   → cmods/micropython/ports/unix/build-vstaudio-oracle/micropython
+#   → $MP_UNIX/build-vstaudio-oracle/micropython (MP_UNIX default: a sibling
+#     micropython/ports/unix in the parent workspace)
 #
 # The usermod search path is a scratch tree of symlinks rather than the real
 # workspace: MicroPython discovers usermods by globbing USER_C_MODULES one
@@ -21,7 +22,8 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 AUDIOIF=$(cd "$HERE/../.." && pwd)
 WORKSPACE=$(cd "$AUDIOIF/.." && pwd)
-MP_UNIX="$WORKSPACE/cmods/micropython/ports/unix"
+MP_UNIX="${MP_UNIX:-$WORKSPACE/micropython/ports/unix}"
+ULAB_DIR="${ULAB_DIR:-$WORKSPACE/ulab}"
 VST3="${VST3:-$WORKSPACE/micropython-vst3}"
 VSTAUDIO_REV="${VSTAUDIO_REV:-ac87f13}"
 VSTAUDIO_PATH=usermods/vstaudio/vstaudio_dsp.c
@@ -41,7 +43,7 @@ git -C "$VST3" show "$VSTAUDIO_REV:$VSTAUDIO_PATH" \
     > "$MODULES/micropython-vst3/$VSTAUDIO_PATH"
 
 ln -s "$AUDIOIF" "$MODULES/audioif"
-ln -s "$WORKSPACE/cmods/ulab" "$MODULES/ulab"
+ln -s "$ULAB_DIR" "$MODULES/ulab"
 ln -s "$HERE/vstaudio_oracle" "$MODULES/vstaudio_oracle"
 
 make -C "$MP_UNIX" -j"$(nproc)" \

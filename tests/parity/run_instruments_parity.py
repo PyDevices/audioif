@@ -52,8 +52,8 @@ BATCHES = {
         "soundtrack/Perihelion/instruments", "soundtrack/Perihelion/instruments"),
 }
 
-DEFAULT_MICROPYTHON = WORKSPACE / "cmods" / "bin" / "micropython"
-DEFAULT_CIRCUITPYTHON = WORKSPACE / "cmods" / "bin" / "circuitpython"
+DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"
+DEFAULT_CIRCUITPYTHON = WORKSPACE / "bin" / "circuitpython"
 DEFAULT_OLD_ROOT = WORKSPACE / "micropython-vst3"
 
 #: The last micropython-vst3 revision whose instruments were still whole
