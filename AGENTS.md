@@ -116,6 +116,22 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   covers instead is the structural contract: `test_audio_component_api`,
   `test_metadata_contract`, `tools/validate_api.py`, and the CPython
   fixture tests in `tests/test_cpython_*.py`.
+- **Two kinds of golden, two rules (Brad, 2026-09-03).** The digests under
+  `tests/parity/golden/` record that *the port matches the pre-rewrite original
+  script, within one interpreter* — `run_instruments_parity.py` renders the
+  originals from micropython-vst3 at `DEFAULT_OLD_REV` and never consults the
+  CircuitPython oracle. So a change to `src/cpython/` that is *right* still
+  stales the cpython digests (audioif#25: `b420dac` did exactly this). Rule:
+  a CPython-target fix may re-capture the affected cpython digests **in the
+  same commit only if it carries independent evidence against the built
+  oracle** — a test in `tests/test_cpython_*.py` run against
+  `bin/circuitpython` and cited in the message. A fix that merely *asserts*
+  oracle intent does not qualify; that would let it rewrite its own
+  reference. The accuracy program's *listening* goldens (audiocomponents) are
+  a different authority — Brad's ear — and move only at his phrase. The
+  stored digest is also the only thing in this gate that notices the engine
+  moving under both original and port; whether to keep it or compare live is
+  audioif#26.
 
 ## The CircuitPython oracle — extend, never modify
 
