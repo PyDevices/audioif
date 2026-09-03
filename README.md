@@ -9,9 +9,34 @@ source compatibility.
 
 ## Installation
 
-**MicroPython** consumes this repository as `USER_C_MODULES`. See
-[docs/porting-plan.md](docs/porting-plan.md) for the architecture, module
-tiers, phased plan, and testing strategy.
+**MicroPython** consumes this repository as `USER_C_MODULES`, standalone —
+no other repository is required. For a CMake port (esp32, rp2), point
+`USER_C_MODULES` straight at this checkout:
+
+```sh
+idf.py build -DUSER_C_MODULES=<path to audioif>
+```
+
+For a Make port (unix, windows, webassembly), MicroPython's own build glob
+looks one level down, so point `USER_C_MODULES` at this checkout's
+*parent* directory instead:
+
+```sh
+git clone https://github.com/PyDevices/audioif ~/build/audioif
+cd ~/build/audioif && ./scripts/fetch_deps.sh   # or AUDIOIF_OPTIONAL_DEPS=1 to skip
+git clone https://github.com/micropython/micropython ~/build/micropython
+cd ~/build/micropython/mpy-cross && make
+cd ~/build/micropython/ports/unix && make submodules
+make USER_C_MODULES=~/build
+```
+
+`./scripts/fetch_deps.sh` fetches the two pinned native dependencies —
+`ulab` (so `synthtools`'s `import ulab.numpy` works) and `mp3` (the
+`audiomp3` tier's decoder) — into `.deps/`, pinned by
+[DEPENDENCIES.lock](DEPENDENCIES.lock). `AUDIOIF_OPTIONAL_DEPS=1` skips
+both instead, building every module except `audiomp3` with no clone
+beyond this repository. See [docs/porting-plan.md](docs/porting-plan.md)
+for the architecture, module tiers, phased plan, and testing strategy.
 
 **CPython 3.10+** installs from TestPyPI:
 
