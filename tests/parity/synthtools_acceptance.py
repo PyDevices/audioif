@@ -66,8 +66,8 @@ def checksum(data):
 def order_checksum(data):
     """FNV-1a over the same bytes - order- and magnitude-sensitive.
 
-    This is what actually pins the PCM. `instruments_probe_new.py:26` uses the
-    same function for the same reason, and the effects and biquad probes
+    This is what actually pins the PCM. audiocomponents' instrument probes use
+    the same function for the same reason, and the effects and biquad probes
     gained it for the same reason again.
     """
     value = 2166136261

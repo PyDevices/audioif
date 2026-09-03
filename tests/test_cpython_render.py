@@ -1,4 +1,14 @@
-"""audiorender: a whole (small) piece, from a composition to a WAV."""
+"""audiorender: a whole (small) piece, from a composition to a WAV.
+
+The sound source is the smallest instrument audiorender can drive - a
+`synthio.Synthesizer` behind the MIDI-shaped surface
+`audiorender.events.deliver` speaks - defined here rather than borrowed from
+`audioinstruments`. That library lives in the audiocomponents repository
+now, and audiorender's contract never asked for it: `render()` wants a
+`voice_for(track, clock)` and only `deliver()` and `pull_frames()` back.
+Nothing here asserts what an instrument sounds like, only what the renderer
+does with one.
+"""
 
 import hashlib
 import os
@@ -6,10 +16,46 @@ import tempfile
 import unittest
 import wave
 
-import audioinstruments
 import audiorender
+import synthio
 
 SAMPLE_RATE = 48000
+
+#: Fast attack, a short tail: every note in the piece is audible in its own
+#: section and none rings far into the next, which is what the per-section
+#: levels below are counting on.
+ENVELOPE = synthio.Envelope(attack_time=0.005, decay_time=0.1,
+                            release_time=0.05, attack_level=1.0,
+                            sustain_level=0.6)
+
+
+class Instrument:
+    """A synthio voice with the surface `audiorender.events.deliver` speaks."""
+
+    def __init__(self, sample_rate, transport=None):
+        self.transport = transport
+        self.output = synthio.Synthesizer(sample_rate=sample_rate,
+                                          channel_count=2, envelope=ENVELOPE)
+        self._notes = {}
+        self.macros = {}
+
+    def note_on(self, pitch, velocity, sample_position=None):
+        self.note_off(pitch)
+        note = synthio.Note(synthio.midi_to_hz(pitch),
+                            amplitude=0.4 * velocity / 127.0)
+        self._notes[pitch] = note
+        self.output.press(note)
+
+    def note_off(self, pitch, sample_position=None):
+        note = self._notes.pop(pitch, None)
+        if note is not None:
+            self.output.release(note)
+
+    def set_macro(self, index, value, sample_position=None):
+        self.macros[index] = value
+
+    def program_change(self, index, sample_position=None):
+        pass
 
 
 class Piece:
@@ -30,8 +76,8 @@ class Piece:
     TRACKS = [
         {
             "name": "Drums",
-            "script": "tr808.py",
-            "instrument": "tr808",
+            "script": "drums.py",
+            "instrument": "drums",
             "pan": -0.2,
             "vol": 1.0,
             "gain_db": -6.0,
@@ -43,8 +89,8 @@ class Piece:
         },
         {
             "name": "Bass",
-            "script": "minimoog.py",
-            "instrument": "minimoog",
+            "script": "bass.py",
+            "instrument": "bass",
             "pan": 0.0,
             "vol": 1.0,
             "gain_db": -3.0,
@@ -89,8 +135,7 @@ Piece.RENDER_SECONDS = Piece.SONG_SECONDS + 1.0
 
 
 def voice_for(track, clock):
-    return audiorender.Voice(audioinstruments.create(
-        track["instrument"], SAMPLE_RATE, transport=clock))
+    return audiorender.Voice(Instrument(SAMPLE_RATE, transport=clock))
 
 
 def render(out=None):

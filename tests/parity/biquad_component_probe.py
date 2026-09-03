@@ -41,9 +41,9 @@ def checksum(data):
     of byte deltas that cancel, so 168 of this probe's 182 lines certified 4096
     samples with a statistic that could not see them reordered - demonstrated
     with 90.6% of samples wrong at an identical byte-sum. This is order- and
-    magnitude-sensitive; `instruments_probe_new.py:26` uses the same function
-    for the same reason. Both are printed: the sum stays comparable with the
-    older records, the checksum is what actually pins the PCM.
+    magnitude-sensitive; audiocomponents' instrument probes use the same
+    function for the same reason. Both are printed: the sum stays comparable
+    with the older records, the checksum is what actually pins the PCM.
     """
     value = 2166136261
     for byte in data:

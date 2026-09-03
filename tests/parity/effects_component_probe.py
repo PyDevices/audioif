@@ -23,9 +23,10 @@ def checksum(data):
     carried only that statistic, so the gate checked 16 of 32,002 samples at
     PCM level - 0.05%. See issue #20 and audioif#15.
 
-    This is order- and magnitude-sensitive. `instruments_probe_new.py:26` uses
-    the same function for the same reason. The sum is printed alongside so the
-    older per-architecture records stay comparable.
+    This is order- and magnitude-sensitive. audiocomponents' instrument probes
+    (`tests/parity/instruments_probe_new.py` there) use the same function for
+    the same reason. The sum is printed alongside so the older
+    per-architecture records stay comparable.
     """
     value = 2166136261
     for byte in data:

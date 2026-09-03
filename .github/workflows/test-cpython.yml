@@ -32,16 +32,12 @@ jobs:
       - run: python -m twine check dist/*
       - shell: bash
         run: python -m pip install dist/*.whl
-      # audioinstruments/audioeffects are standalone distributions and no
-      # longer ship in the audioif wheel; the tests import them. Installing
-      # from lib/ also exercises their own packaging. The already-installed
-      # wheel satisfies their pydevices-audioif dependency, so pip never
-      # reaches for an index.
-      - run: python -m pip install ./lib/audioinstruments ./lib/audioeffects
-      # test_*.py, not test_cpython_*.py: the narrower pattern silently
-      # excluded the audio-component-API and metadata-contract tests.
+      # test_*.py, not test_cpython_*.py: the narrower pattern once silently
+      # excluded every test without the prefix. Nothing here needs more than
+      # the wheel and numpy: the instrument and effect libraries, and the
+      # component-contract tests and validators that went with them, live in
+      # PyDevices/audiocomponents now.
       - run: python -m unittest discover -s tests -p "test_*.py"
-      - run: python tools/validate_api.py
       - run: python tests/parity/verify_acceptance.py
       - run: python tests/parity/verify_effects.py
       - run: python tests/parity/verify_streaming.py

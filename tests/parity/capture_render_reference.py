@@ -17,8 +17,14 @@ become 7-bit integers in the port, so any macro whose stored value was not
 already on that grid moves by up to half a step. That is a decision taken in
 the plan, not a regression to find here.
 
-Needs numpy, which vst3's renderer imports; pass `--python` if the default
-interpreter does not have it.
+The interpreter that renders (`--python`; this one by default) needs numpy,
+which vst3's renderer imports, and `pydevices-audioif` installed -
+micropython-vst3 imports audioif from wherever it is installed, never from a
+sibling path. It also needs `audioinstruments` and `audioeffects`, and those
+are no longer in this tree: they live in the audiocomponents repository
+(https://github.com/PyDevices/audiocomponents). Either install them into that
+interpreter or pass `--components-lib <audiocomponents checkout>/lib`, which
+puts that directory on the render's PYTHONPATH.
 """
 
 import argparse
@@ -89,6 +95,12 @@ def levels(report):
 
 def render(args, piece, destination):
     environment = os.environ.copy()
+    if args.components_lib:
+        # Ahead of anything the caller already had, so an installed copy
+        # cannot shadow the checkout that was asked for.
+        environment["PYTHONPATH"] = os.pathsep.join(
+            [str(Path(args.components_lib).resolve())]
+            + [p for p in (environment.get("PYTHONPATH"),) if p])
     result = subprocess.run(
         [args.python, str(Path(args.vst3) / "tools" / "render_preview.py"),
          "--piece", piece, str(destination)],
@@ -197,7 +209,12 @@ def main():
     parser.add_argument("--verify", action="store_true")
     parser.add_argument("--vst3", default=str(DEFAULT_VST3))
     parser.add_argument("--python", default=sys.executable,
-                        help="an interpreter with numpy (the renderer needs it)")
+                        help="an interpreter with numpy, pydevices-audioif and "
+                             "the component packages (see the module docstring)")
+    parser.add_argument("--components-lib", default=None,
+                        help="an audiocomponents checkout's lib/ directory, put "
+                             "on the render's PYTHONPATH instead of installing "
+                             "audioinstruments and audioeffects there")
     parser.add_argument("--pieces", default=None,
                         help="comma-separated subset")
     parser.add_argument("--tolerance-db", type=float, default=1.0,
