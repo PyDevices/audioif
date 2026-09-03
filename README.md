@@ -9,9 +9,13 @@ source compatibility.
 
 ## Installation
 
-**MicroPython** consumes this repository as `USER_C_MODULES`, standalone —
-no other repository is required. For a CMake port (esp32, rp2), point
-`USER_C_MODULES` straight at this checkout:
+**MicroPython** consumes this repository as `USER_C_MODULES`. For a Make port
+that is fully standalone — no other repository is required. For a CMake port
+(esp32, rp2), point `USER_C_MODULES` straight at this checkout; note that
+`micropython.cmake` currently locates `ulab` only as a sibling checkout (or
+via an aggregator that globs one), not from `.deps/` — so on CMake ports
+`synthtools`' `import ulab.numpy` needs `../ulab` beside this repo until
+[#18](https://github.com/PyDevices/audioif/issues/18) closes:
 
 ```sh
 idf.py build -DUSER_C_MODULES=<path to audioif>
