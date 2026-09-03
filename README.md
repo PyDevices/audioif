@@ -23,7 +23,7 @@ looks one level down, so point `USER_C_MODULES` at this checkout's
 
 ```sh
 git clone https://github.com/PyDevices/audioif ~/build/audioif
-cd ~/build/audioif && ./scripts/fetch_deps.sh   # or AUDIOIF_OPTIONAL_DEPS=1 to skip
+cd ~/build/audioif && ./scripts/fetch_deps.sh
 git clone https://github.com/micropython/micropython ~/build/micropython
 cd ~/build/micropython/mpy-cross && make
 cd ~/build/micropython/ports/unix && make submodules
@@ -33,9 +33,12 @@ make USER_C_MODULES=~/build
 `./scripts/fetch_deps.sh` fetches the two pinned native dependencies —
 `ulab` (so `synthtools`'s `import ulab.numpy` works) and `mp3` (the
 `audiomp3` tier's decoder) — into `.deps/`, pinned by
-[DEPENDENCIES.lock](DEPENDENCIES.lock). `AUDIOIF_OPTIONAL_DEPS=1` skips
-both instead, building every module except `audiomp3` with no clone
-beyond this repository. See [docs/porting-plan.md](docs/porting-plan.md)
+[DEPENDENCIES.lock](DEPENDENCIES.lock). To build without them, skip the
+fetch and pass `AUDIOIF_OPTIONAL_DEPS=1` to the **build** step instead
+(`make USER_C_MODULES=~/build AUDIOIF_OPTIONAL_DEPS=1`); the variable is
+read by `micropython.mk`/`micropython.cmake`, not by `fetch_deps.sh`, and
+it builds every module except `audiomp3` with no clone beyond this
+repository. See [docs/porting-plan.md](docs/porting-plan.md)
 for the architecture, module tiers, phased plan, and testing strategy.
 
 **CPython 3.10+** installs from TestPyPI:
@@ -77,7 +80,9 @@ Three pure-Python tiers sit on top of the CircuitPython-compatible core:
   inst = audioinstruments.create("tr808", 48000)
   inst.note_on(36)                 # bass drum, full velocity
   inst.set_macro(2, 96)            # BD Tune, on the 0-127 scale
-  audio_out.play(inst.output)
+  audio_out.play(inst.output)      # audio_out: any player of audiosamples --
+                                   # a board's I2S/PWM output, or on a desktop
+                                   # pydevices' audiodev.AudioOut
   ```
 
 - **`lib/audioeffects/`** — 46 effect classes: compressors, delays, reverbs,

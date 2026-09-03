@@ -68,13 +68,18 @@ Both are expected as siblings in the parent workspace (`cmods/` in
 - Two tiers have a different oracle, because CircuitPython is not where they
   came from. Both are the micropython-vst3 sibling checkout, and neither
   touches it:
-  - `python3 tests/parity/run_instruments_parity.py --verify --batch all`
+  - `.venv/bin/python tests/parity/run_instruments_parity.py --verify --batch all \
+    --micropython ../cmods/bin/micropython --circuitpython ../cmods/bin/circuitpython`
     renders each original `vstaudio` instrument script and holds the ported
     module to it. Comparison is always within one interpreter — `ulab`'s
     vectorized sine and libm's are different functions.
-  - `python3 tests/parity/verify_dsp.py` does the same for `audiodynamics` and
+  - `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/bin/micropython \
+    --circuitpython ../cmods/bin/circuitpython \
+    --oracle ../cmods/micropython/ports/unix/build-vstaudio-oracle/micropython`
+    does the same for `audiodynamics` and
     `audioroute` against `vstaudio_dsp.c` compiled unmodified by
-    `tests/parity/build_vstaudio_oracle.sh`. One hash covers every
+    `MP_UNIX=../cmods/micropython/ports/unix ULAB_DIR=../cmods/ulab
+    tests/parity/build_vstaudio_oracle.sh`. One hash covers every
     interpreter here: the arithmetic is all in `src/shared/`, so two
     interpreters disagreeing would itself be the finding. `audiomath` rides
     along in the same file with no oracle at all — captured from the port,
@@ -99,9 +104,15 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   methodology.
 - **The parity/oracle gates are workspace-local by design.** They need
   built interpreters (`bin/circuitpython`, the workspace MicroPython) and
-  golden captures that live outside this repository
-  (`tests/parity/run_instruments_parity.py` defaults to workspace paths),
-  so external contributors cannot run them and CI does not try. What CI
+  golden captures that live outside this repository, so external
+  contributors cannot run them and CI does not try. **Since 2026-09-03 the
+  scripts' zero-argument defaults no longer point into `cmods/`** — a
+  standalone user should not be steered into a directory only this
+  workspace has — so in *this* workspace every parity command needs the
+  explicit `--micropython`/`--circuitpython`/`--oracle` (or `CP_DIR`,
+  `MP_UNIX`, `ULAB_DIR`) override shown above. Run one bare and it does not
+  fail loudly: `run_instruments_parity.py` prints `skipping micropython`
+  and verifies only the cpython leg. That is not a pass. What CI
   covers instead is the structural contract: `test_audio_component_api`,
   `test_metadata_contract`, `tools/validate_api.py`, and the CPython
   fixture tests in `tests/test_cpython_*.py`.
@@ -129,7 +140,9 @@ working here:
   — never into the CP tree. Approved deviations from the oracle are
   enumerated there; **ask before adding one**.
 - Quick self-check after any CP-adjacent work:
-  `./apply_cp_patches.sh --status` must account for every difference, and
+  `CP_DIR=../cmods/circuitpython ./apply_cp_patches.sh --status` must account
+  for every difference (bare, the script no longer finds the tree here and
+  says `CircuitPython tree not found (set CP_DIR)`), and
   `git -C ../cmods/circuitpython status` must show only the known additive
   set (new module dirs, build glue, the fenced audiocore rewrite) — no
   changes under `shared-module/`/`shared-bindings/` for `synthio`,

@@ -12,7 +12,7 @@
     "aarch64": {
       "sha256": "5ac626e67e26e8cd4cccaf9c48ea0fb5c4511c4a7d8a348f1b514a43e1a0a717",
       "accepted": "2026-09-02",
-      "evidence": "6 of 744 numeric fields differ from the x86_64 reference; largest absolute deviation 1, in every case. The fields are sum(data) over a 512-byte block (256 int16 samples), so a delta of 1 is one byte off by one -- 1 LSB of int16, about -90 dBFS. Confined to multitap (5 fields) and pitchshift (1); phaser, chorus, freeverb and speed are bit-identical, as are the 16 real decoded samples on the phaser_samples line. Consistent with floating-point contraction in delay-line interpolation, not a defect."
+      "evidence": "6 of 744 numeric fields differ from the x86_64 reference; largest absolute deviation 1, confined to multitap (5 fields) and pitchshift (1); phaser, chorus, freeverb and speed identical, and the 16 real decoded samples on the phaser_samples line identical. CORRECTED 2026-09-03: an earlier version of this note inferred '1 LSB, about -90 dBFS' from the sum delta. That inference is false -- the fields are sum(data) over UNSIGNED BYTES, so a delta of 1 is equally consistent with one sample off by +257 and another by -256 (planted and demonstrated, audioif fault-planting pass 2026-09-02). The sum bounds nothing about sample error. This acceptance therefore rests on Brad's rule (bit-identity within an architecture, not across) and on the 16 decoded samples matching, not on the delta magnitude. See the effects-gate issues filed 2026-09-03."
     }
   }
 }
