@@ -17,14 +17,14 @@
     "drumtraks": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "8598c128d2228d98077a11c11ea00185ee2b95dd7cb5aba562708548150833c9",
+        "cpython": "b5e85e1f705f240023b530f86b384a84a82225df10d324cfbdd3c43d5fb42001",
         "micropython": "d25d5622adcec2a0d03d69a66e0a1cfbf376bbeb0041b5947914151ba70877a1"
       }
     },
     "linndrum": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "4542dea78fbd4b10f3e7a22173b6849cdc4f131624e0fb4fe0ad9eb4410f4c1b",
+        "cpython": "9a78ecfb93828b016341675fa197b2abba808772884aa415c354d4ed3a72558c",
         "micropython": "9a78ecfb93828b016341675fa197b2abba808772884aa415c354d4ed3a72558c"
       }
     },
@@ -38,7 +38,7 @@
     "sp1200": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "2517df986123229acd3a59ac9bdc573c9bcafa773db50d0953ff507ac0246ee8",
+        "cpython": "b2f0ad47ac18f609016ac60ca5e88ec9884386d1edd05b47df8f868352a237fd",
         "micropython": "76ec9f9ae2eaac9fb42f2cbba38594aa89675d482c0ec47db6d20b41d8bfc518"
       }
     },
@@ -50,9 +50,9 @@
       }
     },
     "tr707": {
-      "cross_interpreter_equal": true,
+      "cross_interpreter_equal": false,
       "old": {
-        "cpython": "a80d3a1931ff5f8a4fa80866f824cab8cb18b8ffdd101d25e0b1713005c6a25a",
+        "cpython": "71ea4f34a92cda70657477870cf2d4b7e528b244b9343dd0f598f789e9698498",
         "micropython": "a80d3a1931ff5f8a4fa80866f824cab8cb18b8ffdd101d25e0b1713005c6a25a"
       }
     },

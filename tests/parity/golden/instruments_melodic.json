@@ -80,7 +80,7 @@
     "farfisa": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "18bc76d4b93e933612221470047ee0db0b932ae5aa9b6dee926034addfb89f7f",
+        "cpython": "e23b4facfa5305564e0d82b5a7f6e97853babef0440ffaa1704fcc5ff322cea7",
         "micropython": "57645f34bd28d93beee85aa620b70f8531278bd56a0c18e21a88be832363305b"
       }
     },
@@ -143,7 +143,7 @@
     "minimoog": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "19cd1f25857bc66e438f69ee55d192b12577835c507a1b735f09816c6bb602dd",
+        "cpython": "44d9926fd218b52c54e9b3a77d76cb50cb454dc6cfdb215ab69c094228c2a051",
         "micropython": "f12729624852eed8e90317ddcbfb5af0574d8cdf3ae58967d376a1a98720aaa9"
       }
     },
@@ -276,7 +276,7 @@
     "vox_continental": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "5e5f424dbae4d5cae0b5a717f544301671bb9685557b0f3f41eb63f5d6d8a695",
+        "cpython": "e4bbb90d6b0787002cfc429c2dc8c3b3e4b05a25c0cfc1e5f191e8d32550eac3",
         "micropython": "705dde35d9fea22086ffef236454a1786a3a21e9a9d89d3d61c1aaa7991905d5"
       }
     },

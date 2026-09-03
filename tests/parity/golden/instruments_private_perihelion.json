@@ -10,14 +10,14 @@
     "bells": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "de3417ca8d627141dffa14877dc0f30dccf98f35cd55280575bb9a0d02f3247f",
+        "cpython": "1f32c1e866782f3cb2439eabcd55712d314581fc0a0da485a12557fa466e8435",
         "micropython": "1f3d3722e5a249d76343ea1fcd5328e445998c36de0b89dda59b029279a14b99"
       }
     },
     "brass_high": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "1556f04d0d125b8018707b08d576fe965445ed7c9b5b05c47ed2018f11ed9904",
+        "cpython": "1fb8bfac333fd666cd84fcd33218c1d353084662a29b646ceab22710519b3e24",
         "micropython": "1fb8bfac333fd666cd84fcd33218c1d353084662a29b646ceab22710519b3e24"
       }
     },
@@ -31,14 +31,14 @@
     "hits": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "d39f8a03c0d85b02968a7fb98a39989c9cee56562eeeec70b0d39081b40a27f1",
+        "cpython": "c56759adbc6d0651f71dbd0ed6f7b65aa141ed94c356ddb3a458e037b4e57bdc",
         "micropython": "7de877c27051d9b9cd8be707ee4cabce0619c39271739f08c73998e3166b271d"
       }
     },
     "horns": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "93ecd86ba54e7052269b57d88f7f8af4e50eb87759f9dc94bf2c4c57be284dc3",
+        "cpython": "2dceb58a68c082e45e88741536a3e5c24e589b2f6c7eaaba99d01e4fe0209be0",
         "micropython": "2dceb58a68c082e45e88741536a3e5c24e589b2f6c7eaaba99d01e4fe0209be0"
       }
     },
@@ -59,7 +59,7 @@
     "pad_glass": {
       "cross_interpreter_equal": false,
       "old": {
-        "cpython": "69de675000a61c00ab335887f7d3535b37b8ad9e3d8f913479b5f5b6e6992e1e",
+        "cpython": "631bd2e6f265c58fec3d276e1ddb4b79ed0ab6ab4e03c360789e73f1c78e76a8",
         "micropython": "d4ebb5c26b7bfa2f89b8cbd8b6e1c1d20f40035aeb69ecdbbcc14335c17be4db"
       }
     },
@@ -85,16 +85,16 @@
       }
     },
     "strings_high": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "d454e9d6451324542a5bb7872de6a04fbbbcec761ec49cecb2776ffac308f594",
+        "cpython": "4c80d75fbc1bbbc62e2ff19a78a5c9748c5a34560e039fd12ad11bb144758be5",
         "micropython": "4c80d75fbc1bbbc62e2ff19a78a5c9748c5a34560e039fd12ad11bb144758be5"
       }
     },
     "strings_low": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "e681859ab872b4ce687f780dc362eecd15f639bd2aa531f392c044be47227353",
+        "cpython": "049c60cfe7603f222a34e89dc2e0a9597cbb56dbca1747228459a8349de264c5",
         "micropython": "049c60cfe7603f222a34e89dc2e0a9597cbb56dbca1747228459a8349de264c5"
       }
     },
@@ -106,9 +106,9 @@
       }
     },
     "timpani": {
-      "cross_interpreter_equal": false,
+      "cross_interpreter_equal": true,
       "old": {
-        "cpython": "3e43216d88d8b1e4825e0fa6d2827f7d8020a22b4486c7ca7ec4a10e06d36920",
+        "cpython": "4467e570c8e2a763275a1ff42e0a435fccaaf435e64015a4358fa0354628a441",
         "micropython": "4467e570c8e2a763275a1ff42e0a435fccaaf435e64015a4358fa0354628a441"
       }
     }
