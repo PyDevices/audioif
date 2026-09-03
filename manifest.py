@@ -1,51 +1,23 @@
-"""Freeze audioif's pure-Python tier into firmware, on request.
+"""audioif's freeze manifest: deliberately empty.
 
 The parent workspace's freeze manifests (one per interpreter) include this
-file for every build they make, so anything unconditional here lands in
-every interpreter in the workspace. ``audioinstruments`` alone is about 236 KB of bytecode at
-``opt=3``: worth it on a board actually playing the instruments, and pure
-cost everywhere else - including on rp2040-class CircuitPython builds, which
-have around 1 MB for the whole firmware.
+file for every build they make, so anything unconditional here would land in
+every interpreter in the workspace. There is nothing to put here:
 
-So, unlike its neighbours (``pdwidgets``, ``palettes``), this one is opt-in::
-
-    AUDIOIF_FREEZE_LIBS=1 ./build_interpreters.sh --only mp-unix
-
-Everywhere else these arrive by MIP, from ``<repo>/lib/<package>``, like the
-rest of the PyDevices Python tiers. That is also the safer default while
-this tier is still moving: a frozen copy shadows a mip-installed or
-VFS-staged one, and what is running stops being what was published - the same
-trap ``pydevices``' own manifest already refuses to walk into. Worth revisiting
-once the library settles and a board build actually wants the RAM back.
-
-``audiorender`` is deliberately absent. It renders a whole composition
-offline with numpy and holds the finished song in memory, which is a
-desktop's job, not a board's - it ships in the wheel and stops there.
-
-The native modules are not affected either way. ``audiocore``, ``synthio``,
-``audiodynamics``, ``audioroute``, ``audiomath``, ``audioecho``,
-``audioconvolve`` and the
-rest are compiled
-into the firmware
-by ``micropython.mk`` / ``micropython.cmake`` (or, for CircuitPython, by
-``apply_cp_patches.sh``); this file only concerns the Python on top of them.
+- The native modules (``audiocore``, ``synthio``, ``audiodynamics``,
+  ``audioroute``, ``audiomath``, ``audioecho``, ``audioconvolve`` and the
+  rest) are compiled into the firmware by ``micropython.mk`` /
+  ``micropython.cmake`` (or, for CircuitPython, by ``apply_cp_patches.sh``).
+  A manifest never sees them.
+- ``lib/audiorender`` renders a whole composition offline with numpy and holds
+  the finished song in memory, which is a desktop's job, not a board's. It
+  ships in the wheel and stops there.
+- The instrument and effect libraries (``audioinstruments``,
+  ``audioeffects``) no longer live in this repository. They are developed
+  and published from https://github.com/PyDevices/audiocomponents and reach
+  boards by MIP from there. The opt-in ``AUDIOIF_FREEZE_LIBS`` switch that
+  used to freeze this repository's copies went with them; a frozen copy
+  would shadow the mip-installed one, and what is running would stop being
+  what was published - the trap ``pydevices``' own manifest refuses to walk
+  into.
 """
-
-import os
-
-if 0:  # pragma: no cover - the manifest builtins, for linters only
-
-    def package(*args, **kwargs):
-        pass
-
-
-def _wanted():
-    value = os.environ.get("AUDIOIF_FREEZE_LIBS", "").strip().lower()
-    return value in ("1", "true", "yes", "on")
-
-
-if _wanted():
-    package(  # type: ignore[name-defined]  # noqa: F821
-        "audioinstruments", base_path="./lib", opt=3)
-    package(  # type: ignore[name-defined]  # noqa: F821
-        "audioeffects", base_path="./lib", opt=3)

@@ -30,11 +30,11 @@ py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays
 # Keep py-modules explicit: src/cpython is the root package directory now, and
 # an automatic scan there would also pick up anything else that lands in it.
 packages = ["audiorender"]
-# audioinstruments and audioeffects are standalone distributions now
-# (pydevices-audioinstruments, pydevices-audioeffects; see lib/*/pyproject.toml)
-# and must not also ship in this wheel: two distributions owning the same
-# files collide in site-packages, since the standalone packages depend on
-# pydevices-audioif and would always be co-installed with it.
+# audiorender is the only pure-Python package this wheel carries. The
+# instrument and effect libraries (audioinstruments, audioeffects) are not
+# in this repository any more: they are developed and published from
+# https://github.com/PyDevices/audiocomponents as their own distributions,
+# each depending on pydevices-audioif.
 
 # The CPython target is one directory: src/cpython holds the extension source,
 # the extension built in place, and the twelve modules that wrap it. They are
@@ -42,8 +42,10 @@ packages = ["audiorender"]
 # below is what remaps the root package, and it is also what puts a
 # `build_ext --inplace` .so beside the wrappers instead of at the repo root.
 #
-# The pure Python library tiers live under lib/ so the MIP publisher, which
-# expects <repo>/lib/<package>, can ship them to boards as well as to PyPI.
+# audiorender lives under lib/ rather than beside the wrappers because
+# <repo>/lib/<package> is the PyDevices layout for pure-Python tiers (it is
+# what the MIP publisher expects). It is desktop-only -- numpy, a whole song
+# in memory -- so it ships in the wheel and is never MIP-published.
 [tool.setuptools.package-dir]
 "" = "src/cpython"
 audiorender = "lib/audiorender"

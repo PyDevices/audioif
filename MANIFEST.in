@@ -1,4 +1,3 @@
 include VERSION
 recursive-include src/shared *.h
-recursive-include lib *.py
-recursive-include lib *.md
+recursive-include lib/audiorender *.py *.md
