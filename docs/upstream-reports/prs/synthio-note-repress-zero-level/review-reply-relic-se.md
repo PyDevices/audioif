@@ -1,5 +1,7 @@
 # Draft reply to relic-se on PR #11289
 
+**POSTED 2026-09-04** as https://github.com/adafruit/circuitpython/pull/11289#issuecomment-5540511752 (the text below the `---`, verbatim).
+
 **Post only what is below the `---`.** Measured 2026-09-04 on the workspace's
 CircuitPython unix build; the script is in the session scratchpad as
 `sustain0.py`. Keep it short — dhalbert's standing feedback on our first five
