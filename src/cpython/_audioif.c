@@ -1476,7 +1476,7 @@ static PyObject *audioif_apply_loudness_i32(PyObject *module, PyObject *args) {
 
 static PyObject *audioif_mixdown_i32(PyObject *module, PyObject *args) {
     Py_buffer input = {0};
-    unsigned int max_polyphony = 14;
+    unsigned int max_polyphony = 64;
     if (!PyArg_ParseTuple(args, "y*|I:mixdown_i32", &input,
         &max_polyphony)) return NULL;
     if (input.len % sizeof(int32_t) || max_polyphony < 1) {

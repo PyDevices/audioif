@@ -268,7 +268,7 @@ class Note:
 
 
 class Synthesizer(_AudioSample):
-    max_polyphony = 14
+    max_polyphony = 64
 
     def __init__(self, *, sample_rate=11025, channel_count=1, waveform=None, envelope=None):
         if channel_count not in (1, 2): raise ValueError("channel_count must be 1 or 2")

@@ -184,7 +184,15 @@ target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBP
 # own more-capable boards all raise it well past 2 (raspberrypi: 24,
 # nordic/mimxrt10xx: 12) -- 2 is really only survivable on the most
 # memory-starved boards, not a sane default for anything with real RAM.
-# Raised 8 -> 14 on 2026-09-03 (Brad: "14 everywhere"). 8 was chosen as a
+# Raised 8 -> 14, then 14 -> 64 the same day (#31): 14 fits the drum kits,
+# 64 fits a ten-finger chord on the melodic library, whose instruments press
+# up to 9 Notes per key. The RAM cost is ~+900 bytes per Synthesizer on ARM.
+# Nobody has measured RP2040 or ESP32-P4 voice headroom under a full 64-voice
+# load; the ceiling used to be an accidental CPU governor, and a board that
+# cannot render 64 voices will now try and drop buffers rather than silently
+# thin. Measure before shipping this to hardware.
+#
+# The original 8 -> 14 note follows. 8 was chosen as a
 # modest middle ground before the instrument library existed to measure
 # against. It does now, and 14 is not a preference but a fact about it:
 # counted live, the resident permanent Note objects per drum kit are
@@ -211,7 +219,7 @@ target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBP
 # reads it (cmods/micropython/py/mkrules.cmake:79-86), not a make variable
 # as on the unix Make path. Per-board tuning is the fuller phase 10 (port
 # matrix) job, not this one.
-target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=14)
+target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=64)
 
 target_link_libraries(usermod INTERFACE usermod_mpaudio)
 

@@ -115,9 +115,12 @@ SRC_USERMOD_C += \
 # (the parent workspace's circuitpython checkout, unix `coverage` variant,
 # bin/circuitpython) is itself built with 14
 # (ports/unix/variants/coverage/mpconfigvariant.mk).
-# so this file matches that, and the oracle-diff parity tests (see
-# tests/parity/synthtools_acceptance.py, phase 7) exercise -- and byte-diff
-# -- genuine polyphony instead of silently degrading it.
+# so this file matched that until 2026-09-03, when the ceiling moved to 64
+# (#31). The oracle stays at 14 and is not rebuilt, so material that crosses
+# 14 channels is non-parity by construction and declared as such in
+# docs/upstream-diff.md. Everything under 14 channels still byte-matches: the
+# mix-down limiter only reshapes samples past +/-28000, and all four parity
+# gates are byte-identical at 14, 36 and 56 (measured).
 #
 # CORRECTION 2026-09-03: this comment used to say "unix/windows/wasm (every
 # port this Make-based file covers)". That is wrong about its own reach and
@@ -129,7 +132,7 @@ SRC_USERMOD_C += \
 # this said 14 and CMake said 8, because a proposal to raise "desktop" here
 # would silently have raised those mcu boards too. It matters less now that
 # all three paths read 14 on purpose, but the comment should be true.
-CFLAGS_USERMOD += -DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14
+CFLAGS_USERMOD += -DCIRCUITPY_SYNTHIO_MAX_CHANNELS=64
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/synthio/__init__.c \
     $(MPAUDIO_SRC_DIR)/synthio/Math.c \

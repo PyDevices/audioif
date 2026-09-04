@@ -19,19 +19,45 @@
 // build files describe as broken, purely to match upstream's number, buys
 // a marker at the cost of any build that sets nothing starting broken.
 //
-// 14 is what this workspace's instrument library needs: the cr78 kit holds
-// exactly 14 permanent Notes and four more kits hold 13. All three build
-// paths now agree -- this header, micropython.mk (Make ports) and
-// micropython.cmake (CMake ports) -- so the number no longer depends on
-// how audioif was built.
+// Raised 14 -> 64 on 2026-09-03 (Brad, #31). 14 was the number the drum
+// kits needed -- cr78 holds exactly 14 permanent Notes. It was never the
+// number the MELODIC library needs, because most of those press more than
+// one Note per key: solina 9, jp8000 7, b3 and vp330 6, farfisa 5, four
+// instruments 4, ten 3, twenty-four 2. A seven-key chord on solina wants
+// 63 Notes. At 14 you got one key of it.
 //
-// A FOURTH copy of this number lives outside these build paths: the CPython
-// target carries its own `max_polyphony = 14` (src/cpython/synthio.py:271),
-// which does not read this header -- setup.py builds _audioif from
-// src/cpython/ and src/shared/ only, never from src/synthio/. It already
-// says 14, so nothing diverges today, but the number is not defined once
-// and a future change here will not follow it there. Whoever unifies them
-// should treat that as the real fix; audioif#14 is the place for it.
+// The cost of 14 was not the occasional refused note. Measured over the
+// parity sequence, 4743 of 7335 presses got a channel only by evicting a
+// still-decaying note, and 69% of those victims were above 10% of full
+// envelope level (median 51%). The ceiling was continuously chopping
+// release tails. A b3 playing a seven-note chord measured 4.8 dB quieter
+// at 14 than at 36 -- nearly half its energy missing.
+//
+// 64 covers a ten-finger chord on every instrument in the library plus
+// headroom. It is a CHOICE, not a convergence point: steals keep falling
+// until roughly N=196, so any value here is a sonic baseline rather than a
+// fix that settles.
+//
+// What it costs: 18 bytes per channel on ARM, 20 on ESP32, 24 on 64-bit,
+// so 14 -> 64 is about +900 bytes per Synthesizer on ARM -- 0.34% of a
+// Pico's 264 KiB -- against render buffers each Synthesizer already
+// allocates unconditionally (__init__.c:327-329). An idle channel costs a
+// compare and a continue per block; unused voices are close to free.
+//
+// FIVE copies of this number exist and nothing makes them agree except
+// tests/test_voice_ceiling_consistency.py, which exists because every
+// parity gate in this repo is byte-identical across ceiling values and so
+// cannot see a half-applied change. The other four: micropython.mk,
+// micropython.cmake, src/cpython/synthio.py, and the default argument in
+// src/cpython/_audioif.c. The CPython target does not read this header --
+// setup.py builds _audioif from src/cpython/ and src/shared/ only.
+//
+// NOT a sixth copy: _audioif.c's `0x0fffffff / (32768 * 2 - 28000)` is
+// SYNTHIO_MIX_DOWN_SCALE(2) mirroring upstream CircuitPython's own
+// two-channel default. A literal 2 that stays 2.
+//
+// The pinned oracle stays at 14, so material that crosses this ceiling is
+// non-parity by construction. See docs/upstream-diff.md.
 //
 // Override via CFLAGS_EXTRA=-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=N for a board
 // that needs fewer voices; on CMake ports that must be an environment
@@ -45,7 +71,7 @@
 #pragma once
 
 #ifndef CIRCUITPY_SYNTHIO_MAX_CHANNELS
-#define CIRCUITPY_SYNTHIO_MAX_CHANNELS (14)
+#define CIRCUITPY_SYNTHIO_MAX_CHANNELS (64)
 #endif
 
 #include "cp_compat/enum.h"
