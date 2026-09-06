@@ -152,3 +152,21 @@ that never changes release to release. Where we find CircuitPython and
 audioif disagree, we treat it as a bug and report it upstream. The
 components are where the sound evolves; the floor they stand on does
 not.
+
+## License
+
+audioif is MIT licensed — see [LICENSE](LICENSE).
+
+The attribution that goes with it lives in [NOTICE](NOTICE): substantial
+portions of this code are ported from CircuitPython under its own MIT
+license, CircuitPython is a trademark of Adafruit Industries and this
+project is not affiliated with or endorsed by them, and the vendored test
+corpus under `tests/vendor/` carries its own licenses. The two are separate
+files on purpose — GitHub and PyPI only detect the license when LICENSE holds
+the MIT text and nothing else, so please do not fold NOTICE back into it.
+`NOTICE` is in setuptools' default `license-files` glob, so it ships in the
+wheel and sdist alongside `LICENSE`.
+
+The Helix MP3 decoder that `audiomp3` wraps is RPSL/RCSL-licensed, not MIT;
+it is a cloned sibling dependency, not part of this repository. See
+[docs/upstream-diff.md](docs/upstream-diff.md).

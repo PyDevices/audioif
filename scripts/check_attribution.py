@@ -53,7 +53,7 @@ def main() -> int:
         print("These files say they were ported from upstream but carry no")
         print("SPDX-FileCopyrightText line. Copy the upstream file's copyright")
         print("lines into the header, above SPDX-License-Identifier, and add")
-        print("PyDevices' own. See LICENSE's ATTRIBUTION section.\n")
+        print("PyDevices' own. See NOTICE.\n")
         for rel in offenders:
             print(f"  {rel}")
         return 1
