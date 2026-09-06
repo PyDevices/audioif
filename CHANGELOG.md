@@ -1,3 +1,7 @@
+## Unreleased
+
+- packaging: numpy is the `render` extra, so a bare install says honestly what audiorender needs
+
 ## v0.2.0 (2026-09-03)
 
 - test-cpython: the matrix comment no longer names a validator that left with the components

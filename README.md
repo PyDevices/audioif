@@ -54,9 +54,20 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
 `audiomath`, `audioecho`, `audioconvolve`, and the `audiorender` package.
-`audiomp3` remains firmware-only. The distribution has no runtime
-dependencies and does not itself publish an `audioif` import; its version is
-the `VERSION` file, which is also what `_audioif.__version__` reports.
+`audiomp3` remains firmware-only. The distribution declares no *required*
+runtime dependencies and does not itself publish an `audioif` import; its
+version is the `VERSION` file, which is also what `_audioif.__version__`
+reports.
+
+`audiorender` is the exception, and it is opt-in: it is numpy throughout,
+so numpy comes with the `render` extra rather than with the wheel, keeping
+the core dependency-free for boards and wasm. TestPyPI carries no usable
+numpy, so the extra needs PyPI as a second index:
+
+```sh
+python -m pip install --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ "pydevices-audioif[render]"
+```
 
 The instrument and effect libraries — `audioinstruments` (53 synthesizers,
 keyboards and drum machines) and `audioeffects` (46 effect classes, racks

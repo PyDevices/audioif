@@ -12,18 +12,26 @@ the same C.
 
 `audiorender` ships inside the `pydevices-audioif` distribution itself,
 not as a separate package, and is never frozen into firmware or meant for
-a board:
+a board. It needs `numpy`, which the distribution declares as the `render`
+extra rather than as a dependency — the core modules run on boards and in
+wasm, where numpy has no place — so ask for the extra:
 
 ```sh
-python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioif
+python -m pip install --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ "pydevices-audioif[render]"
 ```
 
-It needs `numpy`, which `pydevices-audioif` does not declare as a
-dependency (the native distribution has none) — install it separately if
-it isn't already present. The quick start below also renders through
-`audioinstruments` voices; see the
-[audioinstruments README](../audioinstruments/README.md#installation) to
-install that too.
+The second index is not optional: TestPyPI carries no numpy anyone can
+use — a 2.4.0.dev0 pre-release pip will not pick, and a 2015 1.9.3 sdist
+that cannot build on a supported Python — so without PyPI in the search
+path the extra fails to install. Installing `pydevices-audioif` without
+`[render]` still gets you every core module; `import audiorender` is then
+the one thing that fails, on numpy.
+
+The quick start below also renders through `audioinstruments` voices; that
+package lives in
+[audiocomponents](https://github.com/PyDevices/audiocomponents#installation)
+now and installs from there.
 
 ## Quick start
 
