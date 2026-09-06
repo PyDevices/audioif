@@ -2,15 +2,24 @@
 
 Why this test exists, and why it is not paranoia:
 
-Every parity gate in this repository is **byte-identical at N=14, 36 and 56**
--- measured, not assumed. The four verify_* gates and the rest of this suite
-render material that never fills 14 channels and never crosses the mix-down
-knee at +/-28000, so none of them can observe a change to
-CIRCUITPY_SYNTHIO_MAX_CHANNELS at all.
+The four older parity gates in this repository are **byte-identical at N=14,
+36 and 56** -- measured, not assumed. `verify_acceptance`, `verify_effects`,
+`verify_streaming`, `verify_biquad` and the rest of this suite render material
+that never fills 14 channels and never crosses the mix-down knee at +/-28000,
+so none of them can observe a change to CIRCUITPY_SYNTHIO_MAX_CHANNELS at all.
 
-That means a ceiling change applied to three of the five sites ships GREEN.
-Nothing else in CI would say a word. This test is the only thing standing
-between a half-applied ceiling and a release.
+Since 2026-09-06 a fifth gate does cross the knee --
+`tests/parity/verify_mixdown_knee.py`, audioif#27 -- but it sees exactly ONE
+of the five sites. The CPython target reads only `src/cpython/synthio.py`'s
+`max_polyphony`, which it hands to `_audioif.mixdown_i32` as the limiter
+divisor; the header, `micropython.mk` and `micropython.cmake` copies are read
+by no CI gate whatever.
+
+So a ceiling change applied to three of the five sites still ships GREEN, and
+nothing else in CI would say a word. This test remains the only thing standing
+between a HALF-APPLIED ceiling and a release. What the knee gate adds is the
+other failure -- a ceiling moved consistently across all five sites, which
+this test passes by construction and which silently changes the audio.
 
 The five sites are genuinely independent -- three build paths plus two
 constants inside the CPython target, which does not read the header
@@ -95,10 +104,13 @@ class VoiceCeilingConsistency(unittest.TestCase):
             lines.append("")
             lines.append(
                 "    A patch behaves differently depending on how audioif was "
-                "built. No other gate here can see this -- every "
-                "parity gate is byte-identical across ceiling values -- so if "
-                "you are reading this message, this test is the only reason "
-                "you know.")
+                "built. No other gate here can see this. "
+                "tests/parity/verify_mixdown_knee.py crosses the mix-down "
+                "knee and so notices a ceiling change, but only in "
+                "src/cpython/synthio.py -- the one site the CPython target "
+                "reads. A disagreement among the other four is invisible to "
+                "it, so if you are reading this message, this test is still "
+                "the only reason you know.")
             raise AssertionError("\n".join(lines))
 
     def test_cpython_admission_and_extension_default_agree(self):

@@ -45,19 +45,26 @@
 // compare and a continue per block; unused voices are close to free.
 //
 // FIVE copies of this number exist and nothing makes them agree except
-// tests/test_voice_ceiling_consistency.py, which exists because every
-// parity gate in this repo is byte-identical across ceiling values and so
-// cannot see a half-applied change. The other four: micropython.mk,
-// micropython.cmake, src/cpython/synthio.py, and the default argument in
-// src/cpython/_audioif.c. The CPython target does not read this header --
-// setup.py builds _audioif from src/cpython/ and src/shared/ only.
+// tests/test_voice_ceiling_consistency.py. The other four:
+// micropython.mk, micropython.cmake, src/cpython/synthio.py, and the
+// default argument in src/cpython/_audioif.c. The CPython target does not
+// read this header -- setup.py builds _audioif from src/cpython/ and
+// src/shared/ only -- so THIS value is watched by no parity gate at all.
+// Since 2026-09-06 tests/parity/verify_mixdown_knee.py does cross the
+// mix-down knee and so notices a ceiling change (audioif#27), but only in
+// src/cpython/synthio.py, the one copy the CPython target reads. A change
+// that moves this line and not that one is still invisible to CI.
 //
 // NOT a sixth copy: _audioif.c's `0x0fffffff / (32768 * 2 - 28000)` is
 // SYNTHIO_MIX_DOWN_SCALE(2) mirroring upstream CircuitPython's own
 // two-channel default. A literal 2 that stays 2.
 //
 // The pinned oracle stays at 14, so material that crosses this ceiling is
-// non-parity by construction. See docs/upstream-diff.md.
+// non-parity by construction. tests/parity/verify_mixdown_knee.py is that
+// material, which is why its above-knee half is enforced against this port
+// rather than against the oracle. The deviation is NOT yet recorded in
+// docs/upstream-diff.md; writing it there needs Brad's word (open
+// 2026-09-06).
 //
 // Override via CFLAGS_EXTRA=-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=N for a board
 // that needs fewer voices; on CMake ports that must be an environment

@@ -42,6 +42,7 @@ jobs:
       - run: python tests/parity/verify_effects.py
       - run: python tests/parity/verify_streaming.py
       - run: python tests/parity/verify_biquad.py
+      - run: python tests/parity/verify_mixdown_knee.py
 
   # Non-publishing proof of the macOS wheel claim: run the same cibuildwheel
   # the release path uses (pypa/cibuildwheel, [tool.cibuildwheel] in

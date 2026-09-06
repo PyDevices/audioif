@@ -1,0 +1,52 @@
+{
+ "circuitpython_binary_sha256": "b3063621c72a085bbabcb9da20736408132f082fdbf8f8cf361e083f1a3100fd",
+ "circuitpython_binary_sha256_note": "The sha256 of cmods/bin/circuitpython AS IT WAS ON DISK when this capture was taken (2026-09-06). It is NOT the build pinned in tests/test_voice_ceiling_consistency.py, which records 9c1f5d34f6b092b53df59cc55ffe6a5ff5f0c3e614b5e3a3583ab8a03465fe3a; that test fails in this workspace today and nobody can currently say which build the binary is. The binary's mtime (2026-09-03 23:05) is after the pin landed, so it was rebuilt afterwards. It still reports max_polyphony 14 and still reproduces the committed streaming and midi oracle digests byte-for-byte, which is reassuring and is not proof. Recorded here rather than assumed so the provenance of this capture is explicit. Open with Brad: re-pin with a commit saying why it was rebuilt, or restore the pinned build.",
+ "circuitpython_stdout": [
+  "below_knee 1 0 512 68008 2566268345 16383",
+  "below_knee 1 1 512 63296 3956530821 16383",
+  "above_knee 2 0 512 65060 257622825 28046",
+  "above_knee 2 1 512 65440 3074255845 28046",
+  "above_knee 3 0 512 60704 2256428277 28202",
+  "above_knee 3 1 512 68608 540066197 28202",
+  "above_knee 6 0 512 70032 4141168613 28669",
+  "above_knee 6 1 512 61824 798539781 28669",
+  "above_knee 10 0 512 63784 1755177129 29292",
+  "above_knee 10 1 512 66368 1020633373 29292"
+ ],
+ "circuitpython_stdout_note": "The pinned CircuitPython 10.2.1 oracle's own answer at N=14, captured 2026-09-06 with --capture-reference. ADVISORY except for the below_knee lines, which the gate does enforce -- below the knee the port and the oracle are byte-identical (measured on all three runtimes), so that check cannot fail while `stdout` matches. Its one real job is as an anti-launder tripwire: re-capture `stdout` under a changed ceiling and the full-stdout check goes green again while this one goes red, because the oracle field was not re-captured.",
+ "micropython_binary_sha256": "2fd8d78148c84c3a19cf8ba9724fb0968b91b5966e5591182ebc6ef20cc5401c",
+ "micropython_stdout": [
+  "below_knee 1 0 512 68008 2566268345 16383",
+  "below_knee 1 1 512 63296 3956530821 16383",
+  "above_knee 2 0 512 63476 2660791177 28010",
+  "above_knee 2 1 512 66592 609744965 28010",
+  "above_knee 3 0 512 64884 114188105 28042",
+  "above_knee 3 1 512 65568 2486231045 28042",
+  "above_knee 6 0 512 69152 138040621 28139",
+  "above_knee 6 1 512 62464 3911009405 28139",
+  "above_knee 10 0 512 63608 2966202633 28268",
+  "above_knee 10 1 512 66496 3802209405 28268"
+ ],
+ "micropython_stdout_note": "ADVISORY cross-runtime record: cmods/bin/micropython at N=64, captured 2026-09-06. Byte-identical to `stdout` on every line, which is the expected result and is worth having written down. CI cannot check this -- no runner has the binary.",
+ "oracle_max_polyphony": 14,
+ "oracle_mix_down_scale": 623,
+ "port_max_polyphony": 64,
+ "port_mix_down_scale": 129,
+ "sha256": "983ddae968c30d15d1e09f5833410b0822552401bcb9e4b656a4649894c86a1f",
+ "stdout": [
+  "below_knee 1 0 512 68008 2566268345 16383",
+  "below_knee 1 1 512 63296 3956530821 16383",
+  "above_knee 2 0 512 63476 2660791177 28010",
+  "above_knee 2 1 512 66592 609744965 28010",
+  "above_knee 3 0 512 64884 114188105 28042",
+  "above_knee 3 1 512 65568 2486231045 28042",
+  "above_knee 6 0 512 69152 138040621 28139",
+  "above_knee 6 1 512 62464 3911009405 28139",
+  "above_knee 10 0 512 63608 2966202633 28268",
+  "above_knee 10 1 512 66496 3802209405 28268"
+ ],
+ "stdout_note": "ENFORCED, and it is THIS PORT's output -- not the CircuitPython oracle's. Above the knee the two cannot agree: the port ships CIRCUITPY_SYNTHIO_MAX_CHANNELS=64 and the pinned oracle is built at 14, and SYNTHIO_MIX_DOWN_SCALE = 0x0fffffff / (32768 * N - 28000) is 129 at 64 and 623 at 14, multiplying every sample past the knee. No material can be both above the knee and oracle-identical while those two numbers differ, so the above-knee half of this gate is enforced against the port and NOT against the oracle. The divergence is the ceiling and nothing else. See src/synthio/__init__.h's ceiling comment block; the deviation itself is not yet recorded in docs/upstream-diff.md (open with Brad, 2026-09-06).",
+ "stdout_sha256_by_arch": {},
+ "stdout_sha256_by_arch_note": "Empty on purpose. `stdout` was captured on x86_64. If another architecture (ubuntu-24.04-arm in CI) produces a different digest, it is not excused by a tolerance -- it gets its own exact accepted baseline here, with the hash, the date and the evidence, recorded only after a human has read the deviation report. Same rule and same shape as effects_component.json's cpython_stdout_sha256_by_arch (Brad, 2026-09-02: bit-identical within one architecture, not across). This probe has never been run on ARM.",
+ "what_this_is": "The one parity gate whose material crosses the synthio mix-down limiter's +/-28000 knee, so that a change to the voice ceiling cannot ship green. Every other parity capture in this repository is byte-identical at any ceiling value. See audioif#27, tests/parity/verify_mixdown_knee.py and tests/parity/mixdown_knee_probe.py."
+}

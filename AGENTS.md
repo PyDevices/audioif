@@ -114,9 +114,19 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   fail loudly: `verify_dsp.py` prints `skipping micropython (not built at
   ...)` and carries on with whatever is left. That is not a pass. What CI
   covers instead is what needs only the wheel: the CPython fixture tests in
-  `tests/test_cpython_*.py` and the four in-repo parity gates
+  `tests/test_cpython_*.py` and the five in-repo parity gates
   (`verify_acceptance`, `verify_effects`, `verify_streaming`,
-  `verify_biquad`), whose goldens are committed here. The component
+  `verify_biquad`, `verify_mixdown_knee`), whose goldens are committed
+  here. The fifth (2026-09-06, audioif#27) is the only one whose material
+  crosses the mix-down limiter's +/-28000 knee, so it is the only one that
+  can see a synthio voice-ceiling change at all — the other four are
+  byte-identical at every ceiling value. It sees exactly one of the
+  ceiling's five sites, `src/cpython/synthio.py`'s `max_polyphony`, because
+  that is the only one the CPython target reads; `tests/
+  test_voice_ceiling_consistency.py` is still the guard for a half-applied
+  change. Its above-knee half is enforced against **this port**, not
+  against the oracle: the port is built at 64 and the pinned oracle at 14,
+  and no above-knee material can agree across those two. The component
   contract tests (`test_audio_component_api`, `test_metadata_contract`,
   `tools/validate_api.py`) went to audiocomponents with the packages they
   check.
