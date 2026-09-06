@@ -210,7 +210,11 @@ Build-glue detail: the parent workspace's CMake aggregator finds
 `code/micropython.cmake` is picked up as-is; but
 Make ports glob only `$(USER_C_MODULES)/*/micropython.mk` (depth 1), so this
 module's root `micropython.mk` must `include ../ulab/code/micropython.mk`
-(or a one-line wrapper) for unix/windows builds.
+(or a one-line wrapper) for unix/windows builds. For a *standalone* CMake
+consumer there is no aggregator, so `micropython.cmake` carries the same
+`.deps/ulab` → `../ulab` search as the Make flavor and stands down (leaving
+`cmods/ulab` to the aggregator) whenever `CMOD_DIR` is set — ulab's own
+`add_library(usermod_ulab)` is unguarded, so including it twice is an error.
 
 ## Phases
 

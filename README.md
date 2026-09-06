@@ -9,16 +9,20 @@ source compatibility.
 
 ## Installation
 
-**MicroPython** consumes this repository as `USER_C_MODULES`. For a Make port
-that is fully standalone — no other repository is required. For a CMake port
-(esp32, rp2), point `USER_C_MODULES` straight at this checkout; note that
-`micropython.cmake` currently locates `ulab` only as a sibling checkout (or
-via an aggregator that globs one), not from `.deps/` — so on CMake ports
-`synthtools`' `import ulab.numpy` needs `../ulab` beside this repo until
-[#18](https://github.com/PyDevices/audioif/issues/18) closes:
+**MicroPython** consumes this repository as `USER_C_MODULES`, and it is
+fully standalone for both build flavors — no other repository is required.
+`./scripts/fetch_deps.sh` puts the two pinned native dependencies (`ulab`,
+`mp3`) under `.deps/`, and both `micropython.mk` and `micropython.cmake`
+look there first, falling back to a sibling checkout beside this repo and
+otherwise failing the build with an error naming both paths.
+
+For a CMake port (esp32, rp2), point `USER_C_MODULES` straight at this
+checkout:
 
 ```sh
-idf.py build -DUSER_C_MODULES=<path to audioif>
+git clone https://github.com/PyDevices/audioif ~/build/audioif
+cd ~/build/audioif && ./scripts/fetch_deps.sh
+idf.py build -DUSER_C_MODULES=~/build/audioif
 ```
 
 For a Make port (unix, windows, webassembly), MicroPython's own build glob
@@ -34,15 +38,22 @@ cd ~/build/micropython/ports/unix && make submodules
 make USER_C_MODULES=~/build
 ```
 
-`./scripts/fetch_deps.sh` fetches the two pinned native dependencies —
-`ulab` (so `synthtools`'s `import ulab.numpy` works) and `mp3` (the
-`audiomp3` tier's decoder) — into `.deps/`, pinned by
+The two dependencies are `ulab` (so `synthtools`'s `import ulab.numpy`
+works) and `mp3` (the `audiomp3` tier's decoder), pinned by
 [DEPENDENCIES.lock](DEPENDENCIES.lock). To build without them, skip the
-fetch and pass `AUDIOIF_OPTIONAL_DEPS=1` to the **build** step instead
-(`make USER_C_MODULES=~/build AUDIOIF_OPTIONAL_DEPS=1`); the variable is
-read by `micropython.mk`/`micropython.cmake`, not by `fetch_deps.sh`, and
-it builds every module except `audiomp3` with no clone beyond this
-repository. See [docs/porting-plan.md](docs/porting-plan.md)
+fetch and set `AUDIOIF_OPTIONAL_DEPS=1` on the **build** step instead — the
+variable is read by `micropython.mk`/`micropython.cmake`, not by
+`fetch_deps.sh`, and on CMake ports it is read as an *environment*
+variable, not as a `-D` cache entry:
+
+```sh
+make USER_C_MODULES=~/build AUDIOIF_OPTIONAL_DEPS=1              # Make ports
+AUDIOIF_OPTIONAL_DEPS=1 idf.py build -DUSER_C_MODULES=~/build/audioif   # CMake
+```
+
+That builds every module except `audiomp3` with no clone beyond this
+repository; `synthtools`' `import ulab.numpy` then fails at runtime, which
+is the trade the flag buys. See [docs/porting-plan.md](docs/porting-plan.md)
 for the architecture, module tiers, phased plan, and testing strategy.
 
 **CPython 3.10+** installs from TestPyPI:
