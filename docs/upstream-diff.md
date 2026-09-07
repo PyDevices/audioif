@@ -881,6 +881,19 @@ that no arrangement of the existing nodes reaches, and the program's vision
   it is the grain rate traded against smear, and it also bounds how far the
   read head may wander from the delay it was asked for.
 
+  **A shifted loop repeats half a window later than an unshifted one**, and
+  a class that reports its own timing has to account for it. The two taps sit
+  at `delay + turn * window` and `delay + (turn + 0.5) * window` under gains
+  that sum to one, so their weighted mean is `delay + window / 2` at every
+  point of the cycle -- constant, not drifting. Measured with a single-sample
+  click at 48 kHz, `delay_ms=200`, the shift on: the repeat lands at
+  **212.49 ms** with a 25 ms window and **229.98 ms** with a 60 ms one,
+  against 200.00 ms with the shift off. The consequence to state plainly:
+  turning `loop_semitones` on or off *mid-stream* steps the read position by
+  that half window, which is the same class of discontinuity `delay_slew`
+  exists to remove from `delay_ms` and is not smoothed here. Set it when the
+  node is built, or between takes.
+
 **The option enum is appended, never renumbered.** `src/cpython/audioecho.py`
 maps option names to those integers and `_audioif.c` range-checks against the
 last one, so inserting an option would silently change what an already

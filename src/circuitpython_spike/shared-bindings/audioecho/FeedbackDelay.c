@@ -77,7 +77,12 @@
 //|
 //|         ``loop_semitones`` (-24..+24) pitch-shifts the line read *inside*
 //|         the loop, so every pass rises again - which is what a shimmer is.
-//|         ``loop_window_ms`` is the crossfade window it reads through."""
+//|         ``loop_window_ms`` is the crossfade window it reads through. A
+//|         shifted loop repeats half a window later than an unshifted one
+//|         (the two taps' gains sum to one, so the mean read is ``delay_ms +
+//|         loop_window_ms / 2`` throughout), so switching it on or off
+//|         mid-stream steps the read by that much and nothing smooths it.
+//|         Set it when you build the node, or between takes."""
 //|         ...
 
 // The options __init__ and set() accept, paired with the shared DSP's enum.

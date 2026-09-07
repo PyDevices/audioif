@@ -60,6 +60,14 @@ three, which is what a shimmer is. Two taps half a `loop_window_ms` window
 apart are crossfaded, so the window trades grain rate against smear; it
 defaults to 25 ms and is capped at a quarter of the line.
 
+A shifted loop repeats half a window later than an unshifted one - the two
+taps' gains sum to one, so their weighted mean read is `delay_ms +
+loop_window_ms / 2` at every point of the cycle. Measured at 48 kHz with
+`delay_ms=200`: 212.49 ms with the default window, 229.98 ms with a 60 ms
+one, 200.00 ms with the shift off. So switching `loop_semitones` on or off
+mid-stream steps the read by that half window, and nothing smooths it. Set
+it when you build the node, or between takes.
+
 A new module rather than arguments on `Echo`, deliberately: an argument added
 to audioif's copy of a CircuitPython module would not exist on a stock board,
 so an effect written against it would silently be a different effect there.
