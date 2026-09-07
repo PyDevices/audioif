@@ -21,6 +21,10 @@
 //: than being a thirteenth option nobody would move.
 #define AUDIOIF_TANK_TONE_PIVOT_HZ 1000.0f
 
+//: ln(10)/40: half a decibel-to-linear conversion, since the tilt puts half
+//: the asked-for change at each end.
+#define AUDIOIF_TANK_DB_TO_LN 0.05756462732485115f
+
 //: The rate Dattorro's published table is written at. Everything scales from
 //: it, so a network built at 48 kHz is his network and not a transposed one.
 #define AUDIOIF_TANK_REFERENCE_RATE 29761.0f
@@ -281,10 +285,17 @@ void audioif_tank_configure(audioif_tank_config_t *config,
         case AUDIOIF_TANK_OPT_TONE_DB:
             config->tone_db = clampf(value, -24.0f, 24.0f);
             // A tilt: half the asked-for change up at the top and the same
-            // amount down at the bottom, pivoting at 1 kHz, so `tone_db` moves
-            // the balance without moving the level.
-            config->tone_low_gain = powf(10.0f, -config->tone_db / 40.0f);
-            config->tone_high_gain = powf(10.0f, config->tone_db / 40.0f);
+            // amount down at the bottom, pivoting at 1 kHz. One knob for
+            // bright-to-dark rather than a shelf that only lifts one end; what
+            // it does to the *level* depends on where the material's energy
+            // sits, so it is a balance control and not a trim. Through expf
+            // with ln(10)/40
+            // folded in rather than powf, which is how audioif_dynamics.c:17
+            // does its own dB conversion and keeps powf out of an mcu build.
+            config->tone_low_gain =
+                expf(-config->tone_db * AUDIOIF_TANK_DB_TO_LN);
+            config->tone_high_gain =
+                expf(config->tone_db * AUDIOIF_TANK_DB_TO_LN);
             config->tone_coef = one_pole_coefficient(
                 AUDIOIF_TANK_TONE_PIVOT_HZ, config->sample_rate);
             break;
