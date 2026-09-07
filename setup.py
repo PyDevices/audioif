@@ -42,6 +42,7 @@ setup(
                 "src/shared/audioif_trig.c",
                 "src/shared/audioif_fft.c",
                 "src/shared/audioif_convolve.c",
+                "src/shared/audioif_tank.c",
             ],
             include_dirs=["src"],
             define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION)],

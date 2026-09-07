@@ -44,6 +44,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_tank.c
 
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
@@ -174,15 +175,17 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
 # --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter),
-#     audiomath (Multiply), audioecho (FeedbackDelay) and audioconvolve
-#     (Convolver) ---
+#     audiomath (Multiply), audioecho (FeedbackDelay), audioconvolve
+#     (Convolver) and audioverb (Tank) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
 # library; the rest are audioif's own -- audiomath is the only way to modulate
 # a stream at audio rate, audioecho puts a filter inside a delay's feedback
-# loop, and audioconvolve applies a measured impulse response rather than
-# imitating one. See docs/upstream-diff.md.
+# loop, audioconvolve applies a measured impulse response rather than
+# imitating one, and audioverb is a reverberation tank whose line lengths and
+# output taps come from Python rather than being compiled in the way
+# audiofreeverb's are. See docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
     $(MPAUDIO_SRC_DIR)/audiodynamics/module.c
@@ -199,6 +202,9 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioconvolve/Convolver.c \
     $(MPAUDIO_SRC_DIR)/audioconvolve/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audioverb/Tank.c \
+    $(MPAUDIO_SRC_DIR)/audioverb/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #
