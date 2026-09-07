@@ -49,9 +49,19 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: leaves `git -C cmods/circuitpython status` clean, and overwrites the
 #: gitignored binary in place. Every existing check would pass on a silently
 #: different oracle. Comparing the bytes is the only thing that notices.
+#:
+#: It noticed once (#33). The hash was first recorded at dda8a77 on
+#: 2026-09-03 20:46; the binary was relinked at 23:05 the same evening by the
+#: jpegio Phase 2 landing (an aggregator reinstall adding lvgl, pygraphics and
+#: usdl2 -- nothing audio), and the pin went red for every session after.
+#: The relinked binary still answers 14 voices and still reproduces both
+#: committed reference digests, so it is re-pinned to the bytes it has, with
+#: this note as the provenance the relink never recorded. A future mismatch
+#: means what it meant then: find what rebuilt it, ask it the ceiling, and
+#: re-pin with the reason written down.
 ORACLE = ROOT.parent / "cmods" / "bin" / "circuitpython"
 ORACLE_SHA256 = (
-    "9c1f5d34f6b092b53df59cc55ffe6a5ff5f0c3e614b5e3a3583ab8a03465fe3a")
+    "b3063621c72a085bbabcb9da20736408132f082fdbf8f8cf361e083f1a3100fd")
 
 
 def _search(relative, pattern):
