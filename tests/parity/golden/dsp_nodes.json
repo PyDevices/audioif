@@ -1,5 +1,5 @@
 {
-  "no_oracle": "audiomath, audioecho, audioconvolve, audiobiquad, audioverb and audioroute.MidSide are audioif's own; their probes are captured from the port under CPython",
+  "no_oracle": "audiomath, audioecho, audioshaper, audioladder, audioconvolve, audiobiquad, audioverb and audioroute.MidSide are audioif's own; their probes are captured from the port under CPython",
   "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, compiled unmodified (see build_vstaudio_oracle.sh)",
   "probes": {
     "convolve_probe.py": "01bcfa5ba4ca884d3ee64e4e170fe64e9ff5c40b43d901fc23f03057e6f776c1",
@@ -9,13 +9,13 @@
     "feedback_delay_options_probe.py": "b76d4289673053eb9663cee92c9f379fbfc72b7f7f89de143a4d2719083e8b3f",
     "feedback_delay_probe.py": "a5ecffab77c60ff4888afb69a30f5185b67c543d1d77dfbe4ee3bd904f89da99",
     "filter_f32_probe.py": "bdbc6c79069a66dc8b73792fb2e79c42d1ff9fd6fdd99c29c35039100ee92c6b",
-    "midside_probe.py": "d6d72f976bd7461f9f5c5d8750cfd1a2a195e0b435ef3f96b2cdfd02079a0d20",
     "ladder_probe.py": "f893f29ef490e8ddae82bae2f06afb095d42edd0a7c4639c95b38deaf25d63cc",
+    "midside_probe.py": "d6d72f976bd7461f9f5c5d8750cfd1a2a195e0b435ef3f96b2cdfd02079a0d20",
     "multiply_probe.py": "f3d5ff2ed758647f73692426ef6046dfe8ffcdf9e13dd71a19f01f3f483fe46d",
     "route_dry_probe.py": "bb495c065900819b2ba6858de03fdf000bb6c08d0f6ef07001813412ef2ca81b",
     "route_probe.py": "fdb04d12c18c37e0c3f57c8c8b1411a6b0eb5659091f710fb77876f2651f73aa",
     "suboctave_probe.py": "720053fdc0d97db893dbce99e92c1ee237960476873b5b218edb93548f01ddc0",
-    "waveshaper_probe.py": "540e65632fabaac3ffcfe847813d753548a62a7f8e399521658e9932fc84546d",
-    "tank_probe.py": "49d7905b24339e98cfdd5dbf4211921060e70ac8b2b5a27292d14fa90ecd4903"
+    "tank_probe.py": "49d7905b24339e98cfdd5dbf4211921060e70ac8b2b5a27292d14fa90ecd4903",
+    "waveshaper_probe.py": "540e65632fabaac3ffcfe847813d753548a62a7f8e399521658e9932fc84546d"
   }
 }
