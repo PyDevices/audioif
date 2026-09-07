@@ -21,6 +21,7 @@
 #include "shared/audioif_multiply.h"
 #include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
+#include "shared/audioif_filter_f32.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
 // someone compiling this source by hand.
@@ -37,6 +38,8 @@ typedef struct {
     PyObject *dynamics_state_type;
     PyObject *splitter_ring_type;
     PyObject *feedback_delay_state_type;
+    PyObject *biquad_f32_state_type;
+    PyObject *allpass_f32_state_type;
     PyObject *convolver_state_type;
 } audioif_state_t;
 
@@ -1042,6 +1045,256 @@ static PyType_Spec feedback_delay_state_spec = {
     .slots = feedback_delay_state_slots,
 };
 
+// audiobiquad's two kernels. Both are state plus a small config, so both are
+// types rather than plain functions -- the way DynamicsState and
+// FeedbackDelayState are, and unlike multiply_s16() below.
+//
+// The Python side (src/cpython/audiobiquad.py) resolves synthio BlockInputs
+// once per chunk and hands the floats down here, which is exactly what the
+// MicroPython bindings do with synthio_block_slot_get_limited(). Neither
+// target evaluates a block inside the sample loop.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_biquad_f32_config_t config;
+    audioif_biquad_f32_state_t state;
+} audioif_biquad_f32_object_t;
+
+static int biquad_f32_state_init(audioif_biquad_f32_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"sample_rate", "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|II:BiquadF32State",
+        keywords, &sample_rate, &channel_count)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_biquad_f32_config_init(&self->config, sample_rate, channel_count);
+    audioif_biquad_f32_state_init(&self->state);
+    return 0;
+}
+
+static PyObject *biquad_f32_state_configure(
+    audioif_biquad_f32_object_t *self, PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_BIQUAD_F32_OPT_MODE ||
+        option > AUDIOIF_BIQUAD_F32_OPT_MIX) {
+        PyErr_SetString(PyExc_ValueError, "unknown biquad option");
+        return NULL;
+    }
+    audioif_biquad_f32_configure(&self->config,
+        (audioif_biquad_f32_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *biquad_f32_state_finish(audioif_biquad_f32_object_t *self,
+    PyObject *unused) {
+    (void)unused;
+    audioif_biquad_f32_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *biquad_f32_state_reset(audioif_biquad_f32_object_t *self,
+    PyObject *unused) {
+    (void)unused;
+    audioif_biquad_f32_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+// The five normalized coefficients, so a test can compare this kernel with
+// `shared/audioif_biquad.c`'s fixed-point ones without rendering anything.
+static PyObject *biquad_f32_state_coefficients(
+    audioif_biquad_f32_object_t *self, PyObject *unused) {
+    (void)unused;
+    audioif_biquad_f32_config_finish(&self->config);
+    return Py_BuildValue("(ddddd)", (double)self->config.b0,
+        (double)self->config.b1, (double)self->config.b2,
+        (double)self->config.a1, (double)self->config.a2);
+}
+
+static PyObject *biquad_f32_state_process(audioif_biquad_f32_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_biquad_f32_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef biquad_f32_state_methods[] = {
+    {"configure", (PyCFunction)biquad_f32_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)biquad_f32_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)biquad_f32_state_reset, METH_NOARGS, NULL},
+    {"coefficients", (PyCFunction)biquad_f32_state_coefficients, METH_NOARGS, NULL},
+    {"process", (PyCFunction)biquad_f32_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot biquad_f32_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, biquad_f32_state_init},
+    {Py_tp_methods, biquad_f32_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec biquad_f32_state_spec = {
+    .name = "_audioif.BiquadF32State",
+    .basicsize = sizeof(audioif_biquad_f32_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = biquad_f32_state_slots,
+};
+
+typedef struct {
+    PyObject_HEAD
+    audioif_allpass_f32_config_t config;
+    audioif_allpass_f32_state_t state;
+    float *stage_state;
+} audioif_allpass_f32_object_t;
+
+static int allpass_f32_state_init(audioif_allpass_f32_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
+    unsigned int stages = 4;
+    static char *keywords[] = {"sample_rate", "channel_count", "stages", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|III:AllPassF32State",
+        keywords, &sample_rate, &channel_count, &stages)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    if (stages < 1 || stages > AUDIOIF_FILTER_F32_MAX_STAGES) {
+        PyErr_SetString(PyExc_ValueError,
+            "stages must be between 1 and AUDIOIF_FILTER_F32_MAX_STAGES");
+        return -1;
+    }
+    const uint32_t count = (uint32_t)(channel_count * stages);
+    float *lanes = PyMem_Calloc(count, sizeof(float));
+    if (lanes == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    PyMem_Free(self->stage_state);
+    self->stage_state = lanes;
+    audioif_allpass_f32_config_init(&self->config, sample_rate, channel_count,
+        stages);
+    audioif_allpass_f32_state_init(&self->state, lanes, count);
+    return 0;
+}
+
+static void allpass_f32_state_dealloc(audioif_allpass_f32_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->stage_state);
+    self->stage_state = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
+
+static PyObject *allpass_f32_state_configure(
+    audioif_allpass_f32_object_t *self, PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_ALLPASS_F32_OPT_FREQUENCY ||
+        option > AUDIOIF_ALLPASS_F32_OPT_MIX) {
+        PyErr_SetString(PyExc_ValueError, "unknown all-pass option");
+        return NULL;
+    }
+    audioif_allpass_f32_configure(&self->config,
+        (audioif_allpass_f32_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *allpass_f32_state_finish(audioif_allpass_f32_object_t *self,
+    PyObject *unused) {
+    (void)unused;
+    audioif_allpass_f32_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *allpass_f32_state_reset(audioif_allpass_f32_object_t *self,
+    PyObject *unused) {
+    (void)unused;
+    audioif_allpass_f32_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+static PyObject *allpass_f32_state_coefficient(
+    audioif_allpass_f32_object_t *self, PyObject *unused) {
+    (void)unused;
+    audioif_allpass_f32_config_finish(&self->config);
+    return PyFloat_FromDouble((double)self->config.coefficient);
+}
+
+static PyObject *allpass_f32_state_process(
+    audioif_allpass_f32_object_t *self, PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_allpass_f32_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef allpass_f32_state_methods[] = {
+    {"configure", (PyCFunction)allpass_f32_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)allpass_f32_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)allpass_f32_state_reset, METH_NOARGS, NULL},
+    {"coefficient", (PyCFunction)allpass_f32_state_coefficient, METH_NOARGS, NULL},
+    {"process", (PyCFunction)allpass_f32_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot allpass_f32_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, allpass_f32_state_init},
+    {Py_tp_dealloc, allpass_f32_state_dealloc},
+    {Py_tp_methods, allpass_f32_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec allpass_f32_state_spec = {
+    .name = "_audioif.AllPassF32State",
+    .basicsize = sizeof(audioif_allpass_f32_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = allpass_f32_state_slots,
+};
+
 // audioconvolve.Convolver's transform tables, frequency-delay line and stored
 // impulse. All state, and a great deal of it -- one allocation carved up by
 // the DSP layer, exactly as in the MicroPython binding.
@@ -1791,6 +2044,20 @@ static int audioif_exec(PyObject *module) {
         state->feedback_delay_state_type) < 0) return -1;
     if (PyModule_AddIntConstant(module, "FEEDBACK_DELAY_FRAMES",
         AUDIOIF_FEEDBACK_DELAY_FRAMES) < 0) return -1;
+    state->biquad_f32_state_type = PyType_FromModuleAndSpec(module,
+        &biquad_f32_state_spec, NULL);
+    if (state->biquad_f32_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "BiquadF32State",
+        state->biquad_f32_state_type) < 0) return -1;
+    state->allpass_f32_state_type = PyType_FromModuleAndSpec(module,
+        &allpass_f32_state_spec, NULL);
+    if (state->allpass_f32_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "AllPassF32State",
+        state->allpass_f32_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "FILTER_F32_FRAMES",
+        AUDIOIF_FILTER_F32_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "FILTER_F32_MAX_STAGES",
+        AUDIOIF_FILTER_F32_MAX_STAGES) < 0) return -1;
     state->convolver_state_type = PyType_FromModuleAndSpec(module,
         &convolver_state_spec, NULL);
     if (state->convolver_state_type == NULL) return -1;
@@ -1816,6 +2083,8 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->dynamics_state_type);
     Py_VISIT(state->splitter_ring_type);
     Py_VISIT(state->feedback_delay_state_type);
+    Py_VISIT(state->biquad_f32_state_type);
+    Py_VISIT(state->allpass_f32_state_type);
     Py_VISIT(state->convolver_state_type);
     return 0;
 }
@@ -1830,6 +2099,8 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->dynamics_state_type);
     Py_CLEAR(state->splitter_ring_type);
     Py_CLEAR(state->feedback_delay_state_type);
+    Py_CLEAR(state->biquad_f32_state_type);
+    Py_CLEAR(state->allpass_f32_state_type);
     Py_CLEAR(state->convolver_state_type);
     return 0;
 }
