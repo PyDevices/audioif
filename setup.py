@@ -37,6 +37,7 @@ setup(
                 "src/shared/audioif_freeverb.c",
                 "src/shared/audioif_dynamics.c",
                 "src/shared/audioif_splitter.c",
+                "src/shared/audioif_midside.c",
                 "src/shared/audioif_multiply.c",
                 "src/shared/audioif_feedback_delay.c",
                 "src/shared/audioif_filter_f32.c",

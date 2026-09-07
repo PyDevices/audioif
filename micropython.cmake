@@ -36,6 +36,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_freeverb.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_dynamics.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_midside.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multiply.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_feedback_delay.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_filter_f32.c
@@ -72,6 +73,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiodelays/module.c
     ${MPAUDIO_SRC_DIR}/audiodynamics/Dynamics.c
     ${MPAUDIO_SRC_DIR}/audiodynamics/module.c
+    ${MPAUDIO_SRC_DIR}/audioroute/MidSide.c
     ${MPAUDIO_SRC_DIR}/audioroute/Splitter.c
     ${MPAUDIO_SRC_DIR}/audioroute/SplitterTap.c
     ${MPAUDIO_SRC_DIR}/audioroute/module.c

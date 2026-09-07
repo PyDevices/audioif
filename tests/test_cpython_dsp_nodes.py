@@ -1,8 +1,10 @@
 """audiodynamics and audioroute: the surface the parity gate cannot check.
 
-What these nodes *render* is pinned byte-for-byte against the original
-`vstaudio` implementation by tests/parity/verify_dsp.py. What is left for here
-is everything that comparison cannot reach: the argument forms the original
+What `Dynamics` and `Splitter` *render* is pinned byte-for-byte against the
+original `vstaudio` implementation by tests/parity/verify_dsp.py, and what
+`MidSide` renders is pinned there too, against itself across the three
+interpreters -- it is audioif's own and has no original. What is left for here
+is everything those comparisons cannot reach: the argument forms the original
 never accepted, the errors, and the source behaviours only a Python-defined
 audiosample can produce.
 """
@@ -179,6 +181,94 @@ class SplitterTest(unittest.TestCase):
         data = bytes(audiocore.get_buffer(node)[1])
         self.assertEqual(len(data), audiodynamics.FRAMES * 4)
         self.assertNotEqual(data, bytes(len(data)))
+
+
+class MidSideTest(unittest.TestCase):
+    def test_it_presents_itself_as_a_stereo_sample(self):
+        node = audioroute.MidSide(sample_rate=SAMPLE_RATE)
+        self.assertEqual(node.sample_rate, SAMPLE_RATE)
+        self.assertEqual(node.channel_count, 2)
+        self.assertEqual(node.bits_per_sample, 16)
+        self.assertTrue(node.samples_signed)
+
+    def test_an_unknown_option_is_refused(self):
+        node = audioroute.MidSide(source())
+        with self.assertRaises(TypeError):
+            node.set(depth=0.5)
+
+    def test_a_bad_channel_count_is_refused(self):
+        with self.assertRaises(ValueError):
+            audioroute.MidSide(channel_count=3)
+
+    def test_width_one_is_the_identity(self):
+        values = array("h", (((index * 37) % 65536) - 32768
+                             for index in range(1024)))
+        node = audioroute.MidSide(
+            audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                channel_count=2), width=1.0)
+        data = bytes(audiocore.get_buffer(node)[1])
+        self.assertEqual(data, values.tobytes()[:len(data)])
+
+    def test_width_zero_collapses_to_mono(self):
+        node = audioroute.MidSide(source(), width=0.0)
+        block = array("h")
+        block.frombytes(bytes(audiocore.get_buffer(node)[1]))
+        for index in range(0, len(block), 2):
+            self.assertEqual(block[index], block[index + 1])
+
+    def test_the_width_clamps_to_its_rails(self):
+        def render(width):
+            node = audioroute.MidSide(source(), width=width)
+            return bytes(audiocore.get_buffer(node)[1])
+        self.assertEqual(render(-4.0), render(0.0))
+        self.assertEqual(render(9.0), render(2.0))
+
+    def test_set_moves_the_width_mid_stream(self):
+        node = audioroute.MidSide(source(), width=1.0)
+        audiocore.get_buffer(node)
+        node.set(width=0.0)
+        block = array("h")
+        block.frombytes(bytes(audiocore.get_buffer(node)[1]))
+        for index in range(0, len(block), 2):
+            self.assertEqual(block[index], block[index + 1])
+
+    def test_a_mono_source_passes_through(self):
+        values = array("h", (((index * 53) % 2001) - 1000
+                             for index in range(600)))
+        node = audioroute.MidSide(
+            audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                channel_count=1), width=2.0, channel_count=1)
+        data = bytes(audiocore.get_buffer(node)[1])
+        self.assertEqual(data, values.tobytes()[:len(data)])
+
+    def test_a_dry_source_yields_silence_not_an_end(self):
+        node = audioroute.MidSide(Dry(blocks=1), width=1.5)
+        self.assertNotEqual(bytes(audiocore.get_buffer(node)[1]), b"")
+        for _ in range(2):
+            result, data = audiocore.get_buffer(node)
+            self.assertEqual(result, audiocore.GET_BUFFER_MORE_DATA)
+            self.assertEqual(bytes(data),
+                             bytes(audioroute.MIDSIDE_FRAMES * 4))
+
+    def test_a_tap_can_feed_a_midside(self):
+        splitter = audioroute.Splitter(source(), 2)
+        node = audioroute.MidSide(width=0.0)
+        node.play(splitter.tap(1))
+        data = bytes(audiocore.get_buffer(node)[1])
+        self.assertEqual(len(data), audioroute.MIDSIDE_FRAMES * 4)
+        self.assertNotEqual(data, bytes(len(data)))
+
+    def test_stop_and_play_are_symmetric(self):
+        node = audioroute.MidSide(source(), width=0.5)
+        self.assertTrue(node.playing)
+        node.stop()
+        self.assertFalse(node.playing)
+        self.assertEqual(bytes(audiocore.get_buffer(node)[1]),
+                         bytes(audioroute.MIDSIDE_FRAMES * 4))
+        node.play(source())
+        self.assertTrue(node.playing)
+        self.assertNotEqual(bytes(audiocore.get_buffer(node)[1]),
+                            bytes(audioroute.MIDSIDE_FRAMES * 4))
 
 
 if __name__ == "__main__":

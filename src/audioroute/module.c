@@ -4,8 +4,13 @@
 // SplitterTap is exported for `isinstance` checks and repr readability only;
 // it has no constructor, and taps come from `Splitter.tap(index)`.
 //
+// MidSide joins Splitter here rather than getting a module of its own
+// because it is routing: it decides which signal reaches which channel,
+// where Splitter decides which branch reaches which chain.
+//
 // SPDX-License-Identifier: MIT
 
+#include "audioroute/MidSide.h"
 #include "audioroute/Splitter.h"
 #include "audioroute/SplitterTap.h"
 
@@ -13,6 +18,7 @@
 
 static const mp_rom_map_elem_t audioroute_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioroute) },
+    { MP_ROM_QSTR(MP_QSTR_MidSide), MP_ROM_PTR(&audioroute_midside_type) },
     { MP_ROM_QSTR(MP_QSTR_Splitter), MP_ROM_PTR(&audioroute_splitter_type) },
     { MP_ROM_QSTR(MP_QSTR_SplitterTap),
       MP_ROM_PTR(&audioroute_splitter_tap_type) },

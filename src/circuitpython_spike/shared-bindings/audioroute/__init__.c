@@ -8,21 +8,25 @@
 #include "py/runtime.h"
 
 #include "shared-bindings/audioroute/__init__.h"
+#include "shared-bindings/audioroute/MidSide.h"
 #include "shared-bindings/audioroute/Splitter.h"
 #include "shared-bindings/audioroute/SplitterTap.h"
 
-//| """Fan one audio stream out to parallel branches
+//| """Route audio between chains and between channels
 //|
 //| The `audioroute` module lets a single source feed several effect chains at
 //| once - an exciter, a Haas widener, multiband splits - which a `audiomixer`
-//| Mixer then sums back together. It is not part of CircuitPython upstream; it
-//| comes from PyDevices' audioif, which in turn took it from micropython-vst3's
-//| audio engine.
+//| Mixer then sums back together, and it scales the difference between a
+//| stereo pair's channels so a drive can work on the middle of an image
+//| without smearing its sides. It is not part of CircuitPython upstream; it
+//| comes from PyDevices' audioif, which in turn took `Splitter` from
+//| micropython-vst3's audio engine. `MidSide` is audioif's own.
 //|
 //| """
 
 static const mp_rom_map_elem_t audioroute_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioroute) },
+    { MP_ROM_QSTR(MP_QSTR_MidSide), MP_ROM_PTR(&audioroute_midside_type) },
     { MP_ROM_QSTR(MP_QSTR_Splitter), MP_ROM_PTR(&audioroute_splitter_type) },
     { MP_ROM_QSTR(MP_QSTR_SplitterTap),
       MP_ROM_PTR(&audioroute_splitter_tap_type) },
