@@ -11,7 +11,8 @@ for source compatibility; only this repo's own name differs.
   (esp32/rp2, CMake-based ports) — build glue for `USER_C_MODULES` discovery
 - `src/` — one directory per module (`audiocore/`, `synthio/`, `audiomixer/`,
   `audiospeed/`, `audiofreeverb/`, `audiofilters/`, `audiodelays/`,
-  `audiomp3/`, `audiodynamics/`, `audioroute/`, `audiomath/`, `audioecho/`),
+  `audiomp3/`, `audiodynamics/`, `audioroute/`, `audiomath/`, `audioecho/`,
+  `audioconvolve/`, `audiobiquad/`),
   plus `src/cp_compat/`
   (CircuitPython-only core primitives ported as standalone compat shims, each
   individually verified against mainline MicroPython before use — not assumed
@@ -31,10 +32,11 @@ for source compatibility; only this repo's own name differs.
   their own distributions depending on `pydevices-audioif`; nothing in this
   repository builds, tests, publishes or freezes them.
 - `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics`,
-  `audioroute`, `audiomath` and `audioecho` to a CircuitPython tree. None of
-  the four is a CircuitPython port: the first two come from micropython-vst3's
-  `vstaudio` engine and the last two are audioif's own, so CircuitPython gains
-  them here rather than the other way round.
+  `audioroute`, `audiomath`, `audioecho`, `audioconvolve` and `audiobiquad`
+  to a CircuitPython tree. None of the six is a CircuitPython port: the first
+  two come from micropython-vst3's `vstaudio` engine and the last four are
+  audioif's own, so CircuitPython gains them here rather than the other way
+  round.
 - `docs/porting-plan.md` — the full phased porting history, architecture,
   and target layout
 - `docs/upstream-diff.md` — every deliberate deviation from upstream
@@ -73,10 +75,13 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   unmodified by `MP_UNIX=../cmods/micropython/ports/unix
   ULAB_DIR=../cmods/ulab tests/parity/build_vstaudio_oracle.sh`. One hash
   covers every interpreter here: the arithmetic is all in `src/shared/`, so
-  two interpreters disagreeing would itself be the finding. `audiomath`
-  rides along in the same file with no oracle at all — captured from the
-  port, it pins cross-interpreter agreement rather than fidelity to
-  something older.
+  two interpreters disagreeing would itself be the finding. `audiomath`,
+  `audioecho`, `audioconvolve` and `audiobiquad` ride along in the same file
+  with no oracle at all — captured from the port, they pin cross-interpreter
+  agreement rather than fidelity to something older. `audiobiquad`'s probe
+  also prints two invariants as integers beside its PCM (the block at which
+  a tail reaches exact zero, and the null depth at each feedback value),
+  because a hash over PCM alone would not say whether either still held.
 - The instruments parity gate — `run_instruments_parity.py`, its two probes,
   `instrument_sequences.py` and the `instruments_*.json` digests — lives in
   [audiocomponents](https://github.com/PyDevices/audiocomponents) now, under

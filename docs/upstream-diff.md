@@ -1722,3 +1722,123 @@ that stack notes are a listen Brad reserved for himself when he made the
 raise; audiocomponents' CPython leg follows the next audioif release, at
 which point its three moved digests are re-captured at 64 with this entry
 as the reason, and not before.
+
+## `audiobiquad`: a biquad and an all-pass whose tails reach zero (effects program, Phase 1)
+
+Additive, in a new module of audioif's own, and neither ported kernel is
+touched. Both `dynamics_probe.py` and `route_probe.py` still hash to
+`vstaudio_dsp.c` compiled unmodified, and the diff of
+`tests/parity/golden/dsp_nodes.json` for this change adds one digest and
+leaves the other seven byte-identical, which is the check that says the
+addition is additive (audioif commit `48c3575` is the precedent).
+
+**What was unreachable.** Every EQ, filter and phaser class in
+[audiocomponents](https://github.com/PyDevices/audiocomponents) is held to
+one invariant the effects program calls Tier 1 — *silence in, silence out; a
+decaying tail reaches exact zero* — and on the ported nodes it is not a
+matter of tuning:
+
+- `shared/audioif_biquad.c` keeps its output memory in Q12 sample units
+  (`AUDIOIF_BIQUAD_STATE_SHIFT`, `audioif_biquad.h:14`) and rounds to nearest
+  at `:176-178` with no dither and no leak term, so the recursion has fixed
+  points: states that reproduce themselves exactly. Driven with a 256-frame
+  DC burst and then 3000 blocks of silence at 48 kHz, a `LOW_PASS` at 100 Hz
+  settles on ±1 LSB and one at 40 Hz on ±4 LSB, which are the numbers
+  audioif#23 reports. The reproduction is in
+  `tests/test_cpython_audiobiquad.py` rather than cited, and it is careful
+  about what it claims: **not every trajectory lands on a fixed point.** The
+  same settings driven through the `audiofilters.Filter` wrapper with a
+  different stimulus settled cleanly, which is why the defect went unnoticed
+  for as long as it did.
+- `shared/audioif_phaser.c` has its own version of the same defect in its own
+  arithmetic. Its all-pass memory is `int16_t` in plain sample units
+  (`:28-38`), so it settles on a non-zero word and holds it; fixing the
+  biquad would not move it. Filed separately as audioif#36, and it is why
+  this is one module carrying two kernels rather than a patch to one.
+- `audiofilters/Phaser.c:211` clamps `feedback` to `0.1..0.9` before the
+  value reaches the kernel, so a phaser built on the ported node can never
+  be asked for the feedback-free topology every script phaser uses, and 0.0
+  and 0.1 render byte-identically.
+
+**What the module does instead.** `audiobiquad.Biquad` and
+`audiobiquad.AllPass` over `shared/audioif_filter_f32.c`, `float` state and
+coefficients throughout — the working precision `audioif_dynamics.c` and
+`audioif_feedback_delay.c` already use. A `float` recursion decays
+geometrically and so never actually *arrives*, so any state word below
+`AUDIOIF_FILTER_F32_FLUSH` (1e-20) is written as exact zero. That threshold
+sits far above the float32 denormal floor and far below one LSB of a 16-bit
+sample, so it can only catch a tail already past −400 dB.
+
+**A new module rather than arguments on `audiofilters`**, for exactly the
+reason `audioecho` is a new module rather than arguments on
+`audiodelays.Echo`: an argument added to this port's copy of a CircuitPython
+module would not exist on a stock board, so a class written against it would
+silently be a different effect there. This installs whole or is absent and
+says so on import.
+
+### The measurements
+
+At 8 kHz, a 500 Hz tone (an integer-exact 64-entry sine table, stepped by
+four) through a four-stage cascade at `mix=0.5`, dry peak 28000:
+
+| | best null | re dry |
+|---|---|---|
+| `audiobiquad.AllPass`, `feedback=0.0` | 18 | **−63.8 dB** |
+| `audiofilters.Phaser`, `feedback=0.1` (its floor), frequency swept over 100 settings and its own best taken | 2341 | −21.5 dB |
+
+42 dB, and the ported node was given every chance: its `frequency` is not
+the notch frequency, so it was swept rather than handed one number. On this
+node `feedback=0.0` and `feedback=0.1` are different settings (peaks 18 and
+1274); on the ported one they are the same bytes.
+
+Tail to exact zero, burst then silence, first all-zero block: `LOW_PASS`
+100 Hz at block 1, 40 Hz q=8 at block 16, 31.25 Hz at 1, a +12 dB peaking
+section at 62.5 Hz at 9; the four-stage cascade at feedback 0.95 at block 6
+and at −0.95 at block 7; a twelve-stage cascade at 31.25 Hz at block 30.
+Every biquad mode and every feedback value tested reaches zero and stays
+there.
+
+### Three smaller decisions worth recording
+
+- **The all-pass coefficient is the true bilinear**, `c = (tan(pi f / fs) −
+  1) / (tan(pi f / fs) + 1)`, so `frequency` really is where one stage's
+  phase passes −90° — verified within 0.2° at 500, 1000 and 2000 Hz.
+  `audioif_phaser.c:14` uses `(1 − f/nyquist)/(1 + f/nyquist)` and multiplies
+  by the negative of it (`:32`), which is the small-angle form of the same
+  expression; that lands the break at `(fs/pi)·atan(2f/fs)`, and it is why
+  the ported node's class has to pre-warp in Python
+  (`audiofilters/Phaser.c:210`).
+- **The all-pass coefficient walks to each block's value across the block**
+  rather than stepping to it at the boundary. A block-rate step is 187 Hz at
+  48 kHz with 256-frame blocks, in the middle of the range a phaser sweeps
+  through. The biquad's coefficients are *not* interpolated: interpolating
+  between two high-Q sections can pass through an unstable pair, and the
+  biquad's case for existing is the tail, not the sweep.
+- **Two bounds are stability, not taste, and both are there to protect the
+  tail.** `Q` is clamped to 0.05..60, because the pole radius of an RBJ
+  section is `sqrt((1 − alpha)/(1 + alpha))` with `alpha = sin(W0)/(2Q)`, so
+  an unbounded Q is a filter that rings for ever and the invariant this
+  module exists for would be vacuous. The all-pass coefficient is clamped to
+  ±0.9999 for the same reason one order down. `feedback` is bounded to
+  ±0.99 — the point of the ask is that zero is reachable and negative is
+  allowed, not that the loop may be unstable.
+
+`sqrt()` rather than `audioif_biquad.c:26`'s Newton-step reciprocal
+approximation for the shelf root: that trick buys speed on a part with no
+divider and costs about 0.2% of `A`, and it is there because the result is
+about to be quantized into 23 bits. Nothing here is quantized, and IEEE
+`sqrt` is correctly rounded, so this is both more accurate and identical on
+every target. The trig *is* shared — `audioif_sincos_reflect()`
+(`audioif_trig.c:72`) — so at one W0 both kernels start from the same sine
+and cosine and a comparison between them measures the arithmetic rather than
+two libm builds.
+
+Verified by `tests/parity/filter_f32_probe.py` through `verify_dsp.py`, with
+no oracle: the golden is captured from the port, the same weaker claim
+`audiomath`, `audioecho` and `audioconvolve` make. That probe prints two
+invariants as integers beside its PCM — the block at which a tail reaches
+zero, and the null depth at each feedback value — because a hash over PCM
+alone would not say whether either still held. Its planted fault is the
+saturating int16 write-back the ported kernels use: restore it and ten of
+the eleven tail cases go to "never reached zero", the null collapses from 18
+to 1140, and the gate fails.
