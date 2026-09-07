@@ -80,10 +80,7 @@ static mp_obj_t audiobiquad_biquad_make_new(const mp_obj_type_t *type,
 // Read every block input and hand the values to the kernel, which clamps
 // them. Doing the clamping in one place is what keeps the four targets
 // identical: the CPython twin passes the raw values down too.
-static void biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
-    uint32_t frames) {
-    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
-        (uint16_t)frames);
+static void biquad_refresh(audiobiquad_biquad_obj_t *self) {
     audioif_biquad_f32_configure(&self->config,
         AUDIOIF_BIQUAD_F32_OPT_FREQUENCY,
         (float)synthio_block_slot_get(&self->frequency));
@@ -95,6 +92,14 @@ static void biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
     audioif_biquad_f32_configure(&self->config, AUDIOIF_BIQUAD_F32_OPT_MIX,
         (float)synthio_block_slot_get(&self->mix));
     audioif_biquad_f32_config_finish(&self->config);
+}
+
+// One chunk of the block layer, then the values it produced.
+static void biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
+    uint32_t frames) {
+    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
+        (uint16_t)frames);
+    biquad_refresh(self);
 }
 
 static mp_obj_t audiobiquad_biquad_play(mp_obj_t self_in, mp_obj_t sample) {
@@ -182,9 +187,11 @@ MP_PROPERTY_GETSET(audiobiquad_biquad_mode_obj,
 
 // (b0, b1, b2, a1, a2), normalized, at the settings in force -- what a test
 // compares with shared/audioif_biquad.c's fixed-point five without rendering.
+// Reads the block inputs but does not advance them, so looking at this does
+// not move an LFO along.
 static mp_obj_t audiobiquad_biquad_obj_get_coefficients(mp_obj_t self_in) {
     audiobiquad_biquad_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    biquad_apply_blocks(self, AUDIOIF_FILTER_F32_FRAMES);
+    biquad_refresh(self);
     mp_obj_t items[5] = {
         mp_obj_new_float((mp_float_t)self->config.b0),
         mp_obj_new_float((mp_float_t)self->config.b1),

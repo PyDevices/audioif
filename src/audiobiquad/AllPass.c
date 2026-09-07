@@ -74,10 +74,7 @@ static mp_obj_t audiobiquad_allpass_make_new(const mp_obj_type_t *type,
 // them -- including `feedback`, which is bounded only for stability
 // (-0.99..0.99) and so, unlike audiofilters/Phaser.c:211's 0.1..0.9, lets
 // zero be zero.
-static void allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
-    uint32_t frames) {
-    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
-        (uint16_t)frames);
+static void allpass_refresh(audiobiquad_allpass_obj_t *self) {
     audioif_allpass_f32_configure(&self->config,
         AUDIOIF_ALLPASS_F32_OPT_FREQUENCY,
         (float)synthio_block_slot_get(&self->frequency));
@@ -87,6 +84,14 @@ static void allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
     audioif_allpass_f32_configure(&self->config, AUDIOIF_ALLPASS_F32_OPT_MIX,
         (float)synthio_block_slot_get(&self->mix));
     audioif_allpass_f32_config_finish(&self->config);
+}
+
+// One chunk of the block layer, then the values it produced.
+static void allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
+    uint32_t frames) {
+    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
+        (uint16_t)frames);
+    allpass_refresh(self);
 }
 
 static mp_obj_t audiobiquad_allpass_play(mp_obj_t self_in, mp_obj_t sample) {
@@ -161,9 +166,11 @@ static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_stages_obj,
 MP_PROPERTY_GETTER(audiobiquad_allpass_stages_obj,
     (mp_obj_t)&audiobiquad_allpass_get_stages_obj);
 
+// Reads the block inputs but does not advance them, so looking at this does
+// not move an LFO along.
 static mp_obj_t audiobiquad_allpass_obj_get_coefficient(mp_obj_t self_in) {
     audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    allpass_apply_blocks(self, AUDIOIF_FILTER_F32_FRAMES);
+    allpass_refresh(self);
     return mp_obj_new_float((mp_float_t)self->config.coefficient);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_coefficient_obj,

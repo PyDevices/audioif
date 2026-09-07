@@ -7,10 +7,7 @@
 
 #include <string.h>
 
-void audiobiquad_allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
-    uint32_t frames) {
-    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
-        (uint16_t)frames);
+void audiobiquad_allpass_refresh(audiobiquad_allpass_obj_t *self) {
     audioif_allpass_f32_configure(&self->config,
         AUDIOIF_ALLPASS_F32_OPT_FREQUENCY,
         (float)synthio_block_slot_get(&self->frequency));
@@ -20,6 +17,14 @@ void audiobiquad_allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
     audioif_allpass_f32_configure(&self->config, AUDIOIF_ALLPASS_F32_OPT_MIX,
         (float)synthio_block_slot_get(&self->mix));
     audioif_allpass_f32_config_finish(&self->config);
+}
+
+// One chunk of the block layer, then the values it produced.
+static void audiobiquad_allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
+    uint32_t frames) {
+    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
+        (uint16_t)frames);
+    audiobiquad_allpass_refresh(self);
 }
 
 void audiobiquad_allpass_reset_buffer(audiobiquad_allpass_obj_t *self,

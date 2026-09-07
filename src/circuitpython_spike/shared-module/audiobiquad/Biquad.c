@@ -7,10 +7,7 @@
 
 #include <string.h>
 
-void audiobiquad_biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
-    uint32_t frames) {
-    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
-        (uint16_t)frames);
+void audiobiquad_biquad_refresh(audiobiquad_biquad_obj_t *self) {
     audioif_biquad_f32_configure(&self->config,
         AUDIOIF_BIQUAD_F32_OPT_FREQUENCY,
         (float)synthio_block_slot_get(&self->frequency));
@@ -22,6 +19,14 @@ void audiobiquad_biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
     audioif_biquad_f32_configure(&self->config, AUDIOIF_BIQUAD_F32_OPT_MIX,
         (float)synthio_block_slot_get(&self->mix));
     audioif_biquad_f32_config_finish(&self->config);
+}
+
+// One chunk of the block layer, then the values it produced.
+static void audiobiquad_biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
+    uint32_t frames) {
+    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
+        (uint16_t)frames);
+    audiobiquad_biquad_refresh(self);
 }
 
 void audiobiquad_biquad_reset_buffer(audiobiquad_biquad_obj_t *self,

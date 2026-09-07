@@ -30,8 +30,8 @@ typedef struct {
     uint32_t pending_frames;
 } audiobiquad_allpass_obj_t;
 
-void audiobiquad_allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
-    uint32_t frames);
+// See Biquad.h: reads the block inputs without advancing them.
+void audiobiquad_allpass_refresh(audiobiquad_allpass_obj_t *self);
 void audiobiquad_allpass_reset_buffer(audiobiquad_allpass_obj_t *self,
     bool single_channel_output, uint8_t channel);
 audioio_get_buffer_result_t audiobiquad_allpass_get_buffer(

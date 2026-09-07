@@ -216,12 +216,15 @@ BIQUAD_SLOT_PROPERTY(gain_db);
 BIQUAD_SLOT_PROPERTY(mix);
 
 //|     coefficients: Tuple[float, float, float, float, float]
-//|     """``(b0, b1, b2, a1, a2)``, normalized, at the settings in force."""
+//|     """``(b0, b1, b2, a1, a2)``, normalized, at the settings in force.
+//|
+//|     Reads the block inputs but does not advance them, so looking at this
+//|     does not move an LFO along."""
 //|
 //|
 static mp_obj_t audiobiquad_biquad_obj_get_coefficients(mp_obj_t self_in) {
     audiobiquad_biquad_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    audiobiquad_biquad_apply_blocks(self, AUDIOIF_FILTER_F32_FRAMES);
+    audiobiquad_biquad_refresh(self);
     mp_obj_t items[5] = {
         mp_obj_new_float((mp_float_t)self->config.b0),
         mp_obj_new_float((mp_float_t)self->config.b1),

@@ -147,13 +147,25 @@ class _Node(_AudioSample):
         self._pending = b""
         self._state.reset()
 
-    def _apply_blocks(self, frames):
-        """Read every block input once and hand the values to the kernel."""
-        from synthio import _advance_blocks
-        _advance_blocks(self.sample_rate, frames)
+    def _refresh(self):
+        """Read every block input once and hand the values to the kernel.
+
+        The kernel clamps, not this: doing it in one place is what keeps the
+        four targets identical.
+        """
         for slot, name in enumerate(self._options):
             self._state.configure(slot, _value(getattr(self, name)))
         self._state.finish()
+
+    def _apply_blocks(self, frames):
+        """Advance the block layer by one chunk, then read it.
+
+        Same point in the loop `audiofilters/Filter.c` reads its own, and the
+        MicroPython twin ticks and reads in exactly this order.
+        """
+        from synthio import _advance_blocks
+        _advance_blocks(self.sample_rate, frames)
+        self._refresh()
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         self._check()
@@ -186,8 +198,6 @@ class Biquad(_Node):
 
     def __init__(self, mode=LOW_PASS, frequency=1000.0, Q=0.7071067811865475,
                  gain_db=0.0, mix=1.0, sample_rate=48000, channel_count=2):
-        if int(_value(mode)) not in MODES:
-            raise ValueError("mode must be one of audiobiquad.MODES")
         self._init_format(sample_rate, channel_count)
         self.mode = mode
         self.frequency = frequency
@@ -198,9 +208,27 @@ class Biquad(_Node):
             sample_rate=self.sample_rate, channel_count=self.channel_count)
 
     @property
+    def mode(self):
+        return self._mode
+
+    @mode.setter
+    def mode(self, value):
+        # Not a BlockInput: it selects the algebra, not a value in it, and a
+        # mode that could arrive mid-block would mean recomputing the whole
+        # coefficient set from a number nobody chose.
+        value = int(value)
+        if value not in MODES:
+            raise ValueError("mode must be one of audiobiquad.MODES")
+        self._mode = value
+
+    @property
     def coefficients(self):
-        """`(b0, b1, b2, a1, a2)`, normalized, at the settings in force."""
-        self._apply_blocks(FRAMES)
+        """`(b0, b1, b2, a1, a2)`, normalized, at the settings in force.
+
+        Reads the block inputs but does not advance them, so looking at this
+        does not move an LFO along.
+        """
+        self._refresh()
         return self._state.coefficients()
 
 
@@ -235,8 +263,12 @@ class AllPass(_Node):
 
     @property
     def coefficient(self):
-        """The all-pass coefficient at the frequency in force."""
-        self._apply_blocks(FRAMES)
+        """The all-pass coefficient at the frequency in force.
+
+        Reads the block inputs but does not advance them, so looking at this
+        does not move an LFO along.
+        """
+        self._refresh()
         return self._state.coefficient()
 
 

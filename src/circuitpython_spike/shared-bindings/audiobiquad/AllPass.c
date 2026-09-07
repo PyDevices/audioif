@@ -195,12 +195,15 @@ ALLPASS_SLOT_PROPERTY(feedback);
 ALLPASS_SLOT_PROPERTY(mix);
 
 //|     coefficient: float
-//|     """The all-pass coefficient at the frequency in force."""
+//|     """The all-pass coefficient at the frequency in force.
+//|
+//|     Reads the block inputs but does not advance them, so looking at this
+//|     does not move an LFO along."""
 //|
 //|
 static mp_obj_t audiobiquad_allpass_obj_get_coefficient(mp_obj_t self_in) {
     audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
-    audiobiquad_allpass_apply_blocks(self, AUDIOIF_FILTER_F32_FRAMES);
+    audiobiquad_allpass_refresh(self);
     return mp_obj_new_float((mp_float_t)self->config.coefficient);
 }
 MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_coefficient_obj,

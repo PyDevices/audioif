@@ -35,9 +35,8 @@ typedef struct {
 
 // Reads every block input and hands the values to the kernel, which clamps
 // them. Shared with the bindings so `coefficients` reports what the next
-// block would use.
-void audiobiquad_biquad_apply_blocks(audiobiquad_biquad_obj_t *self,
-    uint32_t frames);
+// block would use without advancing an LFO to find out.
+void audiobiquad_biquad_refresh(audiobiquad_biquad_obj_t *self);
 void audiobiquad_biquad_reset_buffer(audiobiquad_biquad_obj_t *self,
     bool single_channel_output, uint8_t channel);
 audioio_get_buffer_result_t audiobiquad_biquad_get_buffer(
