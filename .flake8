@@ -17,7 +17,8 @@ select = F,E9,W6
 
 # tests/vendor is third-party code kept as it was published.
 extend-exclude =
-    .venv,,.deps
+    .venv,
+    .deps,
     build,
     dist,
     tests/vendor,
