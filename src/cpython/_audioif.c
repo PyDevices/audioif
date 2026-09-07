@@ -922,7 +922,20 @@ typedef struct {
     audioif_feedback_delay_config_t config;
     audioif_feedback_delay_state_t state;
     int16_t *line;
+    // The `wow_shape` table, held open for as long as the config points at
+    // it: the DSP borrows the samples and would otherwise read whatever the
+    // allocator put there next.
+    Py_buffer wow_shape;
+    int wow_shape_held;
 } audioif_feedback_delay_object_t;
+
+static void feedback_delay_release_shape(
+    audioif_feedback_delay_object_t *self) {
+    if (self->wow_shape_held) {
+        PyBuffer_Release(&self->wow_shape);
+        self->wow_shape_held = 0;
+    }
+}
 
 static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
     PyObject *args, PyObject *kwargs) {
@@ -954,6 +967,8 @@ static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
     }
     PyMem_Free(self->line);
     self->line = line;
+    // config_init clears the shape pointer, so the view has to go with it.
+    feedback_delay_release_shape(self);
     audioif_feedback_delay_config_init(&self->config, sample_rate, frames);
     audioif_feedback_delay_set_channel_count(&self->config, channel_count);
     audioif_feedback_delay_state_init(&self->state, line);
@@ -965,6 +980,7 @@ static int feedback_delay_state_init(audioif_feedback_delay_object_t *self,
 static void feedback_delay_state_dealloc(
     audioif_feedback_delay_object_t *self) {
     PyTypeObject *type = Py_TYPE(self);
+    feedback_delay_release_shape(self);
     PyMem_Free(self->line);
     self->line = NULL;
     type->tp_free((PyObject *)self);
@@ -977,12 +993,39 @@ static PyObject *feedback_delay_state_configure(
     double value;
     if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
     if (option < AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_MS ||
-        option > AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN) {
+        option > AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_WINDOW_MS) {
         PyErr_SetString(PyExc_ValueError, "unknown feedback delay option");
         return NULL;
     }
     audioif_feedback_delay_configure(&self->config,
         (audioif_feedback_delay_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+// `wow_shape` is a buffer, not a number, so it does not go through
+// configure(): None puts the built-in sine back, anything else is one period
+// of int16 Q15 whose length is a power of two.
+static PyObject *feedback_delay_state_wow_shape(
+    audioif_feedback_delay_object_t *self, PyObject *argument) {
+    if (argument == Py_None) {
+        audioif_feedback_delay_set_wow_shape(&self->config, NULL, 0);
+        feedback_delay_release_shape(self);
+        Py_RETURN_NONE;
+    }
+    Py_buffer view;
+    if (PyObject_GetBuffer(argument, &view, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = (Py_ssize_t)sizeof(int16_t);
+    if (view.len % width != 0 ||
+        !audioif_feedback_delay_set_wow_shape(&self->config,
+            (const int16_t *)view.buf, (uint32_t)(view.len / width))) {
+        PyBuffer_Release(&view);
+        PyErr_SetString(PyExc_ValueError,
+            "wow_shape must be 2 to 4096 int16 samples, a power of two");
+        return NULL;
+    }
+    feedback_delay_release_shape(self);
+    self->wow_shape = view;
+    self->wow_shape_held = 1;
     Py_RETURN_NONE;
 }
 
@@ -1021,6 +1064,7 @@ static PyObject *feedback_delay_state_process(
 
 static PyMethodDef feedback_delay_state_methods[] = {
     {"configure", (PyCFunction)feedback_delay_state_configure, METH_VARARGS, NULL},
+    {"set_wow_shape", (PyCFunction)feedback_delay_state_wow_shape, METH_O, NULL},
     {"finish", (PyCFunction)feedback_delay_state_finish, METH_NOARGS, NULL},
     {"reset", (PyCFunction)feedback_delay_state_reset, METH_NOARGS, NULL},
     {"process", (PyCFunction)feedback_delay_state_process, METH_O, NULL},

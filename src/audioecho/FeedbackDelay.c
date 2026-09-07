@@ -27,7 +27,35 @@ static const feedback_delay_option_name_t feedback_delay_option_names[] = {
     { MP_QSTR_cross_feed, AUDIOIF_FEEDBACK_DELAY_OPT_CROSS_FEED },
     { MP_QSTR_loop_drive, AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_DRIVE },
     { MP_QSTR_input_pan, AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN },
+    { MP_QSTR_delay_slew, AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_SLEW },
+    { MP_QSTR_wow_am_depth, AUDIOIF_FEEDBACK_DELAY_OPT_WOW_AM_DEPTH },
+    { MP_QSTR_loop_semitones, AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_SEMITONES },
+    { MP_QSTR_loop_window_ms, AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_WINDOW_MS },
 };
+
+// `wow_shape` is a buffer, not a number, so it is handled beside
+// `sample_rate` and `max_delay_ms` rather than from the table above. The
+// object is kept on the instance because the config only *borrows* the
+// samples: a table the collector took would be read as whatever landed on it
+// next.
+static void feedback_delay_set_shape(audioecho_feedback_delay_obj_t *self,
+    mp_obj_t value) {
+    if (value == mp_const_none) {
+        audioif_feedback_delay_set_wow_shape(&self->config, NULL, 0);
+        self->wow_shape = MP_OBJ_NULL;
+        return;
+    }
+    mp_buffer_info_t info;
+    mp_get_buffer_raise(value, &info, MP_BUFFER_READ);
+    if (info.len % sizeof(int16_t) != 0 ||
+        !audioif_feedback_delay_set_wow_shape(&self->config,
+            (const int16_t *)info.buf,
+            (uint32_t)(info.len / sizeof(int16_t)))) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "wow_shape must be 2 to 4096 int16 samples, a power of two"));
+    }
+    self->wow_shape = value;
+}
 
 static void feedback_delay_apply_kwargs(audioecho_feedback_delay_obj_t *self,
     const mp_map_t *kw) {
@@ -38,6 +66,10 @@ static void feedback_delay_apply_kwargs(audioecho_feedback_delay_obj_t *self,
         qstr name = mp_obj_str_get_qstr(kw->table[i].key);
         if (name == MP_QSTR_sample_rate || name == MP_QSTR_max_delay_ms ||
             name == MP_QSTR_channel_count) {
+            continue;
+        }
+        if (name == MP_QSTR_wow_shape) {
+            feedback_delay_set_shape(self, kw->table[i].value);
             continue;
         }
         float value = (float)mp_obj_get_float(kw->table[i].value);
@@ -96,6 +128,7 @@ static mp_obj_t audioecho_feedback_delay_make_new(const mp_obj_type_t *type,
     self->base.samples_signed = 1;
     self->base.single_buffer = false;
     self->source = MP_OBJ_NULL;
+    self->wow_shape = MP_OBJ_NULL;
     self->pending = NULL;
     self->pending_frames = 0;
 

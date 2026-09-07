@@ -23,6 +23,43 @@ channel's line, and `input_pan` steers the *input* to one line only: hard
 over with full cross-feed is a real ping-pong, where the first repeat is on
 one side alone.
 
+Four more options, every one of them off by default, so a node built the way
+it was before them renders the same bytes:
+
+`wow_shape` replaces the built-in sine with one period of your own, as int16
+Q15 samples whose count is a power of two from 2 to 4096. A bucket brigade's
+delay is its line length over its clock, so a triangle on the clock is a
+*reciprocal* on the delay and no sine can be it - with a table the law is
+Python's to bake and C only looks it up:
+
+    from array import array
+    period = 64
+    clock = array("h", [(i * 65534) // period - 32767 for i in range(period)])
+    small_clone = audioecho.FeedbackDelay(
+        sample_rate=48000, max_delay_ms=30, delay_ms=6.5, mix=1.0,
+        wow_hz=0.5, wow_depth_ms=2.5, wow_shape=clock)
+
+`wow_shape=None` puts the sine back. The table is *borrowed*, not copied:
+keep a reference to it for as long as the node is alive.
+
+`delay_slew` walks the read head to a new `delay_ms` instead of jumping to
+it, in delay-seconds per second - the same number at any sample rate. 0 (the
+default) is the jump this node has always made. 1.0 is the read head standing
+still while the write head runs, which is an octave up for exactly as long as
+the move lasts; the pitch is constant while it travels and there is no
+discontinuity at either end, which is both the varispeed an Echoplex makes
+and the reason a delay-time knob can be click-free.
+
+`wow_am_depth` (0..1) puts the wow oscillator on the wet gain as well as on
+the delay. It dips to `1 - depth` and returns to unity, never boosts, and it
+is on the output only - the feedback path is untouched.
+
+`loop_semitones` (-24..+24) pitch-shifts the line read *inside* the loop, so
+every pass rises again: +12 gives a repeat an octave up, then two, then
+three, which is what a shimmer is. Two taps half a `loop_window_ms` window
+apart are crossfaded, so the window trades grain rate against smear; it
+defaults to 25 ms and is capped at a quarter of the line.
+
 A new module rather than arguments on `Echo`, deliberately: an argument added
 to audioif's copy of a CircuitPython module would not exist on a stock board,
 so an effect written against it would silently be a different effect there.
@@ -50,6 +87,10 @@ _OPTIONS = {
     "cross_feed": 7,
     "loop_drive": 8,
     "input_pan": 9,
+    "delay_slew": 10,
+    "wow_am_depth": 11,
+    "loop_semitones": 12,
+    "loop_window_ms": 13,
 }
 
 
@@ -81,6 +122,11 @@ class FeedbackDelay(_AudioSample):
 
     def _apply(self, options):
         for name, value in options.items():
+            # wow_shape is a buffer, not a number, so it does not go through
+            # configure()'s float table.
+            if name == "wow_shape":
+                self._state.set_wow_shape(value)
+                continue
             slot = _OPTIONS.get(name)
             if slot is None:
                 raise TypeError("unknown FeedbackDelay option %r" % (name,))

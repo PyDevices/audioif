@@ -37,6 +37,60 @@ static float one_pole_coefficient(float hz, uint32_t sample_rate) {
     return clampf(coefficient, 0.0f, 1.0f);
 }
 
+// Turns per frame in Q32, for a phase accumulator stepped once a frame.
+// Folded into one turn first so a rate at or above the sample rate wraps
+// instead of overflowing the conversion.
+static uint32_t phase_step_for(float hz, float rate) {
+    if (hz <= 0.0f || rate <= 0.0f) {
+        return 0;
+    }
+    float turns = hz / rate;
+    turns -= floorf(turns);
+    const float scaled = turns * 4294967296.0f;
+    if (scaled <= 0.0f || scaled >= 4294967296.0f) {
+        return 0;
+    }
+    return (uint32_t)scaled;
+}
+
+// The pitch shifter reads the line through two taps half a window apart and
+// crossfades between them, so the window is what sets both the grain rate and
+// how far the read head may wander from the delay it was asked for. Capped at
+// a quarter of the line for that second reason, and floored at 16 frames so a
+// tiny line still has something to crossfade.
+static void shift_window_finish(audioif_feedback_delay_config_t *config) {
+    float window = config->loop_window_ms * (float)config->sample_rate /
+        1000.0f;
+    const float quarter = (float)config->line_frames * 0.25f;
+    if (window > quarter) {
+        window = quarter;
+    }
+    if (window < 16.0f) {
+        window = 16.0f;
+    }
+    config->shift_window_frames = window;
+}
+
+// The tap offset has to *shrink* at (ratio - 1) frames per frame for the read
+// head to advance at `ratio`, so the phase runs backwards when the pitch goes
+// up. One window of tap travel is one turn of the crossfade.
+static int32_t shift_step_for(const audioif_feedback_delay_config_t *config) {
+    if (config->loop_semitones == 0.0f ||
+        config->shift_window_frames < 1.0f) {
+        return 0;
+    }
+    const float ratio = powf(2.0f, config->loop_semitones * (1.0f / 12.0f));
+    const float step = (1.0f - ratio) / config->shift_window_frames *
+        4294967296.0f;
+    if (step >= 2147483647.0f) {
+        return 2147483647;
+    }
+    if (step <= -2147483648.0f) {
+        return -2147483647 - 1;
+    }
+    return (int32_t)step;
+}
+
 void audioif_feedback_delay_config_init(
     audioif_feedback_delay_config_t *config, uint32_t sample_rate,
     uint32_t line_frames) {
@@ -55,6 +109,17 @@ void audioif_feedback_delay_config_init(
     config->damping_hz = 0.0f;
     config->cut_hz = 0.0f;
     config->wow_hz = 0.0f;
+    // Everything below is off, and off has to mean *exactly* what this node
+    // did before it gained these: no table, no slew, no wet AM and no shift.
+    config->wow_shape = NULL;
+    config->wow_shape_shift = 0;
+    config->wow_phase_step = 0;
+    config->delay_slew_frames = 0.0f;
+    config->wow_am_depth = 0.0f;
+    config->loop_semitones = 0.0f;
+    config->loop_window_ms = 25.0f;
+    config->shift_step = 0;
+    shift_window_finish(config);
     audioif_feedback_delay_configure(config,
         AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN, 0.0f);
 }
@@ -112,6 +177,10 @@ void audioif_feedback_delay_configure(audioif_feedback_delay_config_t *config,
             config->wow_hz = value;
             config->wow_step = value <= 0.0f ? 0.0f :
                 2.0f * sinf(AUDIOIF_FEEDBACK_DELAY_PI * value / rate);
+            // The shape table's accumulator runs at the same rate as the
+            // magic circle, so the two stay in step and `wow_am_depth` reads
+            // the same cycle the delay is moving on.
+            config->wow_phase_step = phase_step_for(value, rate);
             break;
         case AUDIOIF_FEEDBACK_DELAY_OPT_WOW_DEPTH_MS:
             config->wow_depth_frames =
@@ -122,6 +191,29 @@ void audioif_feedback_delay_configure(audioif_feedback_delay_config_t *config,
             break;
         case AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_DRIVE:
             config->loop_drive = clampf(value, 0.0f, 1.0f);
+            break;
+        case AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_SLEW:
+            // Delay-seconds per second, so it is the same number at any
+            // sample rate: 1 is the read head standing still while the write
+            // head runs, which is an octave for as long as the move lasts.
+            // Clamped at 64 -- four octaves either way is past anything a
+            // tape machine does, and it keeps a single frame from crossing
+            // the whole line.
+            config->delay_slew_frames = clampf(value, 0.0f, 64.0f);
+            break;
+        case AUDIOIF_FEEDBACK_DELAY_OPT_WOW_AM_DEPTH:
+            config->wow_am_depth = clampf(value, 0.0f, 1.0f);
+            break;
+        case AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_SEMITONES:
+            // Two octaves either way. Past that the crossfade is doing more
+            // than the signal is.
+            config->loop_semitones = clampf(value, -24.0f, 24.0f);
+            config->shift_step = shift_step_for(config);
+            break;
+        case AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_WINDOW_MS:
+            config->loop_window_ms = clampf(value, 1.0f, 250.0f);
+            shift_window_finish(config);
+            config->shift_step = shift_step_for(config);
             break;
         case AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN: {
             // -1 sends both channels into the left line and nothing into the
@@ -152,6 +244,31 @@ void audioif_feedback_delay_config_finish(
         AUDIOIF_FEEDBACK_DELAY_OPT_CUT_HZ, config->cut_hz);
     audioif_feedback_delay_configure(config,
         AUDIOIF_FEEDBACK_DELAY_OPT_WOW_HZ, config->wow_hz);
+    shift_window_finish(config);
+    audioif_feedback_delay_configure(config,
+        AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_SEMITONES, config->loop_semitones);
+}
+
+bool audioif_feedback_delay_set_wow_shape(
+    audioif_feedback_delay_config_t *config, const int16_t *table,
+    uint32_t length) {
+    if (table == NULL) {
+        config->wow_shape = NULL;
+        config->wow_shape_shift = 0;
+        return true;
+    }
+    if (length < AUDIOIF_FEEDBACK_DELAY_WOW_SHAPE_MIN ||
+        length > AUDIOIF_FEEDBACK_DELAY_WOW_SHAPE_MAX ||
+        (length & (length - 1u)) != 0u) {
+        return false;
+    }
+    uint32_t shift = 0;
+    while ((1u << shift) < length) {
+        ++shift;
+    }
+    config->wow_shape = table;
+    config->wow_shape_shift = shift;
+    return true;
 }
 
 void audioif_feedback_delay_state_init(audioif_feedback_delay_state_t *state,
@@ -162,6 +279,11 @@ void audioif_feedback_delay_state_init(audioif_feedback_delay_state_t *state,
     state->cut_state[0] = state->cut_state[1] = 0.0f;
     state->wow_sine = 0.0f;
     state->wow_cosine = 1.0f;
+    state->wow_phase = 0;
+    state->shift_phase = 0;
+    // Not primed. The first block snaps the read head onto whatever delay is
+    // configured; only a change *after* that glides.
+    state->delay_current = -1.0f;
 }
 
 void audioif_feedback_delay_reset(audioif_feedback_delay_state_t *state,
@@ -193,6 +315,33 @@ static int16_t to_s16(float value) {
     return (int16_t)(value >= 0.0f ? value + 0.5f : value - 0.5f);
 }
 
+// One read position on the line: which two neighbours to interpolate between,
+// and how far. Pulled out of the loop body so the pitch shifter's two taps and
+// the plain read are the same arithmetic rather than two copies of it.
+typedef struct {
+    uint32_t near_frame;
+    uint32_t far_frame;
+    float fraction;
+} feedback_delay_tap_t;
+
+static feedback_delay_tap_t tap_for(
+    const audioif_feedback_delay_state_t *state, uint32_t length,
+    float offset) {
+    offset = clampf(offset, 1.0f, (float)length - 2.0f);
+    const uint32_t whole = (uint32_t)offset;
+    feedback_delay_tap_t tap;
+    tap.fraction = offset - (float)whole;
+    tap.near_frame = (state->write_frame + length - whole) % length;
+    tap.far_frame = (tap.near_frame + length - 1u) % length;
+    return tap;
+}
+
+static float read_tap(const int16_t *lane, const feedback_delay_tap_t *tap) {
+    const float near_sample = (float)lane[tap->near_frame];
+    return near_sample +
+        tap->fraction * ((float)lane[tap->far_frame] - near_sample);
+}
+
 void audioif_feedback_delay_process_s16(
     const audioif_feedback_delay_config_t *config,
     audioif_feedback_delay_state_t *state, int16_t *out, const int16_t *in,
@@ -202,30 +351,105 @@ void audioif_feedback_delay_process_s16(
     const float wet = config->mix < 1.0f ? config->mix : 1.0f;
     const float direct = 1.0f - config->cross_feed;
     const float crossed = config->cross_feed;
+    const float slew = config->delay_slew_frames;
+    const float am_depth = config->wow_am_depth;
+    const float window = config->shift_window_frames;
+    const bool shifting = config->loop_semitones != 0.0f;
+    // With no slew the read head is wherever it was told to be, so `offset`
+    // below is the same float it always was and every existing golden holds.
+    // A state that has never run is primed the same way, so turning the slew
+    // on at construction does not make the first block glide from nowhere.
+    if (slew <= 0.0f || state->delay_current < 0.0f) {
+        state->delay_current = config->delay_frames;
+    }
+    feedback_delay_tap_t near_tap = { 0u, 0u, 0.0f };
+    feedback_delay_tap_t far_tap = { 0u, 0u, 0.0f };
+    float near_gain = 1.0f;
+    float far_gain = 0.0f;
     for (uint32_t frame = 0; frame < frames; ++frame) {
         // Rotate the wow oscillator one step. Updating the sine first and
         // feeding the new value back into the cosine is what keeps this
-        // stable indefinitely; the naive pair drifts in amplitude.
+        // stable indefinitely; the naive pair drifts in amplitude. It is
+        // stepped whether or not a shape table is in use: `wow_am_depth`
+        // reads it, and skipping it would move the default path.
         state->wow_sine += config->wow_step * state->wow_cosine;
         state->wow_cosine -= config->wow_step * state->wow_sine;
 
-        float offset = config->delay_frames +
-            config->wow_depth_frames * state->wow_sine;
-        offset = clampf(offset, 1.0f, (float)length - 2.0f);
-        const uint32_t whole = (uint32_t)offset;
-        const float fraction = offset - (float)whole;
-        const uint32_t near_frame =
-            (state->write_frame + length - whole) % length;
-        const uint32_t far_frame =
-            (near_frame + length - 1u) % length;
+        // A bucket brigade's delay is the line over its clock, so the Small
+        // Clone's triangle on the clock arrives as a reciprocal on the delay
+        // and no sine can be it. With a table the shape is Python's to bake
+        // and this only looks it up.
+        float wow = state->wow_sine;
+        if (config->wow_shape != NULL) {
+            state->wow_phase += config->wow_phase_step;
+            const uint32_t bits = config->wow_shape_shift;
+            const uint32_t index = state->wow_phase >> (32u - bits);
+            const uint32_t mask = (1u << bits) - 1u;
+            const float fraction =
+                (float)(state->wow_phase << bits) * (1.0f / 4294967296.0f);
+            const float low = (float)config->wow_shape[index];
+            const float high = (float)config->wow_shape[(index + 1u) & mask];
+            // Q15, read the way the line is: a table is a waveform, not an
+            // index.
+            wow = (low + fraction * (high - low)) * (1.0f / 32768.0f);
+        }
+
+        // Walk the read head toward the delay it was asked for instead of
+        // jumping to it. A constant rate is a constant pitch offset for as
+        // long as the move lasts, which is what a tape machine's capstan and
+        // a bucket brigade's clock both do, and it is why a delay time can
+        // change without a click.
+        if (slew > 0.0f) {
+            const float target = config->delay_frames;
+            float current = state->delay_current;
+            if (current < target) {
+                current += slew;
+                if (current > target) {
+                    current = target;
+                }
+            } else if (current > target) {
+                current -= slew;
+                if (current < target) {
+                    current = target;
+                }
+            }
+            state->delay_current = current;
+        }
+
+        const float offset = state->delay_current +
+            config->wow_depth_frames * wow;
+        if (shifting) {
+            // Two taps half a window apart, each walking one window per
+            // crossfade turn, mixed with a triangular fade whose two halves
+            // sum to exactly one. That is a resampled read: the head advances
+            // at the pitch ratio while the line is written at unity, and the
+            // shift is inside the loop, so every pass rises again.
+            state->shift_phase += (uint32_t)config->shift_step;
+            const float turn =
+                (float)state->shift_phase * (1.0f / 4294967296.0f);
+            const float opposite =
+                (float)(state->shift_phase + 0x80000000u) *
+                (1.0f / 4294967296.0f);
+            near_gain = 2.0f * turn;
+            if (near_gain > 1.0f) {
+                near_gain = 2.0f - near_gain;
+            }
+            far_gain = 1.0f - near_gain;
+            near_tap = tap_for(state, length, offset + turn * window);
+            far_tap = tap_for(state, length, offset + opposite * window);
+        } else {
+            near_tap = tap_for(state, length, offset);
+        }
 
         float loop[2];
         const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
         for (uint32_t channel = 0; channel < channels; ++channel) {
             const int16_t *lane = state->line + (size_t)channel * length;
-            const float near_sample = (float)lane[near_frame];
-            const float delayed = near_sample +
-                fraction * ((float)lane[far_frame] - near_sample);
+            float delayed = read_tap(lane, &near_tap);
+            if (shifting) {
+                delayed = delayed * near_gain +
+                    read_tap(lane, &far_tap) * far_gain;
+            }
 
             float value = delayed;
             if (config->damping_coef > 0.0f) {
@@ -244,6 +468,17 @@ void audioif_feedback_delay_process_s16(
             loop[channel] = value;
         }
 
+        // The wow oscillator on the wet gain as well as on the delay. Tape
+        // and bucket-brigade level wobble is a loss, never a boost, so this
+        // dips to (1 - depth) and returns to unity -- and it is on the output
+        // only, never in the loop, so it cannot change what the feedback
+        // path does.
+        float wet_gain = wet;
+        if (am_depth > 0.0f) {
+            wet_gain = wet *
+                (1.0f - am_depth * 0.5f * (1.0f - state->wow_sine));
+        }
+
         for (uint32_t channel = 0; channel < channels; ++channel) {
             const float other = channels == 2u ? loop[1u - channel] : 0.0f;
             const float sent = loop[channel] * direct + other * crossed;
@@ -258,7 +493,7 @@ void audioif_feedback_delay_process_s16(
             // one: `input_pan` steers what goes round the loop, not what the
             // listener hears straight through.
             out[frame * channels + channel] =
-                to_s16(dry * source + wet * loop[channel]);
+                to_s16(dry * source + wet_gain * loop[channel]);
         }
         state->write_frame = (state->write_frame + 1u) % length;
     }
