@@ -37,7 +37,7 @@ Repository = "https://github.com/PyDevices/audioif"
 Issues = "https://github.com/PyDevices/audioif/issues"
 
 [tool.setuptools]
-py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho", "audioconvolve"]
+py-modules = ["audiocore", "synthio", "audiomixer", "audiofilters", "audiodelays", "audiofreeverb", "audiospeed", "audiodynamics", "audioroute", "audiomath", "audioecho", "audioconvolve", "audioshaper"]
 # Keep py-modules explicit: src/cpython is the root package directory now, and
 # an automatic scan there would also pick up anything else that lands in it.
 packages = ["audiorender"]
@@ -48,7 +48,7 @@ packages = ["audiorender"]
 # each depending on pydevices-audioif.
 
 # The CPython target is one directory: src/cpython holds the extension source,
-# the extension built in place, and the twelve modules that wrap it. They are
+# the extension built in place, and the thirteen modules that wrap it. They are
 # top-level modules once installed -- `import audiocore` -- so the "" entry
 # below is what remaps the root package, and it is also what puts a
 # `build_ext --inplace` .so beside the wrappers instead of at the repo root.
