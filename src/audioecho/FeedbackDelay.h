@@ -20,6 +20,9 @@
 typedef struct {
     audiosample_base_t base;
     mp_obj_t source;
+    // The `wow_shape` table, kept here so the collector can see it: the
+    // config borrows the samples and nothing else references the object.
+    mp_obj_t wow_shape;
     audioif_feedback_delay_config_t config;
     audioif_feedback_delay_state_t state;
     int16_t buffer[AUDIOIF_FEEDBACK_DELAY_FRAMES * 2];

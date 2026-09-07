@@ -180,6 +180,21 @@ envelope pair and a peak-hold on the slow one. What each is for, what it was
 measured doing, and what it cost:
 [docs/upstream-diff.md](docs/upstream-diff.md).
 
+`audioecho.FeedbackDelay` takes four further options, each off at its
+default. `wow_shape` swaps the built-in modulation sine for one period of
+your own — `int16` Q15, a power-of-two count from 2 to 4096 — because a
+bucket brigade's delay is its line length over its clock, so a triangle on
+the clock is a reciprocal on the delay and no sine is that. `delay_slew`
+walks the read head to a new `delay_ms` at a constant rate (delay-seconds
+per second) instead of jumping to it, which is both an Echoplex's varispeed
+and the reason a delay-time knob can be turned mid-take without a click.
+`wow_am_depth` puts the same oscillator on the wet gain, dipping only.
+`loop_semitones` pitch-shifts the line read *inside* the loop, so every
+repeat rises again — a shimmer, which chaining `audiodelays.PitchShift`
+after a delay is not. See
+[docs/upstream-diff.md](docs/upstream-diff.md) for what each was asked for
+and what it measures.
+
 ## Status
 
 **MicroPython:** all module tiers ported and oracle-diffed byte-for-byte

@@ -39,6 +39,13 @@ PCM -- the block at which a tail reaches exact zero, and the depth of a null
 at zero feedback -- because those two are the reason the module was added and
 a hash over PCM alone would not say whether either still held.
 
+`audioecho` is split the same way and for the same reason, even though both
+halves are the port's: one hash covers a probe's whole output, so a case
+appended to feedback_delay_probe.py would move the very number that says
+`wow_shape`, `delay_slew`, `wow_am_depth` and `loop_semitones` changed
+nothing. They live in feedback_delay_options_probe.py, whose first two cases
+render exactly what that file's `plain` renders.
+
 Two of those five are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
 disagreement between two builds would not stay one ulp; and every convolver
@@ -67,6 +74,7 @@ PROBES = (
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
     ("multiply_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
+    ("feedback_delay_options_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
     ("dynamics_options_probe.py", "audiodynamics", None, {}),
     ("convolve_probe.py", "audioconvolve", None, {}),

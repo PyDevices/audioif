@@ -24,6 +24,29 @@
 // per buffer, about 187 Hz at 48 kHz, so it steps rather than glides and the
 // doppler that makes tape wow sound like tape is not there.
 //
+// Four later options, every one of them off by default, so a node built the
+// way it was before them renders the same bytes (tests/parity's `wow`,
+// `everything` and every other existing case are unchanged across them):
+//
+//   * **`wow_shape`.** The modulation was a sine and only a sine. A bucket
+//     brigade's delay is its line length over twice its clock, so a triangle
+//     on the *clock* -- the Small Clone -- arrives as a reciprocal on the
+//     delay, which no sine is. The shape is one period of int16 Q15 the
+//     caller computes in Python; C keeps a phase accumulator and looks it up.
+//   * **`delay_slew`.** A change of `delay_ms` used to land in one jump, read
+//     unsmoothed, which is a click on the block boundary and no pitch bend at
+//     all. With a slew the read head walks to the new time at a constant
+//     rate, which is a constant pitch offset for exactly as long as the move
+//     lasts -- an Echoplex's varispeed, and the reason a delay-time knob can
+//     be turned while something is playing.
+//   * **`wow_am_depth`.** The wow oscillator on the wet gain as well as on
+//     the delay, dipping only, never boosting, and outside the loop.
+//   * **`loop_semitones`.** The line read pitch-shifted *inside* the loop, by
+//     two taps half a window apart under a triangular crossfade, so every
+//     pass rises again. That is a shimmer, and no arrangement of the existing
+//     nodes is one: `audiodelays.PitchShift` after a delay shifts the sum of
+//     every repeat once, not each repeat one more time.
+//
 // The pulling loop is not here, for the same reason it is not in
 // audioif_dynamics.c: each runtime reaches its audio graph differently.
 //
@@ -50,7 +73,22 @@ typedef enum {
     AUDIOIF_FEEDBACK_DELAY_OPT_CROSS_FEED,
     AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_DRIVE,
     AUDIOIF_FEEDBACK_DELAY_OPT_INPUT_PAN,
+    // Appended, never inserted: `audioecho.py` maps option names to these
+    // numbers and the CPython binding range-checks against the last one, so
+    // renumbering an existing option would silently change what an installed
+    // wheel configures.
+    AUDIOIF_FEEDBACK_DELAY_OPT_DELAY_SLEW,
+    AUDIOIF_FEEDBACK_DELAY_OPT_WOW_AM_DEPTH,
+    AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_SEMITONES,
+    AUDIOIF_FEEDBACK_DELAY_OPT_LOOP_WINDOW_MS,
 } audioif_feedback_delay_option_t;
+
+//: A `wow_shape` table is one period, so its length has to be a power of two
+//: for the phase accumulator's shift-and-mask to index it. Two is the
+//: shortest thing that is still a waveform; 4096 is 8 KB, which is already
+//: more than a board wants to spend on an LFO.
+#define AUDIOIF_FEEDBACK_DELAY_WOW_SHAPE_MIN 2u
+#define AUDIOIF_FEEDBACK_DELAY_WOW_SHAPE_MAX 4096u
 
 //: Everything derived from the constructor/`set()` arguments. Held apart from
 //: the running state so `set()` can rewrite it mid-stream without disturbing
@@ -85,6 +123,30 @@ typedef struct {
     float damping_hz;
     float cut_hz;
     float wow_hz;
+    // One period of the modulation, Q15, or NULL for the built-in sine. The
+    // config only *borrows* it: the bindings own the memory and have to keep
+    // it alive for as long as the node points at it.
+    const int16_t *wow_shape;
+    // log2 of the table's length, so indexing is a shift and a mask.
+    uint32_t wow_shape_shift;
+    // Turns per frame in Q32, from `wow_hz`. The magic-circle pair carries no
+    // phase index, so the table needs an accumulator of its own.
+    uint32_t wow_phase_step;
+    // Frames of delay change per frame -- delay-seconds per second, which is
+    // sample-rate independent. 0 means a `delay_ms` change lands in one jump,
+    // which is what this node did before the option existed.
+    float delay_slew_frames;
+    // 0..1. Depth of the wet-gain dip the wow oscillator drives.
+    float wow_am_depth;
+    // Pitch the loop is shifted by on each pass, -24..+24, 0 = off.
+    float loop_semitones;
+    float loop_window_ms;
+    // The crossfade window in frames, from `loop_window_ms`, the sample rate
+    // and the line's length.
+    float shift_window_frames;
+    // Turns per frame in Q32 for the crossfade, from `loop_semitones` and the
+    // window. Signed: shifting down runs it backwards.
+    int32_t shift_step;
 } audioif_feedback_delay_config_t;
 
 typedef struct {
@@ -98,6 +160,13 @@ typedef struct {
     // which is two multiplies where sinf() would be a library call.
     float wow_sine;
     float wow_cosine;
+    // Phase of the `wow_shape` table, and of the pitch shifter's crossfade.
+    uint32_t wow_phase;
+    uint32_t shift_phase;
+    // Where the read head actually is while `delay_slew` walks it toward
+    // `config->delay_frames`. Negative means "never primed": a fresh state
+    // starts *on* the target rather than gliding up to it from nowhere.
+    float delay_current;
 } audioif_feedback_delay_state_t;
 
 void audioif_feedback_delay_config_init(
@@ -113,6 +182,14 @@ void audioif_feedback_delay_configure(audioif_feedback_delay_config_t *config,
 // it, and once after construction.
 void audioif_feedback_delay_config_finish(
     audioif_feedback_delay_config_t *config);
+
+// Borrows `table` -- the caller keeps it alive. `length` is in samples and
+// must be a power of two between AUDIOIF_FEEDBACK_DELAY_WOW_SHAPE_MIN and
+// _MAX; a NULL table puts the built-in sine back. Returns false, and changes
+// nothing, when the length is not one this can index.
+bool audioif_feedback_delay_set_wow_shape(
+    audioif_feedback_delay_config_t *config, const int16_t *table,
+    uint32_t length);
 
 void audioif_feedback_delay_set_channel_count(
     audioif_feedback_delay_config_t *config, uint32_t channel_count);
