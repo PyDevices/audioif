@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""audiodynamics, audioroute, audiomath, audioecho and audioconvolve parity:
-what the originals rendered, and what the ports render now.
+"""audiodynamics, audioroute, audiomath, audioecho, audioshaper and
+audioconvolve parity: what the originals rendered, and what the ports
+render now.
 
     verify_dsp.py --capture-old     record the goldens from the original nodes
     verify_dsp.py                    hold the ports to them
@@ -12,25 +13,28 @@ wants a shared memory mapping a VST host created.
 
 One hash per probe covers every interpreter, unlike the instrument goldens.
 The arithmetic here is entirely inside shared/audioif_dynamics.c,
-audioif_splitter.c, audioif_multiply.c, audioif_feedback_delay.c and
-audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
-one -- the same C the CPython extension links, so a disagreement between two
-interpreters would itself be the finding.
+audioif_splitter.c, audioif_multiply.c, audioif_feedback_delay.c,
+audioif_shaper.c and audioif_convolve.c -- with audioif_fft.c and
+audioif_trig.c under that last one -- the same C the CPython extension links,
+so a disagreement between two interpreters would itself be the finding.
 
-Four of the seven probes are held against no oracle, because there is nothing
-older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
-audioif's own modules, with no ancestor in CircuitPython or in the engine, and
-neither have `Dynamics`' lookahead and true-peak options -- which is why those
-get a fixture of their own rather than joining dynamics_probe.py, that one
-being held against `vstaudio_dsp.c` compiled unmodified and so restricted to
-forms the original accepts. Their goldens are captured from the port under
-CPython, and what they prove is cross-interpreter agreement and no accidental
-change over time, not fidelity to something older.
+Five of the eight probes are held against no oracle, because there is nothing
+older to hold them to. `audiomath`, `audioecho`, `audioshaper` and
+`audioconvolve` are audioif's own modules, with no ancestor in CircuitPython
+or in the engine, and neither have `Dynamics`' lookahead and true-peak
+options -- which is why those get a fixture of their own rather than joining
+dynamics_probe.py, that one being held against `vstaudio_dsp.c` compiled
+unmodified and so restricted to forms the original accepts. Their goldens are
+captured from the port under CPython, and what they prove is cross-interpreter
+agreement and no accidental change over time, not fidelity to something
+older.
 
-Two of those four are unusually sensitive, which is most of the reason for
+Three of those five are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
-disagreement between two builds would not stay one ulp; and every convolver
-output sample is a sum of hundreds of float products through two transforms.
+disagreement between two builds would not stay one ulp; the waveshaper's
+half-bands are all-pass recursions running at up to eight times the sample
+rate; and every convolver output sample is a sum of hundreds of float products
+through two transforms.
 """
 
 import argparse
@@ -56,6 +60,7 @@ PROBES = (
     ("multiply_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
+    ("waveshaper_probe.py", "audioshaper", None, {}),
     ("convolve_probe.py", "audioconvolve", None, {}),
 )
 
