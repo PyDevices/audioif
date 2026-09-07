@@ -406,6 +406,7 @@ insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_dynamics.c \
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_multiply.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_suboctave.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_midside.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_feedback_delay.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_shaper.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_ladder.c \\'
