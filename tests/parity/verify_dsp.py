@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""audiodynamics, audioroute, audiomath, audioecho and audioconvolve parity:
-what the originals rendered, and what the ports render now.
+"""audiodynamics, audioroute, audiomath, audioecho, audioconvolve and
+audiobiquad parity: what the originals rendered, and what the ports render
+now.
 
     verify_dsp.py --capture-old     record the goldens from the original nodes
     verify_dsp.py                    hold the ports to them
@@ -17,17 +18,22 @@ audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
 one -- the same C the CPython extension links, so a disagreement between two
 interpreters would itself be the finding.
 
-Four of the seven probes are held against no oracle, because there is nothing
-older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
-audioif's own modules, with no ancestor in CircuitPython or in the engine, and
-neither have `Dynamics`' lookahead and true-peak options -- which is why those
-get a fixture of their own rather than joining dynamics_probe.py, that one
-being held against `vstaudio_dsp.c` compiled unmodified and so restricted to
-forms the original accepts. Their goldens are captured from the port under
-CPython, and what they prove is cross-interpreter agreement and no accidental
-change over time, not fidelity to something older.
+Five of the eight probes are held against no oracle, because there is nothing
+older to hold them to. `audiomath`, `audioecho`, `audioconvolve` and
+`audiobiquad` are audioif's own modules, with no ancestor in CircuitPython or
+in the engine, and neither have `Dynamics`' lookahead and true-peak options --
+which is why those get a fixture of their own rather than joining
+dynamics_probe.py, that one being held against `vstaudio_dsp.c` compiled
+unmodified and so restricted to forms the original accepts. Their goldens are
+captured from the port under CPython, and what they prove is cross-interpreter
+agreement and no accidental change over time, not fidelity to something older.
 
-Two of those four are unusually sensitive, which is most of the reason for
+`audiobiquad` is the one whose probe also prints invariants rather than only
+PCM -- the block at which a tail reaches exact zero, and the depth of a null
+at zero feedback -- because those two are the reason the module was added and
+a hash over PCM alone would not say whether either still held.
+
+Two of those five are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
 disagreement between two builds would not stay one ulp; and every convolver
 output sample is a sum of hundreds of float products through two transforms.
@@ -57,6 +63,7 @@ PROBES = (
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
     ("convolve_probe.py", "audioconvolve", None, {}),
+    ("filter_f32_probe.py", "audiobiquad", None, {}),
 )
 
 DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"
@@ -106,8 +113,9 @@ def capture(args):
     fixture = {
         "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, "
                   "compiled unmodified (see build_vstaudio_oracle.sh)",
-        "no_oracle": "audiomath and audioecho are audioif's own; their "
-                     "probes are captured from the port under CPython",
+        "no_oracle": "audiomath, audioecho, audioconvolve and audiobiquad "
+                     "are audioif's own; their probes are captured from the "
+                     "port under CPython",
         "probes": {},
     }
     for probe, module, old_module, _skips in PROBES:

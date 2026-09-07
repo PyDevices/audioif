@@ -41,6 +41,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_filter_f32.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
@@ -174,15 +175,17 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
 # --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter),
-#     audiomath (Multiply), audioecho (FeedbackDelay) and audioconvolve
-#     (Convolver) ---
+#     audiomath (Multiply), audioecho (FeedbackDelay), audioconvolve
+#     (Convolver) and audiobiquad (Biquad, AllPass) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
 # library; the rest are audioif's own -- audiomath is the only way to modulate
 # a stream at audio rate, audioecho puts a filter inside a delay's feedback
-# loop, and audioconvolve applies a measured impulse response rather than
-# imitating one. See docs/upstream-diff.md.
+# loop, audioconvolve applies a measured impulse response rather than
+# imitating one, and audiobiquad filters in float so a tail reaches exact
+# zero, which neither ported kernel can (audioif#23, #36). See
+# docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
     $(MPAUDIO_SRC_DIR)/audiodynamics/module.c
@@ -199,6 +202,10 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioconvolve/Convolver.c \
     $(MPAUDIO_SRC_DIR)/audioconvolve/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audiobiquad/Biquad.c \
+    $(MPAUDIO_SRC_DIR)/audiobiquad/AllPass.c \
+    $(MPAUDIO_SRC_DIR)/audiobiquad/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #

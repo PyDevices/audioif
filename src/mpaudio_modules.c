@@ -29,3 +29,6 @@
 // audiodynamics / audioroute (tier 6) are the first modules here that are not
 // CircuitPython ports at all -- they come from micropython-vst3's `vstaudio`
 // usermod. See audiodynamics/module.c, audioroute/module.c.
+
+// audiomath, audioecho, audioconvolve and audiobiquad (tier 6) are audioif's
+// own, with no ancestor anywhere. See each module.c.

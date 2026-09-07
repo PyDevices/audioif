@@ -1,0 +1,271 @@
+// audiobiquad.AllPass. See AllPass.h for provenance.
+// SPDX-License-Identifier: MIT
+
+#include "audiobiquad/AllPass.h"
+
+#include <string.h>
+
+#include "cp_compat/objproperty.h"
+#include "py/runtime.h"
+
+static mp_obj_t audiobiquad_allpass_make_new(const mp_obj_type_t *type,
+    size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+    enum { ARG_stages, ARG_frequency, ARG_feedback, ARG_mix, ARG_sample_rate,
+           ARG_channel_count };
+    static const mp_arg_t allowed_args[] = {
+        { MP_QSTR_stages, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 4} },
+        { MP_QSTR_frequency, MP_ARG_OBJ | MP_ARG_KW_ONLY,
+          {.u_obj = MP_ROM_INT(1000)} },
+        { MP_QSTR_feedback, MP_ARG_OBJ | MP_ARG_KW_ONLY,
+          {.u_obj = MP_ROM_INT(0)} },
+        { MP_QSTR_mix, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_ROM_INT(1)} },
+        { MP_QSTR_sample_rate, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 48000} },
+        { MP_QSTR_channel_count, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 2} },
+    };
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
+    mp_arg_parse_all_kw_array(n_args, n_kw, all_args,
+        MP_ARRAY_SIZE(allowed_args), allowed_args, args);
+
+    mp_int_t channel_count = args[ARG_channel_count].u_int;
+    if (channel_count < 1 || channel_count > 2) {
+        mp_raise_ValueError(MP_ERROR_TEXT("channel_count must be 1 or 2"));
+    }
+    if (args[ARG_sample_rate].u_int < 1) {
+        mp_raise_ValueError(MP_ERROR_TEXT("sample_rate must be at least 1"));
+    }
+    mp_int_t stages = args[ARG_stages].u_int;
+    if (stages < 1 || stages > (mp_int_t)AUDIOIF_FILTER_F32_MAX_STAGES) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "stages must be between 1 and audiobiquad.MAX_STAGES"));
+    }
+
+    audiobiquad_allpass_obj_t *self =
+        mp_obj_malloc(audiobiquad_allpass_obj_t, type);
+    self->base.sample_rate = (uint32_t)args[ARG_sample_rate].u_int;
+    self->base.max_buffer_length = sizeof(self->buffer);
+    self->base.bits_per_sample = 16;
+    self->base.channel_count = (uint8_t)channel_count;
+    self->base.samples_signed = 1;
+    self->base.single_buffer = false;
+    self->source = MP_OBJ_NULL;
+    self->pending = NULL;
+    self->pending_frames = 0;
+
+    audioif_allpass_f32_config_init(&self->config, self->base.sample_rate,
+        (uint32_t)channel_count, (uint32_t)stages);
+    // `stages` sizes the state, so it is fixed at construction and the state
+    // is allocated by the binding -- the DSP layer only borrows the pointer,
+    // the same division of labour audioecho and audioconvolve use.
+    const uint32_t count = (uint32_t)(channel_count * stages);
+    float *lanes = m_malloc((size_t)count * sizeof(float));
+    memset(lanes, 0, (size_t)count * sizeof(float));
+    audioif_allpass_f32_state_init(&self->state, lanes, count);
+
+    synthio_block_assign_slot(args[ARG_frequency].u_obj, &self->frequency,
+        MP_QSTR_frequency);
+    synthio_block_assign_slot(args[ARG_feedback].u_obj, &self->feedback,
+        MP_QSTR_feedback);
+    synthio_block_assign_slot(args[ARG_mix].u_obj, &self->mix, MP_QSTR_mix);
+    audioif_allpass_f32_config_finish(&self->config);
+    return MP_OBJ_FROM_PTR(self);
+}
+
+// Read every block input and hand the values to the kernel, which clamps
+// them -- including `feedback`, which is bounded only for stability
+// (-0.99..0.99) and so, unlike audiofilters/Phaser.c:211's 0.1..0.9, lets
+// zero be zero.
+static void allpass_refresh(audiobiquad_allpass_obj_t *self) {
+    audioif_allpass_f32_configure(&self->config,
+        AUDIOIF_ALLPASS_F32_OPT_FREQUENCY,
+        (float)synthio_block_slot_get(&self->frequency));
+    audioif_allpass_f32_configure(&self->config,
+        AUDIOIF_ALLPASS_F32_OPT_FEEDBACK,
+        (float)synthio_block_slot_get(&self->feedback));
+    audioif_allpass_f32_configure(&self->config, AUDIOIF_ALLPASS_F32_OPT_MIX,
+        (float)synthio_block_slot_get(&self->mix));
+    audioif_allpass_f32_config_finish(&self->config);
+}
+
+// One chunk of the block layer, then the values it produced.
+static void allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
+    uint32_t frames) {
+    shared_bindings_synthio_lfo_tick(self->base.sample_rate,
+        (uint16_t)frames);
+    allpass_refresh(self);
+}
+
+static mp_obj_t audiobiquad_allpass_play(mp_obj_t self_in, mp_obj_t sample) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    (void)audiosample_check(sample);
+    self->source = sample;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_2(audiobiquad_allpass_play_obj,
+    audiobiquad_allpass_play);
+
+static mp_obj_t audiobiquad_allpass_stop(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    self->source = MP_OBJ_NULL;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_stop_obj,
+    audiobiquad_allpass_stop);
+
+static mp_obj_t audiobiquad_allpass_clear(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audioif_allpass_f32_reset(&self->state);
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_clear_obj,
+    audiobiquad_allpass_clear);
+
+static mp_obj_t audiobiquad_allpass_obj_get_playing(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return mp_obj_new_bool(self->source != MP_OBJ_NULL);
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_playing_obj,
+    audiobiquad_allpass_obj_get_playing);
+MP_PROPERTY_GETTER(audiobiquad_allpass_playing_obj,
+    (mp_obj_t)&audiobiquad_allpass_get_playing_obj);
+
+#define ALLPASS_SLOT_PROPERTY(name) \
+    static mp_obj_t audiobiquad_allpass_obj_get_##name(mp_obj_t self_in) { \
+        audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in); \
+        return self->name.obj; \
+    } \
+    static MP_DEFINE_CONST_FUN_OBJ_1( \
+        audiobiquad_allpass_get_##name##_obj, \
+        audiobiquad_allpass_obj_get_##name); \
+    static mp_obj_t audiobiquad_allpass_obj_set_##name(mp_obj_t self_in, \
+        mp_obj_t value) { \
+        audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in); \
+        synthio_block_assign_slot(value, &self->name, MP_QSTR_##name); \
+        return mp_const_none; \
+    } \
+    static MP_DEFINE_CONST_FUN_OBJ_2( \
+        audiobiquad_allpass_set_##name##_obj, \
+        audiobiquad_allpass_obj_set_##name); \
+    MP_PROPERTY_GETSET(audiobiquad_allpass_##name##_obj, \
+        (mp_obj_t)&audiobiquad_allpass_get_##name##_obj, \
+        (mp_obj_t)&audiobiquad_allpass_set_##name##_obj)
+
+ALLPASS_SLOT_PROPERTY(frequency);
+ALLPASS_SLOT_PROPERTY(feedback);
+ALLPASS_SLOT_PROPERTY(mix);
+
+static mp_obj_t audiobiquad_allpass_obj_get_stages(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return MP_OBJ_NEW_SMALL_INT(self->config.stages);
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_stages_obj,
+    audiobiquad_allpass_obj_get_stages);
+MP_PROPERTY_GETTER(audiobiquad_allpass_stages_obj,
+    (mp_obj_t)&audiobiquad_allpass_get_stages_obj);
+
+// Reads the block inputs but does not advance them, so looking at this does
+// not move an LFO along.
+static mp_obj_t audiobiquad_allpass_obj_get_coefficient(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    allpass_refresh(self);
+    return mp_obj_new_float((mp_float_t)self->config.coefficient);
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_coefficient_obj,
+    audiobiquad_allpass_obj_get_coefficient);
+MP_PROPERTY_GETTER(audiobiquad_allpass_coefficient_obj,
+    (mp_obj_t)&audiobiquad_allpass_get_coefficient_obj);
+
+static audioio_get_buffer_result_t audiobiquad_allpass_get_buffer(
+    mp_obj_t self_in, bool single_channel_output, uint8_t channel,
+    uint8_t **buffer, uint32_t *buffer_length) {
+    (void)single_channel_output;
+    (void)channel;
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    uint32_t produced = 0;
+    while (produced < AUDIOIF_FILTER_F32_FRAMES) {
+        if (self->pending_frames == 0) {
+            if (self->source == MP_OBJ_NULL) {
+                break;
+            }
+            uint8_t *raw = NULL;
+            uint32_t raw_bytes = 0;
+            audioio_get_buffer_result_t result = audiosample_get_buffer(
+                self->source, false, 0, &raw, &raw_bytes);
+            const uint32_t width = 2u * self->base.channel_count;
+            if (result == GET_BUFFER_ERROR || raw == NULL ||
+                raw_bytes < width) {
+                break;
+            }
+            self->pending = (const int16_t *)raw;
+            self->pending_frames = raw_bytes / width;
+        }
+        uint32_t run = AUDIOIF_FILTER_F32_FRAMES - produced;
+        if (run > self->pending_frames) {
+            run = self->pending_frames;
+        }
+        allpass_apply_blocks(self, run);
+        audioif_allpass_f32_process_s16(&self->config, &self->state,
+            &self->buffer[produced * self->base.channel_count],
+            self->pending, run);
+        self->pending += run * self->base.channel_count;
+        self->pending_frames -= run;
+        produced += run;
+    }
+    if (produced == 0) {
+        memset(self->buffer, 0, sizeof(self->buffer));
+        produced = AUDIOIF_FILTER_F32_FRAMES;
+    }
+    *buffer = (uint8_t *)self->buffer;
+    *buffer_length = produced * 2u * self->base.channel_count;
+    return GET_BUFFER_MORE_DATA;
+}
+
+static void audiobiquad_allpass_reset_buffer(mp_obj_t self_in,
+    bool single_channel_output, uint8_t channel) {
+    (void)single_channel_output;
+    (void)channel;
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    self->pending = NULL;
+    self->pending_frames = 0;
+    audioif_allpass_f32_reset(&self->state);
+}
+
+static const mp_rom_map_elem_t audiobiquad_allpass_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiobiquad_allpass_play_obj) },
+    { MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&audiobiquad_allpass_stop_obj) },
+    { MP_ROM_QSTR(MP_QSTR_clear),
+      MP_ROM_PTR(&audiobiquad_allpass_clear_obj) },
+    { MP_ROM_QSTR(MP_QSTR_playing),
+      MP_ROM_PTR(&audiobiquad_allpass_playing_obj) },
+    { MP_ROM_QSTR(MP_QSTR_stages),
+      MP_ROM_PTR(&audiobiquad_allpass_stages_obj) },
+    { MP_ROM_QSTR(MP_QSTR_frequency),
+      MP_ROM_PTR(&audiobiquad_allpass_frequency_obj) },
+    { MP_ROM_QSTR(MP_QSTR_feedback),
+      MP_ROM_PTR(&audiobiquad_allpass_feedback_obj) },
+    { MP_ROM_QSTR(MP_QSTR_mix), MP_ROM_PTR(&audiobiquad_allpass_mix_obj) },
+    { MP_ROM_QSTR(MP_QSTR_coefficient),
+      MP_ROM_PTR(&audiobiquad_allpass_coefficient_obj) },
+    AUDIOSAMPLE_FIELDS,
+};
+static MP_DEFINE_CONST_DICT(audiobiquad_allpass_locals,
+    audiobiquad_allpass_locals_table);
+
+static const audiosample_p_t audiobiquad_allpass_proto = {
+    MP_PROTO_IMPLEMENT(MP_QSTR_protocol_audiosample)
+    .reset_buffer = audiobiquad_allpass_reset_buffer,
+    .get_buffer = audiobiquad_allpass_get_buffer,
+};
+
+MP_DEFINE_CONST_OBJ_TYPE(
+    audiobiquad_allpass_type,
+    MP_QSTR_AllPass,
+    MP_TYPE_FLAG_HAS_SPECIAL_ACCESSORS,
+    make_new, audiobiquad_allpass_make_new,
+    attr, cp_compat_attr,
+    locals_dict, &audiobiquad_allpass_locals,
+    protocol, &audiobiquad_allpass_proto
+    );

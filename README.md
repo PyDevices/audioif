@@ -64,7 +64,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
-`audiomath`, `audioecho`, `audioconvolve`, and the `audiorender` package.
+`audiomath`, `audioecho`, `audioconvolve`, `audiobiquad`, and the
+`audiorender` package.
 `audiomp3` remains firmware-only. The distribution declares no *required*
 runtime dependencies and does not itself publish an `audioif` import; its
 version is the `VERSION` file, which is also what `_audioif.__version__`
@@ -111,15 +112,62 @@ those packages installed.
 
 ## Additions beyond CircuitPython
 
-Five things here are not CircuitPython's. `audiodynamics` (compression,
+Six things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute` (fan one
 stream out to parallel branches) come from micropython-vst3's audio engine,
 which had them and CircuitPython does not. `audiomath` (multiply one stream
 by another — ring and amplitude modulation), `audioecho` (a delay with a
-filter, a soft-clip and a cross-feed inside its feedback loop) and
+filter, a soft-clip and a cross-feed inside its feedback loop),
 `audioconvolve` (apply a measured or synthesized impulse response, by
-partitioned FFT) have no ancestor anywhere and are audioif's own.
-`apply_cp_patches.sh` adds all five to a CircuitPython tree too.
+partitioned FFT) and `audiobiquad` (below) have no ancestor anywhere and are
+audioif's own. `apply_cp_patches.sh` adds all six to a CircuitPython tree
+too.
+
+### `audiobiquad` — filters whose tails reach exact zero
+
+`audiofilters.Filter` (over `synthio.Biquad`) and `audiofilters.Phaser` are
+ported CircuitPython and their recursions are integer. Both have states that
+reproduce themselves: fed silence after a burst, they can hold a constant of
+one to a few LSB for ever. `audiobiquad` is the same two filters with
+`float` state and a flush of anything below 1e-20, so a tail decays to zero
+and stays there — and its all-pass feedback is not clamped to `0.1..0.9`, so
+zero is zero and a feedback-free phaser's notches are true nulls.
+
+```python
+import audiobiquad, synthio
+
+eq = audiobiquad.Biquad(mode=audiobiquad.PEAKING_EQ, frequency=3200,
+                        Q=1.2, gain_db=-4.0, sample_rate=48000)
+eq.play(source)
+
+sweep = synthio.LFO(rate=0.4, scale=400.0, offset=900.0)
+phase = audiobiquad.AllPass(stages=4, frequency=sweep, feedback=0.0,
+                            mix=0.5, sample_rate=48000)
+phase.play(eq)
+```
+
+| | `Biquad` | `AllPass` |
+|---|---|---|
+| constructor | `mode`, `frequency`, `Q`, `gain_db`, `mix`, `sample_rate`, `channel_count` | `stages`, `frequency`, `feedback`, `mix`, `sample_rate`, `channel_count` |
+| block inputs | `frequency`, `Q`, `gain_db`, `mix` | `frequency`, `feedback`, `mix` |
+| fixed at construction | `sample_rate`, `channel_count` | those, plus `stages` (it sizes the state) |
+| methods | `play`, `stop`, `clear` | `play`, `stop`, `clear` |
+| read-only | `playing`, `coefficients` | `playing`, `stages`, `coefficient` |
+| latency | 0 samples | 0 samples |
+
+`mode` is one of `LOW_PASS`, `HIGH_PASS`, `BAND_PASS`, `NOTCH`,
+`PEAKING_EQ`, `LOW_SHELF`, `HIGH_SHELF` — numbered exactly as
+`synthio.FilterMode` numbers them, so either can be handed to either.
+`mix` crossfades: 0 is a wire, 1 is the filtered signal alone; for an
+all-pass cascade 0.5 is the equal sum a script phaser makes, and where its
+notches are deepest. `AllPass`'s `frequency` really is the frequency at
+which one stage's phase passes −90°, so nothing has to pre-warp it. Both
+nodes hand out 256 frames at a time, sit in an audiosample chain like any
+other effect, and never report themselves finished — a starved chain gets
+silence. `Q` is bounded to 0.05..60 and `feedback` to ±0.99: a pole on the
+unit circle is a filter that never stops ringing, which is the one thing
+this module exists to avoid. See
+[docs/upstream-diff.md](docs/upstream-diff.md) for the measurements.
 
 ## Status
 

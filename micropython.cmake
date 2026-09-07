@@ -38,6 +38,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multiply.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_feedback_delay.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_filter_f32.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_trig.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_fft.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_convolve.c
@@ -80,6 +81,9 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audioecho/module.c
     ${MPAUDIO_SRC_DIR}/audioconvolve/Convolver.c
     ${MPAUDIO_SRC_DIR}/audioconvolve/module.c
+    ${MPAUDIO_SRC_DIR}/audiobiquad/Biquad.c
+    ${MPAUDIO_SRC_DIR}/audiobiquad/AllPass.c
+    ${MPAUDIO_SRC_DIR}/audiobiquad/module.c
 )
 
 target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})
