@@ -64,7 +64,7 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
-`audiomath`, `audioecho`, `audioconvolve`, `audiobiquad`, and the
+`audiomath`, `audioecho`, `audioshaper`, `audioconvolve`, `audiobiquad`, and the
 `audiorender` package.
 `audiomp3` remains firmware-only. The distribution declares no *required*
 runtime dependencies and does not itself publish an `audioif` import; its
@@ -112,17 +112,18 @@ those packages installed.
 
 ## Additions beyond CircuitPython
 
-Seven things here are not CircuitPython's. `audiodynamics` (compression,
+Eight things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute.Splitter`
 (fan one stream out to parallel branches) come from micropython-vst3's audio
 engine, which had them and CircuitPython does not. `audiomath` (multiply one
 stream by another — ring and amplitude modulation; and divide one down in
 frequency — the analog octave divider), `audioecho` (a delay with
 a filter, a soft-clip and a cross-feed inside its feedback loop),
-`audioconvolve` (apply a measured or synthesized impulse response, by
-partitioned FFT), `audioroute.MidSide` (scale the difference between a stereo
+`audioshaper` (a waveshaper whose curve is data, applied above the
+sample rate), `audioconvolve` (apply a measured or synthesized impulse
+response, by partitioned FFT), `audioroute.MidSide` (scale the difference between a stereo
 pair's channels) and `audiobiquad` (below) have no ancestor anywhere and are
-audioif's own. `apply_cp_patches.sh` adds all seven to a CircuitPython tree
+audioif's own. `apply_cp_patches.sh` adds all eight to a CircuitPython tree
 too.
 
 ### `audiobiquad` — filters whose tails reach exact zero
@@ -209,6 +210,28 @@ source passes through: there is no difference to scale. It exists for the
 drive classes as much as for stereo width: a nonlinearity applied to a stereo
 pair intermodulates its channels, so a saturator that wants to keep its image
 drives the mid and leaves the side alone.
+
+`audioshaper.Waveshaper(sample_rate=…, curve=…, oversample=4,
+channel_count=2, **options)` is the newest of them, and everything but the
+first four moves in `set()`. `curve` is int16 Q15, at least two points,
+spanning −1..+1 of input: compute it once on a desktop and ship it as data,
+never rebuild it on a board, whose float is single-precision where the
+desktop's is double. `oversample` is 1, 2, 4 or 8 — the shaping happens there,
+between a matched pair of polyphase all-pass half-bands, because a
+nonlinearity at the base rate folds the harmonics it makes above Nyquist
+straight back onto the signal. `pre_gain` is the drive knob (gain into one
+normalised curve, never a curve rebuilt per knob move), `bias` moves the
+operating point, `post_gain` follows the curve, and `mix` is a straight 0..1
+crossfade. `hysteresis` is **off by default**; above zero it gives the curve a
+memory, so a slow signal in and out traces two paths and encloses an area,
+with `hysteresis_width` its half-width as a fraction of full scale *at the
+input* and `hysteresis_bias` splitting that between the rising and falling
+branches. `audioshaper.GROUP_DELAY_SAMPLES` carries the measured group delay
+per factor — 0, 2.2, 3.3 and 3.9 base samples — for a component that has to
+report its latency. Why each of those is the shape it is, and what the
+oversampling measures:
+[docs/upstream-diff.md](docs/upstream-diff.md), "`audioshaper`: audioif's own,
+and the two things a fixed curve cannot be".
 
 ## Status
 

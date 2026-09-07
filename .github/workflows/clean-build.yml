@@ -70,7 +70,7 @@ jobs:
           ./micropython/ports/unix/build-standard/micropython -c "
           import audiocore, synthio, audiomixer, audiofilters, audiodelays
           import audiomp3, audiodynamics, audioroute, audiomath, audioecho
-          import audiofreeverb, audiospeed, audioconvolve
+          import audiofreeverb, audiospeed, audioconvolve, audioshaper
           import ulab.numpy as np
           s = synthio.Synthesizer(sample_rate=8000); s.press(69)
           r, b = audiocore.get_buffer(s)

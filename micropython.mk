@@ -44,6 +44,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_suboctave.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_filter_f32.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_shaper.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
@@ -205,6 +206,9 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioecho/FeedbackDelay.c \
     $(MPAUDIO_SRC_DIR)/audioecho/module.c
+SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audioshaper/Waveshaper.c \
+    $(MPAUDIO_SRC_DIR)/audioshaper/module.c
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioconvolve/Convolver.c \
     $(MPAUDIO_SRC_DIR)/audioconvolve/module.c

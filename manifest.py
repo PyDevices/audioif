@@ -5,8 +5,8 @@ file for every build they make, so anything unconditional here would land in
 every interpreter in the workspace. There is nothing to put here:
 
 - The native modules (``audiocore``, ``synthio``, ``audiodynamics``,
-  ``audioroute``, ``audiomath``, ``audioecho``, ``audioconvolve``,
-  ``audiobiquad`` and the rest) are compiled into the firmware by
+  ``audioroute``, ``audiomath``, ``audioecho``, ``audioshaper``,
+  ``audioconvolve``, ``audiobiquad`` and the rest) are compiled into the firmware by
   ``micropython.mk`` /
   ``micropython.cmake`` (or, for CircuitPython, by ``apply_cp_patches.sh``).
   A manifest never sees them.

@@ -2,6 +2,7 @@
 
 - audiodynamics: twenty-one additive options and an external key input, for the effects program (#38)
 - audioroute: MidSide, a zero-latency mid/side matrix, exact identity at width=1
+- audioshaper: a new audioif-own module -- a table waveshaper, oversampled x2/x4/x8, with an off-by-default hysteresis option
 - packaging: numpy is the `render` extra, so a bare install says honestly what audiorender needs
 
 ## v0.2.0 (2026-09-03)

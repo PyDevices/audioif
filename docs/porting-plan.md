@@ -81,8 +81,8 @@ tier 3  audiomixer: Mixer, MixerVoice
 tier 4  effects: audiofilters, audiodelays, audiofreeverb, audiospeed
 tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
-tier 7  audiodynamics, audioroute, audiomath, audioecho, audioconvolve:
-        native, NOT ports
+tier 7  audiodynamics, audioroute, audiomath, audioecho, audioshaper,
+        audioconvolve: native, NOT ports
 tier 8  lib/: pure Python built on the tiers above (audiorender here;
         audioinstruments and audioeffects have since moved to audiocomponents)
 dep     ulab: cloned sibling in the parent workspace, pinned to CP's 6.5.2
@@ -102,19 +102,23 @@ and their source is micropython-vst3 rather than CircuitPython:
   application outside that plugin could use them and half of its own effects
   library could not be exercised offline at all.
 
-  `audiomath`, `audioecho`, `audioconvolve` and `audioroute.MidSide` have no
-  ancestor at all —
-  nothing upstream and nothing in the engine does any of the four. Nothing
+  `audiomath`, `audioecho`, `audioshaper`, `audioconvolve` and
+  `audioroute.MidSide` have no ancestor at all — nothing upstream and nothing
+  in the engine does any of the five. Nothing
   multiplies two *streams*, which is what ring modulation needs and what an
   LFO at block rate cannot reach. Nothing puts a filter inside a delay's
   feedback loop, which is what separates a tape echo from a delay with a tone
-  control. Nothing transforms anything at all, so nothing can apply a
+  control. Nothing lets you supply the *curve* of a nonlinearity, or applies
+  one above the sample rate, so every drive circuit was four fixed shapes at
+  the base rate and the harmonics they make past Nyquist fold back onto the
+  signal. And nothing transforms anything at all, so nothing can apply a
   measured impulse response — the one effect on the catalogue the rest of the
   palette genuinely cannot approximate. And nothing reaches what is already
   *between* the speakers: `Mixer`'s `pan` places a source, but no combination
   of pans collapses a stereo pair to mono or pushes its sides out, which is
-  what a stereo drive needs in order to keep its image. palette genuinely cannot approximate. `audiomath` gained a second class in
-  the effects program's Phase 1 for the same kind of reason: nothing divides a
+  what a stereo drive needs in order to keep its image. `audiomath` gained
+  a second class in the effects program's Phase 1 for the same kind of
+  reason: nothing divides a
   *frequency* either, so an octave down could only be granular (smeared) or a
   ring modulator (locked to nothing), never the flip-flop divider a pedal
   actually contains.

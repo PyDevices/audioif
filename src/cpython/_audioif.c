@@ -23,6 +23,7 @@
 #include "shared/audioif_suboctave.h"
 #include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
+#include "shared/audioif_shaper.h"
 #include "shared/audioif_filter_f32.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
@@ -40,6 +41,7 @@ typedef struct {
     PyObject *dynamics_state_type;
     PyObject *splitter_ring_type;
     PyObject *feedback_delay_state_type;
+    PyObject *waveshaper_state_type;
     PyObject *biquad_f32_state_type;
     PyObject *allpass_f32_state_type;
     PyObject *suboctave_state_type;
@@ -1371,6 +1373,154 @@ static PyType_Spec allpass_f32_state_spec = {
     .slots = allpass_f32_state_slots,
 };
 
+// audioshaper.Waveshaper's half-band memories, play position and curve. A
+// type rather than a plain function, the way FeedbackDelayState is: the
+// half-bands carry state across blocks, and the curve is an allocation.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_shaper_config_t config;
+    audioif_shaper_state_t state;
+    int16_t *curve;
+} audioif_shaper_object_t;
+
+static int waveshaper_state_init(audioif_shaper_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int oversample = 4;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"sample_rate", "oversample", "channel_count",
+                               NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|III:WaveshaperState",
+        keywords, &sample_rate, &oversample, &channel_count)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (oversample != 1 && oversample != 2 && oversample != 4 &&
+        oversample != 8) {
+        PyErr_SetString(PyExc_ValueError, "oversample must be 1, 2, 4 or 8");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_shaper_config_init(&self->config, sample_rate, oversample);
+    audioif_shaper_set_channel_count(&self->config, channel_count);
+    audioif_shaper_state_init(&self->state);
+    return 0;
+}
+
+static void waveshaper_state_dealloc(audioif_shaper_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->curve);
+    self->curve = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
+
+// The curve is copied rather than borrowed: it is data the caller computed
+// once and may well drop, and 4096 points is 8 KB -- small beside a delay
+// line, and the only way the config's pointer can be relied on for the life
+// of the node.
+static PyObject *waveshaper_state_load_curve(audioif_shaper_object_t *self,
+    PyObject *argument) {
+    Py_buffer curve = {0};
+    if (PyObject_GetBuffer(argument, &curve, PyBUF_SIMPLE) < 0) return NULL;
+    if (curve.len % 2 || curve.len < 4) {
+        PyBuffer_Release(&curve);
+        PyErr_SetString(PyExc_ValueError,
+            "curve must be at least two whole int16 points");
+        return NULL;
+    }
+    int16_t *copy = PyMem_Malloc((size_t)curve.len);
+    if (copy == NULL) {
+        PyBuffer_Release(&curve);
+        PyErr_NoMemory();
+        return NULL;
+    }
+    memcpy(copy, curve.buf, (size_t)curve.len);
+    PyMem_Free(self->curve);
+    self->curve = copy;
+    audioif_shaper_set_curve(&self->config, copy,
+        (uint32_t)(curve.len / 2));
+    PyBuffer_Release(&curve);
+    Py_RETURN_NONE;
+}
+
+static PyObject *waveshaper_state_configure(audioif_shaper_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_SHAPER_OPT_PRE_GAIN ||
+        option > AUDIOIF_SHAPER_OPT_HYSTERESIS_BIAS) {
+        PyErr_SetString(PyExc_ValueError, "unknown waveshaper option");
+        return NULL;
+    }
+    audioif_shaper_configure(&self->config,
+        (audioif_shaper_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *waveshaper_state_finish(audioif_shaper_object_t *self,
+    PyObject *unused) {
+    audioif_shaper_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *waveshaper_state_reset(audioif_shaper_object_t *self,
+    PyObject *unused) {
+    audioif_shaper_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+static PyObject *waveshaper_state_process(audioif_shaper_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_shaper_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef waveshaper_state_methods[] = {
+    {"load_curve", (PyCFunction)waveshaper_state_load_curve, METH_O, NULL},
+    {"configure", (PyCFunction)waveshaper_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)waveshaper_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)waveshaper_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)waveshaper_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot waveshaper_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, waveshaper_state_init},
+    {Py_tp_dealloc, waveshaper_state_dealloc},
+    {Py_tp_methods, waveshaper_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec waveshaper_state_spec = {
+    .name = "_audioif.WaveshaperState",
+    .basicsize = sizeof(audioif_shaper_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = waveshaper_state_slots,
+};
+
 // audioconvolve.Convolver's transform tables, frequency-delay line and stored
 // impulse. All state, and a great deal of it -- one allocation carved up by
 // the DSP layer, exactly as in the MicroPython binding.
@@ -2262,6 +2412,15 @@ static int audioif_exec(PyObject *module) {
         state->feedback_delay_state_type) < 0) return -1;
     if (PyModule_AddIntConstant(module, "FEEDBACK_DELAY_FRAMES",
         AUDIOIF_FEEDBACK_DELAY_FRAMES) < 0) return -1;
+    state->waveshaper_state_type = PyType_FromModuleAndSpec(module,
+        &waveshaper_state_spec, NULL);
+    if (state->waveshaper_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "WaveshaperState",
+        state->waveshaper_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "SHAPER_FRAMES",
+        AUDIOIF_SHAPER_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "SHAPER_MAX_OVERSAMPLE",
+        AUDIOIF_SHAPER_MAX_OVERSAMPLE) < 0) return -1;
     state->biquad_f32_state_type = PyType_FromModuleAndSpec(module,
         &biquad_f32_state_spec, NULL);
     if (state->biquad_f32_state_type == NULL) return -1;
@@ -2308,6 +2467,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->dynamics_state_type);
     Py_VISIT(state->splitter_ring_type);
     Py_VISIT(state->feedback_delay_state_type);
+    Py_VISIT(state->waveshaper_state_type);
     Py_VISIT(state->biquad_f32_state_type);
     Py_VISIT(state->allpass_f32_state_type);
     Py_VISIT(state->suboctave_state_type);
@@ -2325,6 +2485,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->dynamics_state_type);
     Py_CLEAR(state->splitter_ring_type);
     Py_CLEAR(state->feedback_delay_state_type);
+    Py_CLEAR(state->waveshaper_state_type);
     Py_CLEAR(state->biquad_f32_state_type);
     Py_CLEAR(state->allpass_f32_state_type);
     Py_CLEAR(state->suboctave_state_type);
