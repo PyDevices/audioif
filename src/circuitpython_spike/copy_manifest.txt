@@ -22,6 +22,8 @@ src/shared/audioif_fft.h	shared/audioif_fft.h
 src/shared/audioif_fft.c	shared/audioif_fft.c
 src/shared/audioif_convolve.h	shared/audioif_convolve.h
 src/shared/audioif_convolve.c	shared/audioif_convolve.c
+src/shared/audioif_filter_f32.h	shared/audioif_filter_f32.h
+src/shared/audioif_filter_f32.c	shared/audioif_filter_f32.c
 
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.h	shared-bindings/audiodynamics/__init__.h
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.c	shared-bindings/audiodynamics/__init__.c
@@ -61,3 +63,14 @@ src/circuitpython_spike/shared-bindings/audioconvolve/Convolver.h	shared-binding
 src/circuitpython_spike/shared-bindings/audioconvolve/Convolver.c	shared-bindings/audioconvolve/Convolver.c
 src/circuitpython_spike/shared-module/audioconvolve/Convolver.h	shared-module/audioconvolve/Convolver.h
 src/circuitpython_spike/shared-module/audioconvolve/Convolver.c	shared-module/audioconvolve/Convolver.c
+
+src/circuitpython_spike/shared-bindings/audiobiquad/__init__.h	shared-bindings/audiobiquad/__init__.h
+src/circuitpython_spike/shared-bindings/audiobiquad/__init__.c	shared-bindings/audiobiquad/__init__.c
+src/circuitpython_spike/shared-bindings/audiobiquad/Biquad.h	shared-bindings/audiobiquad/Biquad.h
+src/circuitpython_spike/shared-bindings/audiobiquad/Biquad.c	shared-bindings/audiobiquad/Biquad.c
+src/circuitpython_spike/shared-bindings/audiobiquad/AllPass.h	shared-bindings/audiobiquad/AllPass.h
+src/circuitpython_spike/shared-bindings/audiobiquad/AllPass.c	shared-bindings/audiobiquad/AllPass.c
+src/circuitpython_spike/shared-module/audiobiquad/Biquad.h	shared-module/audiobiquad/Biquad.h
+src/circuitpython_spike/shared-module/audiobiquad/Biquad.c	shared-module/audiobiquad/Biquad.c
+src/circuitpython_spike/shared-module/audiobiquad/AllPass.h	shared-module/audiobiquad/AllPass.h
+src/circuitpython_spike/shared-module/audiobiquad/AllPass.c	shared-module/audiobiquad/AllPass.c

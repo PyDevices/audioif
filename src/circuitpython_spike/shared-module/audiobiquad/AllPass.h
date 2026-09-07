@@ -1,0 +1,39 @@
+// audiobiquad.AllPass for CircuitPython. See audioif's
+// src/audiobiquad/AllPass.h for the MicroPython twin; the DSP is the same
+// shared/audioif_filter_f32.c in both, copied into this tree by
+// audioif/apply_cp_patches.sh.
+//
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "py/obj.h"
+#include "shared-module/audiocore/__init__.h"
+#include "shared-module/synthio/__init__.h"
+#include "shared-module/synthio/block.h"
+
+#include "shared/audioif_filter_f32.h"
+
+typedef struct {
+    audiosample_base_t base;
+    mp_obj_t source;
+    synthio_block_slot_t frequency;
+    synthio_block_slot_t feedback;
+    synthio_block_slot_t mix;
+    audioif_allpass_f32_config_t config;
+    audioif_allpass_f32_state_t state;
+    int16_t buffer[AUDIOIF_FILTER_F32_FRAMES * 2];
+    const int16_t *pending;
+    uint32_t pending_frames;
+} audiobiquad_allpass_obj_t;
+
+void audiobiquad_allpass_apply_blocks(audiobiquad_allpass_obj_t *self,
+    uint32_t frames);
+void audiobiquad_allpass_reset_buffer(audiobiquad_allpass_obj_t *self,
+    bool single_channel_output, uint8_t channel);
+audioio_get_buffer_result_t audiobiquad_allpass_get_buffer(
+    audiobiquad_allpass_obj_t *self, bool single_channel_output,
+    uint8_t channel, uint8_t **buffer, uint32_t *buffer_length);
