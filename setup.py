@@ -39,6 +39,7 @@ setup(
                 "src/shared/audioif_splitter.c",
                 "src/shared/audioif_multiply.c",
                 "src/shared/audioif_feedback_delay.c",
+                "src/shared/audioif_ladder.c",
                 "src/shared/audioif_trig.c",
                 "src/shared/audioif_fft.c",
                 "src/shared/audioif_convolve.c",
