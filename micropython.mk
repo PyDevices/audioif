@@ -214,6 +214,7 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioshaper/Waveshaper.c \
     $(MPAUDIO_SRC_DIR)/audioshaper/module.c
+SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioladder/Ladder.c \
     $(MPAUDIO_SRC_DIR)/audioladder/module.c
 SRC_USERMOD_C += \
