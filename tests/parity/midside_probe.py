@@ -22,6 +22,7 @@ the node's contract rather than its output:
 Both print their result, so the golden covers them too.
 """
 
+import struct
 import sys
 from array import array
 
@@ -126,7 +127,7 @@ for name, values in (("ramp", frames()), ("rails", rails)):
     node = route.MidSide(
         audiocore.RawSample(values, sample_rate=SAMPLE_RATE, channel_count=2),
         width=1.0)
-    source_bytes = values.tobytes()
+    source_bytes = bytes(values)  # array.tobytes() does not exist on MicroPython
     offset = 0
     same = True
     for _ in range(2):
@@ -149,8 +150,9 @@ for width in WIDTHS:
         width=width)
     offset = 0
     for _ in range(2):
-        block = array("h")
-        block.frombytes(bytes(audiocore.get_buffer(node)[1]))
+        data = bytes(audiocore.get_buffer(node)[1])
+        # array.frombytes() does not exist on MicroPython; struct does on both.
+        block = struct.unpack("<%dh" % (len(data) // 2), data)
         for index in range(0, len(block), 2):
             error = ((block[index] + block[index + 1]) -
                      (quiet[offset + index] + quiet[offset + index + 1]))
