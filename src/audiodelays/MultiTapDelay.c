@@ -153,7 +153,7 @@ mp_obj_t common_hal_audiodelays_multi_tap_delay_get_taps(audiodelays_multi_tap_d
         for (size_t i = 0; i < self->tap_len; i++) {
             mp_obj_tuple_t *pair = MP_OBJ_TO_PTR(mp_obj_new_tuple(2, NULL));
             pair->items[0] = mp_obj_new_float(self->tap_positions[i]);
-            pair->items[1] = mp_obj_new_float(self->tap_levels[i]);
+            pair->items[1] = mp_obj_new_float((mp_float_t)self->tap_levels[i]);
             taps->items[i] = MP_OBJ_FROM_PTR(pair);
         }
         return MP_OBJ_FROM_PTR(taps);
@@ -245,10 +245,10 @@ void common_hal_audiodelays_multi_tap_delay_set_taps(audiodelays_multi_tap_delay
             mp_obj_t *items1;
             mp_obj_tuple_get(item, &len1, &items1);
 
-            self->tap_positions[i] = get_tap_value(items1[0]);
+            self->tap_positions[i] = (mp_float_t)get_tap_value(items1[0]);
             self->tap_levels[i] = get_tap_value(items1[1]);
         } else {
-            self->tap_positions[i] = get_tap_value(item);
+            self->tap_positions[i] = (mp_float_t)get_tap_value(item);
             self->tap_levels[i] = MICROPY_FLOAT_CONST(1.0);
         }
     }

@@ -1599,3 +1599,56 @@ Regression coverage: `tests/test_cpython_released_reclaim.py`.
 
 This was most of the difficulty behind audiocomponents#18, where the pianos
 appeared to run out of voices far below the engine's ceiling.
+
+## Four double literals narrowed under a 32-bit `mp_float_t` (2026-09-06)
+
+`audioif`'s CI builds the unix port twice: once at the port's default
+double `mp_float_t`, and once with `-DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT`
+so that a 32-bit `mp_float_t` — what every ESP32/RP2 board actually runs —
+gets compiled at all. The unix port enables `-Werror` with
+`-Wdouble-promotion` and `-Wfloat-conversion`, which MCU ports do not, and
+under single precision four ported sites tripped them. The float cell used
+to downgrade both classes to warnings; those downgrades are now gone and
+the cell runs at full `-Werror`.
+
+The four sites, all inherited from upstream CircuitPython's source text
+(only the third is audioif's own code):
+
+| site | was | now |
+|---|---|---|
+| `src/synthio/__init__.c:65` | `arg / 12. - 3` | `arg / MICROPY_FLOAT_CONST(12.) - 3` |
+| `src/synthio/Synthesizer.c:169` | `level / 32767.` | `level / MICROPY_FLOAT_CONST(32767.)` |
+| `src/audiodelays/Chorus.c:210` | `MAX(slot_get(...), 1.0)` | `MAX(slot_get(...), MICROPY_FLOAT_CONST(1.0))` |
+| `src/audiodelays/MultiTapDelay.c:156,248,251` | implicit `double` → `mp_float_t` | explicit `(mp_float_t)` cast |
+
+`MICROPY_FLOAT_CONST(x)` expands to bare `x` under
+`MICROPY_FLOAT_IMPL_DOUBLE` (`py/mpconfig.h:967`) and `(mp_float_t)` is
+`(double)` there, so **on desktop these six edits preprocess to the source
+text that was already being compiled.** Shown, not assumed: every one of
+the 115 objects the usermod builds — the four changed files included — is
+byte-identical in disassembly, relocations and section contents before and
+after (`objdump -w -d -r -s`, comparator proved able to fail by planting
+`12.` → `12.5`, which reported exactly one moved object). No parity golden
+can move, and none did.
+
+**On a single-precision board, `midi_to_hz` does move.**
+`common_hal_synthio_midi_to_hz_float` used to divide in double and narrow
+the result; it now divides in float. Measured on two unix binaries built
+either side of the edit: of 12801 fractional MIDI values, 5082 (39.7%)
+differ, by at most 7 ulps of `float` — **0.0009 cents**, about a millionth
+of a semitone. 54 of the 128 integer MIDI notes are among them (A440 is
+not). Nothing in this workspace has ever captured a single-precision
+render as a golden, so nothing goes red; the change is recorded here
+because it is a real, if inaudible, difference in board output.
+
+The other three sites are bit-identical in single precision too, checked
+the same way: `1.0` is exact, and an explicit cast is only the implicit
+conversion made visible. `Chorus`, `MultiTapDelay` and
+`Synthesizer.note_info` all render identical bytes across the two float
+binaries.
+
+`MultiTapDelay`'s `tap_levels[]` stays `double` deliberately
+(`src/shared/audioif_multitap.h:13`, and the rationale at
+`MultiTapDelay.h:28-33`): the levels are converted once at set time so the
+audio callback never marshals. Retyping it would change board DSP inside a
+render loop, which is a different decision from silencing a warning.

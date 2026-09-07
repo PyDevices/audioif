@@ -26,23 +26,20 @@ jobs:
         # #ifndef-defaults MICROPY_FLOAT_IMPL, so a CFLAGS define overrides
         # it without touching any build script.
         #
-        # The two -Wno-error downgrades are unix-cell-only: the unix port
-        # compiles with -Werror plus -Wfloat-conversion/-Wdouble-promotion,
-        # which MCU ports do not enable, and audioif's sources carry benign
-        # double-literal narrowing that trips both under a 32-bit
-        # mp_float_t. They stay warnings (visible in the log), and hard
-        # type errors -- like 55c275a's pointer mismatch -- still fail the
-        # build. TODO: clean up the narrowing conversions in src/ so the
-        # downgrades can be dropped (C changes, out of scope for a
-        # workflow edit).
+        # This cell runs at the unix port's full -Werror, including
+        # -Wfloat-conversion and -Wdouble-promotion, which MCU ports do not
+        # enable. It used to downgrade those two to warnings, because
+        # audioif's sources carried double literals that narrowed under a
+        # 32-bit mp_float_t; the four sites were cleaned in the commit that
+        # removed the downgrades. Keeping them as errors is the point of the
+        # cell: a real precision loss, or an accidental promotion to double
+        # inside a board's audio loop, now stops the build instead of
+        # scrolling past in a green log.
         float-impl:
           - name: double
             cflags: ""
           - name: float
-            cflags: >-
-              -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT
-              -Wno-error=float-conversion
-              -Wno-error=double-promotion
+            cflags: -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT
     name: unix-usermod (${{ matrix.float-impl.name }}-precision)
     steps:
       - uses: actions/checkout@v7
