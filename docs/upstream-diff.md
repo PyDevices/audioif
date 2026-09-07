@@ -1652,3 +1652,57 @@ binaries.
 `MultiTapDelay.h:28-33`): the levels are converted once at set time so the
 audio callback never marshals. Retyping it would change board DSP inside a
 render loop, which is a different decision from silencing a warning.
+
+## The voice ceiling is 64, where CircuitPython builds 14 (2026-09-03, recorded 2026-09-06)
+
+CircuitPython sizes a `Synthesizer` at `CIRCUITPY_SYNTHIO_MAX_CHANNELS`,
+and the oracle this port is measured against is built at **14** (the
+`CIRCUITPY_SYNTHIO_MAX_CHANNELS` entry above). This port ships **64** at
+all five sites that carry the number -- `src/synthio/__init__.h`,
+`micropython.mk`, `micropython.cmake`, `src/cpython/synthio.py` and
+`src/cpython/_audioif.c` -- moved together in `8f8b10d` by Brad, on #31's
+evidence. 14 was the drum kits' number (cr78 holds exactly 14 permanent
+Notes) and never the melodic library's, whose instruments press several
+Notes per key; over the parity sequence 4743 of 7335 presses got a channel
+only by evicting a still-decaying note, and a seven-note b3 chord measured
+4.8 dB quieter at 14 than at 36. 64 covers a ten-finger chord on every
+instrument. It is a choice, not a convergence point: steals keep falling
+until roughly N=196.
+
+**What it changes in the sound, and only that.** Below the mix-down
+limiter's ±28000 knee every sample is byte-identical to CircuitPython's.
+Above it `SYNTHIO_MIX_DOWN_SCALE` is a function of the ceiling -- 623 at
+14, 129 at 64 -- so a chord loud enough to cross the knee is squashed
+harder at 64. Measured by `tests/parity/verify_mixdown_knee.py`
+(`de4f9db`), full-scale square voices on one Synthesizer, peak sample per
+block:
+
+| voices | peak at 14 (oracle) | peak at 64 (this port) |
+|---|---|---|
+| 1 | 16383 | 16383 |
+| 2 | 28046 | 28010 |
+| 3 | 28202 | 28042 |
+| 6 | 28669 | 28139 |
+| 10 | 29292 | 28268 |
+
+A third of a decibel at ten voices, at the peaks only. On audiocomponents'
+instruments gate, three of 53 instruments moved at the gate's material --
+farfisa, minimoog, vox_continental -- and at 64 the CPython target and
+`cmods/bin/micropython` land on the same bytes for all three
+(audiocomponents#24, audioif#27).
+
+**How it is gated.** The four original parity gates are byte-identical at
+14, 36, 56 and 64 because none of their material crosses the knee; they
+cannot see a ceiling change and are not claimed to. `verify_mixdown_knee`
+enforces this port's above-knee answer against this port and records the
+oracle's beside it in the same golden; `tests/test_voice_ceiling_consistency.py`
+guards a half-applied change across the five sites. The oracle stays at 14
+and is never rebuilt. Material that crosses the knee is non-parity by
+construction; everything under it still byte-matches.
+
+**Still open on #31.** The prebuilt Windows interpreter, the wasm pair and
+the micropython-vst3 sidecar carry 14 until rebuilt; the melodic instruments
+that stack notes are a listen Brad reserved for himself when he made the
+raise; audiocomponents' CPython leg follows the next audioif release, at
+which point its three moved digests are re-captured at 64 with this entry
+as the reason, and not before.
