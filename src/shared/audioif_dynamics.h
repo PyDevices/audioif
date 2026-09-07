@@ -26,6 +26,30 @@ typedef enum {
     AUDIOIF_DYNAMICS_TRANSIENT = 4,
 } audioif_dynamics_mode_t;
 
+//: What the detector measures. The original had only the first: one absolute
+//: value per channel, the largest across channels. A sine and a square of
+//: equal RMS therefore get different gain from it, which is the thing an RMS
+//: detector is asked for.
+typedef enum {
+    AUDIOIF_DYNAMICS_DETECT_PEAK = 0,
+    AUDIOIF_DYNAMICS_DETECT_RMS = 1,
+} audioif_dynamics_detector_t;
+
+//: `true_peak` is no longer a flag but a level: off, the original's four-point
+//: half-band midpoint estimate, or a 4x polyphase reconstruction.
+typedef enum {
+    AUDIOIF_DYNAMICS_TP_OFF = 0,
+    AUDIOIF_DYNAMICS_TP_HALF_BAND = 1,
+    AUDIOIF_DYNAMICS_TP_OVERSAMPLED = 2,
+} audioif_dynamics_true_peak_t;
+
+//: The 4x reconstruction's shape: four phases of twelve taps, an order-48
+//: FIR, which is the shape ITU-R BS.1770 Annex 2 specifies for true-peak
+//: metering. The taps themselves are audioif's own (see the table in the .c);
+//: they are not transcribed from the Recommendation.
+#define AUDIOIF_DYNAMICS_TP_PHASES 4u
+#define AUDIOIF_DYNAMICS_TP_TAPS 12u
+
 //: Frames one output block carries. The original chose it to match the
 //: engine's block size, and the effects library's latency assumptions --
 //: notably the Splitter ring's depth -- are written around it.
@@ -44,6 +68,34 @@ typedef enum {
     AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ,
     AUDIOIF_DYNAMICS_OPT_LOOKAHEAD_MS,
     AUDIOIF_DYNAMICS_OPT_TRUE_PEAK,
+    // Everything below here is additive and default-off: a Dynamics that
+    // sets none of them is the node exactly as micropython-vst3 had it, which
+    // is what tests/parity/dynamics_probe.py's unchanged hash asserts. New
+    // names go on the end, because the CPython wrapper maps names to these
+    // numbers.
+    AUDIOIF_DYNAMICS_OPT_TRANSIENT_FAST_ATTACK_MS,
+    AUDIOIF_DYNAMICS_OPT_TRANSIENT_FAST_RELEASE_MS,
+    AUDIOIF_DYNAMICS_OPT_TRANSIENT_SLOW_ATTACK_MS,
+    AUDIOIF_DYNAMICS_OPT_TRANSIENT_SLOW_RELEASE_MS,
+    AUDIOIF_DYNAMICS_OPT_DETECTOR,
+    AUDIOIF_DYNAMICS_OPT_RMS_MS,
+    AUDIOIF_DYNAMICS_OPT_FEEDBACK_DETECTOR,
+    AUDIOIF_DYNAMICS_OPT_SIDECHAIN_LP_HZ,
+    AUDIOIF_DYNAMICS_OPT_SIDECHAIN_POLES,
+    AUDIOIF_DYNAMICS_OPT_KEY_LISTEN,
+    AUDIOIF_DYNAMICS_OPT_DEPTH_DB,
+    AUDIOIF_DYNAMICS_OPT_HOLD_MS,
+    AUDIOIF_DYNAMICS_OPT_HYSTERESIS_DB,
+    AUDIOIF_DYNAMICS_OPT_RELATIVE_THRESHOLD,
+    AUDIOIF_DYNAMICS_OPT_PROGRAM_ATTACK,
+    AUDIOIF_DYNAMICS_OPT_TRANSIENT_DUAL,
+    AUDIOIF_DYNAMICS_OPT_SUSTAIN_FAST_ATTACK_MS,
+    AUDIOIF_DYNAMICS_OPT_SUSTAIN_FAST_RELEASE_MS,
+    AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_ATTACK_MS,
+    AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_RELEASE_MS,
+    AUDIOIF_DYNAMICS_OPT_SLOW_HOLD_MS,
+    //: One past the last option, for a binding that range-checks.
+    AUDIOIF_DYNAMICS_OPT_COUNT,
 } audioif_dynamics_option_t;
 
 //: How far ahead the detector may be allowed to look. A cap rather than a
@@ -73,7 +125,58 @@ typedef struct {
     // Both default off, so a Dynamics built the way the original was is the
     // original. See the process loop for what each costs.
     uint32_t lookahead_frames;
-    bool true_peak;
+    uint8_t true_peak;      // audioif_dynamics_true_peak_t
+
+    // --- the effects program's additions, every one of them default-off ---
+    // The transient shaper's four detector time constants. They were literals
+    // evaluated at process entry; the defaults here are those literals, so a
+    // node that never sets them computes the same coefficients it always did.
+    float transient_fast_attack_ms;
+    float transient_fast_release_ms;
+    float transient_slow_attack_ms;
+    float transient_slow_release_ms;
+    // A second pair, and the flag that applies both differences at once
+    // instead of selecting one by the sign of the first.
+    bool transient_dual;
+    float sustain_fast_attack_ms;
+    float sustain_fast_release_ms;
+    float sustain_slow_attack_ms;
+    float sustain_slow_release_ms;
+    //: Frames the slow envelope holds its peak before it releases. 0 keeps
+    //: the plain one-pole the shaper always had.
+    uint32_t slow_hold_frames;
+
+    uint8_t detector;       // audioif_dynamics_detector_t
+    float rms_coef;         // mean-square window, one pole
+    //: The detector reads the previous output frame rather than this frame's
+    //: input: the feedback topology of a 1176, an LA-2A or a Fairchild, where
+    //: the side chain is tapped after the gain cell.
+    bool feedback_detector;
+    //: The gain computer is driven by the side-chained level minus the
+    //: full-band level, so a fixed spectral balance gets the same reduction
+    //: wherever it sits in the level range.
+    bool relative_threshold;
+    //: The attack coefficient is scaled by how far the level overshoots the
+    //: envelope, so a bigger overshoot is caught faster.
+    bool program_attack;
+
+    //: A low-pass corner beside `sidechain_hz`'s high-pass one, so the key
+    //: path is a band; `sidechain_poles` cascades a second pole through both,
+    //: taking the skirt from 6 to 12 dB/octave.
+    float sidechain_lp_coef;
+    uint8_t sidechain_poles;
+    //: Put the detector signal on the output instead of the audio, which is
+    //: what a gate's Key Listen switch does.
+    bool key_listen;
+
+    //: The floor the expander and the gate reach. Positive means unset, and
+    //: unset is the original's fixed -60 dB / -80 dB literals: a depth is an
+    //: attenuation, so no usable setting is above 0 dB.
+    float depth_db;
+    //: The gate's four-stage envelope. 0 hold frames keeps the memoryless
+    //: gain computer the original had.
+    uint32_t hold_frames;
+    float hysteresis_db;
 } audioif_dynamics_config_t;
 
 //: What the detector remembers between blocks.
@@ -93,7 +196,36 @@ typedef struct {
     uint32_t lookahead_write;
     // Three detector samples back per channel, for the half-sample estimate.
     float peak_history[2][3];
+
+    // --- state the additions above need, all of it inert while they are off ---
+    float sidechain_hp2[2];     // second high-pass pole
+    float sidechain_low[2];     // the low-pass arm of the key band
+    float sidechain_low2[2];
+    float rms_env[2];           // mean square, per channel
+    float prev_output[2];       // what the feedback detector reads
+    float full_env;             // full-band envelope, for relative threshold
+    float fast_env2;            // the second transient pair
+    float slow_env2;
+    float slow_peak;            // the slow envelope's held peak
+    uint32_t slow_hold_left;
+    uint8_t gate_stage;         // audioif_dynamics_gate_stage_t
+    float gate_gain;            // linear, the four-stage envelope's output
+    uint32_t hold_left;
+    // Twelve detector samples back per channel, for the 4x reconstruction.
+    float tp_history[2][AUDIOIF_DYNAMICS_TP_TAPS];
 } audioif_dynamics_state_t;
+
+//: Where the gate's four-stage envelope is. CLOSED sits at the floor, ATTACK
+//: runs up to unity, HOLD stays there while the key is above the hysteresis
+//: point, DECAY falls back to the floor -- and a crossing during DECAY
+//: re-enters ATTACK from wherever the gain got to, which is the trigger state
+//: a memoryless gain computer cannot have.
+typedef enum {
+    AUDIOIF_DYNAMICS_GATE_CLOSED = 0,
+    AUDIOIF_DYNAMICS_GATE_ATTACK = 1,
+    AUDIOIF_DYNAMICS_GATE_HOLD = 2,
+    AUDIOIF_DYNAMICS_GATE_DECAY = 3,
+} audioif_dynamics_gate_stage_t;
 
 float audioif_dynamics_ms_to_coef(float ms, float sample_rate);
 float audioif_dynamics_db_to_gain(float db);
@@ -115,6 +247,11 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
     audioif_dynamics_option_t option, float value);
 
 void audioif_dynamics_state_init(audioif_dynamics_state_t *state);
+
+// Clear only what the additive options remember. Called by state_init and by
+// reset; the side-chain filters are deliberately not in it, because the
+// original keeps its filter memory across a reset.
+void audioif_dynamics_clear_extras(audioif_dynamics_state_t *state);
 
 // Select mono or stereo processing before configuring lookahead storage.
 void audioif_dynamics_set_channel_count(
@@ -139,3 +276,10 @@ void audioif_dynamics_reset(audioif_dynamics_state_t *state);
 void audioif_dynamics_process_s16(const audioif_dynamics_config_t *config,
     audioif_dynamics_state_t *state, int16_t *output, const int16_t *input,
     uint32_t frames);
+
+// The same, with an external key: the detector reads `key` (interleaved at the
+// same width and rate) instead of the input, while the gain still lands on the
+// input. `key == NULL` is exactly audioif_dynamics_process_s16.
+void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
+    audioif_dynamics_state_t *state, int16_t *output, const int16_t *input,
+    const int16_t *key, uint32_t frames);
