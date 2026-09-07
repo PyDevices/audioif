@@ -41,6 +41,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_midside.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_suboctave.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_filter_f32.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
@@ -176,16 +177,18 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
 # --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter,
-#     MidSide), audiomath (Multiply), audioecho (FeedbackDelay),
-#     audioconvolve (Convolver) and audiobiquad (Biquad, AllPass) ---
+#     MidSide), audiomath (Multiply, SubOctave), audioecho
+#     (FeedbackDelay), audioconvolve (Convolver) and audiobiquad
+#     (Biquad, AllPass) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
 # library; the rest are audioif's own -- audiomath is the only way to modulate
-# a stream at audio rate, audioecho puts a filter inside a delay's feedback
-# loop, audioconvolve applies a measured impulse response rather than
-# imitating one, and audiobiquad filters in float so a tail reaches exact
-# zero, which neither ported kernel can (audioif#23, #36). See
+# a stream at audio rate and the only way to divide one down in frequency,
+# audioecho puts a filter inside a delay's feedback loop, audioconvolve
+# applies a measured impulse response rather than imitating one, and
+# audiobiquad filters in float so a tail reaches exact zero, which neither
+# ported kernel can (audioif#23, #36). See
 # docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
@@ -197,6 +200,7 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioroute/module.c
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiomath/Multiply.c \
+    $(MPAUDIO_SRC_DIR)/audiomath/SubOctave.c \
     $(MPAUDIO_SRC_DIR)/audiomath/module.c
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioecho/FeedbackDelay.c \

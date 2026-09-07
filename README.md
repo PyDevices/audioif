@@ -116,7 +116,8 @@ Seven things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute.Splitter`
 (fan one stream out to parallel branches) come from micropython-vst3's audio
 engine, which had them and CircuitPython does not. `audiomath` (multiply one
-stream by another — ring and amplitude modulation), `audioecho` (a delay with
+stream by another — ring and amplitude modulation; and divide one down in
+frequency — the analog octave divider), `audioecho` (a delay with
 a filter, a soft-clip and a cross-feed inside its feedback loop),
 `audioconvolve` (apply a measured or synthesized impulse response, by
 partitioned FFT), `audioroute.MidSide` (scale the difference between a stereo

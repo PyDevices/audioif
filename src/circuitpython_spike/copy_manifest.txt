@@ -16,6 +16,8 @@ src/shared/audioif_midside.h	shared/audioif_midside.h
 src/shared/audioif_midside.c	shared/audioif_midside.c
 src/shared/audioif_multiply.h	shared/audioif_multiply.h
 src/shared/audioif_multiply.c	shared/audioif_multiply.c
+src/shared/audioif_suboctave.h	shared/audioif_suboctave.h
+src/shared/audioif_suboctave.c	shared/audioif_suboctave.c
 src/shared/audioif_feedback_delay.h	shared/audioif_feedback_delay.h
 src/shared/audioif_feedback_delay.c	shared/audioif_feedback_delay.c
 src/shared/audioif_trig.h	shared/audioif_trig.h
@@ -55,6 +57,10 @@ src/circuitpython_spike/shared-bindings/audiomath/Multiply.h	shared-bindings/aud
 src/circuitpython_spike/shared-bindings/audiomath/Multiply.c	shared-bindings/audiomath/Multiply.c
 src/circuitpython_spike/shared-module/audiomath/Multiply.h	shared-module/audiomath/Multiply.h
 src/circuitpython_spike/shared-module/audiomath/Multiply.c	shared-module/audiomath/Multiply.c
+src/circuitpython_spike/shared-bindings/audiomath/SubOctave.h	shared-bindings/audiomath/SubOctave.h
+src/circuitpython_spike/shared-bindings/audiomath/SubOctave.c	shared-bindings/audiomath/SubOctave.c
+src/circuitpython_spike/shared-module/audiomath/SubOctave.h	shared-module/audiomath/SubOctave.h
+src/circuitpython_spike/shared-module/audiomath/SubOctave.c	shared-module/audiomath/SubOctave.c
 
 src/circuitpython_spike/shared-bindings/audioecho/__init__.h	shared-bindings/audioecho/__init__.h
 src/circuitpython_spike/shared-bindings/audioecho/__init__.c	shared-bindings/audioecho/__init__.c

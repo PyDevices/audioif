@@ -14,7 +14,7 @@ wants a shared memory mapping a VST host created.
 One hash per probe covers every interpreter, unlike the instrument goldens.
 The arithmetic here is entirely inside shared/audioif_dynamics.c,
 audioif_splitter.c, audioif_midside.c, audioif_multiply.c,
-audioif_feedback_delay.c and audioif_convolve.c -- with audioif_fft.c and
+audioif_suboctave.c, audioif_feedback_delay.c and audioif_convolve.c -- with audioif_fft.c and
 audioif_trig.c under that last one -- the same C the CPython extension links,
 so a disagreement between two interpreters would itself be the finding.
 
@@ -76,6 +76,7 @@ PROBES = (
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
     ("midside_probe.py", "audioroute", None, {}),
     ("multiply_probe.py", "audiomath", None, {}),
+    ("suboctave_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("feedback_delay_options_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),

@@ -113,7 +113,11 @@ and their source is micropython-vst3 rather than CircuitPython:
   palette genuinely cannot approximate. And nothing reaches what is already
   *between* the speakers: `Mixer`'s `pan` places a source, but no combination
   of pans collapses a stereo pair to mono or pushes its sides out, which is
-  what a stereo drive needs in order to keep its image.
+  what a stereo drive needs in order to keep its image. palette genuinely cannot approximate. `audiomath` gained a second class in
+  the effects program's Phase 1 for the same kind of reason: nothing divides a
+  *frequency* either, so an octave down could only be granular (smeared) or a
+  ring modulator (locked to nothing), never the flip-flop divider a pedal
+  actually contains.
 
   CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —
