@@ -137,7 +137,23 @@ void audioif_shaper_configure(audioif_shaper_config_t *config,
 }
 
 void audioif_shaper_config_finish(audioif_shaper_config_t *config) {
-    const float width = config->hysteresis * config->hysteresis_width;
+    // `hysteresis_width` is a half-width in *input* units -- a coercivity, a
+    // fraction of full scale at the node's input -- but the operator runs
+    // after `pre_gain`, so it is converted here, once, rather than per
+    // sample. Without that factor the drive knob would smear the loop: at
+    // twice the gain the same absolute half-width covers half as much of the
+    // input's swing, and the enclosed area would *fall* as drive rose, which
+    // is the direction the palette's two memory elements already fail in
+    // (audioecho.FeedbackDelay's area is largest with its nonlinearity off;
+    // audiodynamics.Dynamics' shrinks with drive). With it, the loop width
+    // in input units is 2 * hysteresis * hysteresis_width whatever the drive,
+    // and the only thing that moves it is the knob that is meant to.
+    float gain = config->pre_gain < 0.0f ? -config->pre_gain :
+        config->pre_gain;
+    float width = config->hysteresis * config->hysteresis_width * gain;
+    if (width > 1.0f) {
+        width = 1.0f;
+    }
     config->width_up = width * (1.0f + config->hysteresis_bias);
     config->width_down = width * (1.0f - config->hysteresis_bias);
 }

@@ -120,11 +120,17 @@ typedef struct {
     //: 0 switches the play operator off entirely, and the node is then a
     //: static table again, sample for sample.
     float hysteresis;
+    //: The play operator's half-width at `hysteresis` 1, as a fraction of
+    //: full scale **at the node's input** -- a coercivity, not a post-gain
+    //: number. See config_finish for why that distinction is the whole
+    //: difference between a loop that grows with drive and one that shrinks.
     float hysteresis_width;
     //: -1..+1: splits the half-width between the rising and falling branches,
     //: so the loop may be asymmetric.
     float hysteresis_bias;
-    //: hysteresis * hysteresis_width, split by hysteresis_bias.
+    //: hysteresis * hysteresis_width * |pre_gain|, split by hysteresis_bias:
+    //: the half-widths the operator actually compares against, in the units
+    //: it sees.
     float width_up;
     float width_down;
 } audioif_shaper_config_t;
