@@ -121,6 +121,17 @@ filter, a soft-clip and a cross-feed inside its feedback loop) and
 partitioned FFT) have no ancestor anywhere and are audioif's own.
 `apply_cp_patches.sh` adds all five to a CircuitPython tree too.
 
+`audiodynamics.Dynamics` carries twenty-one options beyond what the engine
+gave it, added for the effects program and every one of them default-off: an
+RMS detector, a feedback detector topology and an external key input with Key
+Listen, a 4x true-peak reconstruction, a two-pole key band with both corners
+settable, a settable expander/gate depth, a four-stage gate envelope with
+hold and hysteresis, a relative-threshold gain computer, a program-dependent
+attack, and the transient shaper's four detector time constants, a second
+envelope pair and a peak-hold on the slow one. What each is for, what it was
+measured doing, and what it cost:
+[docs/upstream-diff.md](docs/upstream-diff.md).
+
 ## Status
 
 **MicroPython:** all module tiers ported and oracle-diffed byte-for-byte
