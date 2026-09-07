@@ -38,6 +38,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multiply.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_feedback_delay.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_ladder.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_trig.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_fft.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_convolve.c
@@ -78,6 +79,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiomath/module.c
     ${MPAUDIO_SRC_DIR}/audioecho/FeedbackDelay.c
     ${MPAUDIO_SRC_DIR}/audioecho/module.c
+    ${MPAUDIO_SRC_DIR}/audioladder/Ladder.c
+    ${MPAUDIO_SRC_DIR}/audioladder/module.c
     ${MPAUDIO_SRC_DIR}/audioconvolve/Convolver.c
     ${MPAUDIO_SRC_DIR}/audioconvolve/module.c
 )
