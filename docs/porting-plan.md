@@ -108,7 +108,11 @@ and their source is micropython-vst3 rather than CircuitPython:
   feedback loop, which is what separates a tape echo from a delay with a tone
   control. And nothing transforms anything at all, so nothing can apply a
   measured impulse response — the one effect on the catalogue the rest of the
-  palette genuinely cannot approximate.
+  palette genuinely cannot approximate. `audiomath` gained a second class in
+  the effects program's Phase 1 for the same kind of reason: nothing divides a
+  *frequency* either, so an octave down could only be granular (smeared) or a
+  ring modulator (locked to nothing), never the flip-flop divider a pedal
+  actually contains.
 
   CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —
