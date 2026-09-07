@@ -1669,11 +1669,20 @@ only by evicting a still-decaying note, and a seven-note b3 chord measured
 instrument. It is a choice, not a convergence point: steals keep falling
 until roughly N=196.
 
-**What it changes in the sound, and only that.** Below the mix-down
-limiter's ±28000 knee every sample is byte-identical to CircuitPython's.
-Above it `SYNTHIO_MIX_DOWN_SCALE` is a function of the ceiling -- 623 at
-14, 129 at 64 -- so a chord loud enough to cross the knee is squashed
-harder at 64. Measured by `tests/parity/verify_mixdown_knee.py`
+**What it changes in the sound.** Two things, and the audible one is not
+the limiter. First, a `Synthesizer` at 14 refuses or steals the Notes it
+has no channel for. The melodic instruments press several Notes per key, so
+a four-key chord on farfisa (5 Notes per key, 20 wanted) admits
+`[5, 5, 4, 0]` channels at 14 -- the fourth key is silent -- and
+`[5, 5, 5, 5]` at 64; vox_continental (4 per key) loses the top key's upper
+partials at 14; minimoog (3 per key) fits its chord under 14 and only
+differs where a new patch's chord lands on the previous patch's ringing
+tail and the 14-channel engine steals decaying voices. That is what
+`8f8b10d` was raised for, and it is what a listener hears: chord tones
+present at 64 that are missing at 14. Second, and only for material that
+also crosses the mix-down limiter's ±28000 knee, `SYNTHIO_MIX_DOWN_SCALE`
+is a function of the ceiling -- 623 at 14, 129 at 64 -- so peaks above the
+knee are squashed harder at 64. Measured by `tests/parity/verify_mixdown_knee.py`
 (`de4f9db`), full-scale square voices on one Synthesizer, peak sample per
 block:
 
@@ -1685,11 +1694,18 @@ block:
 | 6 | 28669 | 28139 |
 | 10 | 29292 | 28268 |
 
-A third of a decibel at ten voices, at the peaks only. On audiocomponents'
-instruments gate, three of 53 instruments moved at the gate's material --
-farfisa, minimoog, vox_continental -- and at 64 the CPython target and
-`cmods/bin/micropython` land on the same bytes for all three
-(audiocomponents#24, audioif#27).
+A third of a decibel at ten full-scale voices. On real instrument material
+the knee alone is inaudible: a minimoog chord held two seconds, both
+renders peaking just over 28000, differs in 176 of 290304 samples by at
+most 59 counts (measured 2026-09-06, renders under
+`audiocomponents/.reference-captures/ceiling-ab/`). Below 14 requested
+Notes and below the knee, every sample is byte-identical to CircuitPython's.
+On audiocomponents' instruments gate, three of 53 instruments moved at the
+gate's material -- farfisa, minimoog, vox_continental -- and at 64 the
+CPython target and `cmods/bin/micropython` land on the same bytes for all
+three (audiocomponents#24, audioif#27). Nine other melodic instruments press
+more than four Notes per key and lose chord tones at 14 the same way; nobody
+has yet counted how many change on the gate's material.
 
 **How it is gated.** The four original parity gates are byte-identical at
 14, 36, 56 and 64 because none of their material crosses the knee; they
