@@ -1727,19 +1727,25 @@ as the reason, and not before.
 
 `audiofreeverb.Freeverb` exists upstream, and it is the only reverberator the
 palette had. It is a *fixed* Schroeder/Moorer bank: eight combs and four
-all-passes whose line lengths are constants inside a CircuitPython-ported
-kernel (`src/shared/audioif_freeverb.c`), with `roomsize`, `damp` and `mix` on
-top. Three things follow that no argument on it could reach:
+all-passes, with `roomsize`, `damp` and `mix` on top. Three things follow that
+no argument on it could reach:
 
-- **The network cannot be re-cut.** A plate, a hall, a room and a chamber are
-  not one topology at four settings; they are different line-length sets and
-  different tap positions. Freeverb's are compiled in.
-- **There are no modulated taps.** A static plate rings with a picket fence of
-  fixed modes. Breaking it means wobbling a line *inside* the loop by a
-  fraction of a millisecond, which nothing outside the loop can do.
-- **There is no dispersive input chain**, so the front of the tail is not
-  built out of an all-pass cascade and the early density is whatever the comb
-  bank happens to give.
+- **The network cannot be re-cut.** Its line lengths are `static const` tables
+  in a CircuitPython-ported kernel -- `default_comb_sizes`
+  (`audioif_freeverb.c:6`) and `default_allpass_sizes` (`:8`) -- and the
+  exported entry point hands those two to the loop unconditionally
+  (`:81`-`:82`), so nothing a binding can pass reaches them. A plate, a hall, a
+  room and a chamber are not one topology at four settings; they are different
+  line-length sets and different tap positions, and Freeverb's are compiled in.
+- **There are no modulated taps.** Each comb and each all-pass walks its index
+  by exactly one per sample and wraps (`:39`, `:49`); there is no oscillator in
+  the file at all. A static plate rings with a picket fence of fixed modes, and
+  breaking it means wobbling a line *inside* the loop by a fraction of a
+  millisecond, which nothing outside the loop can do.
+- **Nothing diffuses the input.** Freeverb's four all-passes sit on the *sum*
+  of the comb bank (`:43`-`:51`), after the recirculation rather than before
+  it, so what enters the combs is the raw signal and the early density is
+  whatever the comb spacing happens to give.
 
 **And the palette cannot compose one, which was measured rather than assumed.**
 A tank's defining element is recirculation, and the pull graph has no cycles:
