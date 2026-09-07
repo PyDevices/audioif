@@ -869,6 +869,136 @@ sidechain filter's memory and the last reported gain reduction still survive
 audio in flight, and a chain restarted with the previous take still queued
 would play it.
 
+## `audiodynamics` gains twenty-one options and an external key (effects program)
+
+Additive, every one of them default-off, and the check that says so is inside
+the probe rather than beside it: `tests/parity/dynamics_options_probe.py`'s
+first case sets none of them and reproduces `dynamics_probe.py`'s `compress`
+case line for line, on the same source at the same settings. That probe is
+held against `vstaudio_dsp.c` compiled unmodified and its hash is unchanged
+across this work; the new paths get their own fixture, with no oracle, because
+the original has no ancestor for any of them.
+
+The effects program's dossiers put eleven asks on this one node
+([audioif#38](https://github.com/PyDevices/audioif/issues/38)). Each is a
+fixed trait of a named circuit that the shipped knobs cannot reach by tuning,
+and the numbers below were measured through the built CPython extension, one
+frame at a time, so the gain traces are at sample rate.
+
+**The detector, and what it listens to.**
+
+- **`detector="rms"`**, with **`rms_ms`** (10 ms unset), runs a one-pole mean
+  square and roots it, instead of the largest rectified sample across
+  channels. A sine and a square of equal RMS 15 dB below threshold get gains
+  0.68 dB apart from the peak detector and 0.00 dB apart from this one.
+- **`feedback_detector=True`** points the detector at the frame the node last
+  put out rather than at this frame's input: the side chain tapped after the
+  gain cell, which is what a 1176, an LA-2A and a Fairchild all do. The gain
+  still lands on the audio. Without it the feedback arm of a paired
+  feed-forward/feedback measurement cannot be built at all, so three of the
+  four compressor characters were feed-forward by construction.
+- **`key(sample)`** feeds the detector from a different stream entirely.
+  In C that is a new entry point, `audioif_dynamics_process_s16_key`; the old
+  `audioif_dynamics_process_s16` forwards to it with a NULL key, so nothing
+  that calls it changes. A key that runs dry starves the node the way an
+  absent source does - silence, never a short block, and never a detector
+  that quietly reverts to the audio. Measured: a gate over a quiet 220 Hz
+  tone sits at -60.00 dB for twelve blocks unkeyed, and opens to 0.00 dB on
+  block six when a keyed burst starts.
+- **`true_peak`** was a flag. It is a level now: 1 is the four-point half-band
+  midpoint estimate it always selected, 2 a 4x polyphase reconstruction -
+  four phases of twelve taps, an order-48 FIR, the shape ITU-R BS.1770
+  Annex 2 specifies for true-peak metering. **The taps are not the
+  Recommendation's table.** They are a Blackman-windowed sinc, generated once
+  on CPython and written into `audioif_dynamics.c` as literals, so no target
+  recomputes them through its own libm and a board's single-precision build
+  reads the same numbers the desktop does. Measured against a worst-phase
+  f_s/4 full-scale tone at sixteen phases, error against the tone's true
+  peak: off -3.01..+0.00 dB, 1 -1.24..+0.00 dB, 2 -0.17..+0.42 dB. The
+  half-band estimate's own comment already conceded it does not pretend to be
+  true-peak metering; this is the version that does, and it errs high, which
+  for a limiter's ceiling is the safe direction.
+- **`sidechain_lp_hz`** closes the top of the key band `sidechain_hz` opened
+  the bottom of, and **`sidechain_poles=2`** cascades a second pole through
+  both ends. Measured below a 2500 Hz corner: 5.29 dB/octave at one pole,
+  10.31 dB/octave at two.
+- **`key_listen=True`** puts the detector's own signal on the output instead
+  of the audio - a gate's Key Listen switch. With a 4 kHz key high-pass over
+  a 220 Hz tone the output peaks at 125 against the ordinary output's 3000.
+
+**The gain computer.**
+
+- **`depth_db`** replaces the expander's fixed -60 dB (`:185`) and the gate's
+  fixed -80 dB (`:192`). A gate held closed settles at -0.00, -20.00, -40.00,
+  -60.00 and -80.00 dB for those five settings. **Positive means unset**, and
+  unset is those literals: a depth is an attenuation, so no usable setting is
+  above 0 dB, and 0.0 had to stay available as a real value.
+- **`hold_ms`**, with **`hysteresis_db`**, swaps the gate's memoryless gain
+  computer for a closed/attack/hold/decay machine on the same peak level.
+  Once ATTACK is entered it runs to full open whatever the key does next, and
+  a crossing during DECAY re-enters ATTACK from wherever the gain got to -
+  the trigger state a pure function of the instantaneous envelope cannot
+  have. Measured on a 1 ms burst under a 200 ms attack: without hold the gate
+  never leaves -80.00 dB; with `hold_ms=20` it runs to -0.44 dB and stays
+  within 0.5 dB of open for 23.5 ms. The thresholds are precomputed linear,
+  so this path skips the `logf` at `:307`; `gain_reduction_db` still costs
+  one `gain_to_db`.
+- **`relative_threshold=True`** drives the computer with the side-chained
+  level minus the full-band level instead of an absolute overshoot, so a
+  fixed spectral balance gets the same reduction wherever it sits in the
+  level range. A fixed 200 Hz + 6 kHz balance at -6, -20 and -40 dBFS spreads
+  10.57 dB with it off and 0.00 dB with it on.
+- **`program_attack=True`** scales the attack coefficient by the **square
+  root** of how far the level is over the threshold. Two things that did not
+  work and why: measured against the *envelope*, the ratio is enormous out of
+  silence and every attack collapses to one sample; scaled by the overshoot
+  itself, 20 dB over lands 6.2x faster than 10 dB over, past every dossier's
+  band. The root gives time-to-63% of 1.167 ms at 10 dB over and 0.333 ms at
+  20 dB over, a ratio of 3.50 where the DeEsser dossier asks 3.3 within 25%.
+
+**The transient shaper.**
+
+- **`transient_fast_attack_ms`**, **`transient_fast_release_ms`**,
+  **`transient_slow_attack_ms`** and **`transient_slow_release_ms`** are the
+  four detector time constants that were compiled-in literals evaluated at
+  process entry (`:215`, `:217`, `:219`, `:221`), under a comment saying they
+  were fixed by the shaper's design. They are config fields now, defaulted to
+  those same literals, so a node that leaves them alone computes exactly what
+  it computed before.
+- **`slow_hold_ms`** makes the slow envelope a peak-hold rather than a
+  follower, so the sustain difference grows monotonically through a note's
+  decay instead of peaking early and falling away with it. On a 220 Hz note
+  decaying at 10 dB/s, gain read once per block: the stock shaper reaches
+  -0.87 dB at 200 ms and the peak-hold reaches -9.09 dB with no block coming
+  back up by as much as 0.25 dB.
+- **`transient_dual=True`** runs a second, slower envelope pair
+  (**`sustain_fast_attack_ms`** and its three siblings, defaulting to 1, 200,
+  25 and 1200 ms) for the sustain section, and applies both differences at
+  once rather than selecting one by the sign of the first.
+  **The peak-hold goes on whichever pair drives the sustain section** - the
+  only one there is, or the second when `transient_dual` gives sustain its
+  own. Held on the first pair while a second exists it costs the attack gain
+  for nothing, because a held slow envelope is never below the fast one:
+  measured +0.00 dB of attack gain that way against +4.91 dB the right way,
+  with the sustain still reaching -6.99 dB at 200 ms.
+
+**What a reset drops.** `audioif_dynamics_clear_extras()` is called by both
+`state_init` and `reset`, and clears the RMS envelope, the stored output the
+feedback detector reads, the full-band envelope, the second transient pair,
+the slow peak-hold, the gate machine's stage/gain/hold and the 4x
+reconstruction's history. The **side-chain filters are deliberately not in
+it** - not the second high-pass pole and not either low-pass pole - because
+the original keeps its side-chain filter memory and its last reported gain
+reduction across a reset, and these are the same kind of thing.
+
+**Cost.** None of it is paid by a node that does not ask. The per-sample
+additions sit behind branches on config fields that are zero or false by
+default, and the two expensive ones are opt-in by construction: the 4x
+reconstruction is 48 multiplies per channel per sample, and the second
+side-chain pole is one multiply-add per channel per sample per end of the
+band. The four transient coefficients and the second pair's four are computed
+once per block, as the originals were.
+
 ## `audiocore.get_buffer` returns a byte view (CircuitPython patch)
 
 The one place `apply_cp_patches.sh` changes code CircuitPython already had,

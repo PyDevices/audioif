@@ -169,6 +169,17 @@ unit circle is a filter that never stops ringing, which is the one thing
 this module exists to avoid. See
 [docs/upstream-diff.md](docs/upstream-diff.md) for the measurements.
 
+`audiodynamics.Dynamics` carries twenty-one options beyond what the engine
+gave it, added for the effects program and every one of them default-off: an
+RMS detector, a feedback detector topology and an external key input with Key
+Listen, a 4x true-peak reconstruction, a two-pole key band with both corners
+settable, a settable expander/gate depth, a four-stage gate envelope with
+hold and hysteresis, a relative-threshold gain computer, a program-dependent
+attack, and the transient shaper's four detector time constants, a second
+envelope pair and a peak-hold on the slow one. What each is for, what it was
+measured doing, and what it cost:
+[docs/upstream-diff.md](docs/upstream-diff.md).
+
 ## Status
 
 **MicroPython:** all module tiers ported and oracle-diffed byte-for-byte

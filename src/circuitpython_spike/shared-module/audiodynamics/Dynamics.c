@@ -13,6 +13,8 @@ void audiodynamics_dynamics_reset_buffer(audiodynamics_dynamics_obj_t *self,
     (void)channel;
     self->pending = NULL;
     self->pending_frames = 0;
+    self->key_pending = NULL;
+    self->key_pending_frames = 0;
     audioif_dynamics_reset(&self->state);
 }
 
@@ -42,8 +44,33 @@ audioio_get_buffer_result_t audiodynamics_dynamics_get_buffer(
         if (run > self->pending_frames) {
             run = self->pending_frames;
         }
-        audioif_dynamics_process_s16(&self->config, &self->state,
-            &self->buffer[produced * 2], self->pending, run);
+        const int16_t *key = NULL;
+        if (self->key_source != MP_OBJ_NULL) {
+            if (self->key_pending_frames == 0) {
+                uint8_t *raw = NULL;
+                uint32_t raw_bytes = 0;
+                audioio_get_buffer_result_t result = audiosample_get_buffer(
+                    self->key_source, false, 0, &raw, &raw_bytes);
+                const uint32_t width = 2u * self->base.channel_count;
+                if (result == GET_BUFFER_ERROR || raw == NULL ||
+                    raw_bytes < width) {
+                    // A key that has run dry starves the node exactly the way
+                    // an absent source does, rather than silently reverting
+                    // the detector to the audio.
+                    break;
+                }
+                self->key_pending = (const int16_t *)raw;
+                self->key_pending_frames = raw_bytes / width;
+            }
+            if (run > self->key_pending_frames) {
+                run = self->key_pending_frames;
+            }
+            key = self->key_pending;
+            self->key_pending += run * self->base.channel_count;
+            self->key_pending_frames -= run;
+        }
+        audioif_dynamics_process_s16_key(&self->config, &self->state,
+            &self->buffer[produced * 2], self->pending, key, run);
         self->pending += run * self->base.channel_count;
         self->pending_frames -= run;
         produced += run;

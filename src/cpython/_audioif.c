@@ -728,7 +728,7 @@ static PyObject *dynamics_state_configure(audioif_dynamics_object_t *self,
     double value;
     if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
     if (option < AUDIOIF_DYNAMICS_OPT_THRESHOLD_DB ||
-        option > AUDIOIF_DYNAMICS_OPT_TRUE_PEAK) {
+        option >= AUDIOIF_DYNAMICS_OPT_COUNT) {
         PyErr_SetString(PyExc_ValueError, "unknown dynamics option");
         return NULL;
     }
@@ -750,10 +750,19 @@ static PyObject *dynamics_state_reset(audioif_dynamics_object_t *self,
     Py_RETURN_NONE;
 }
 
+// `process(audio)` is the original. `process(audio, key)` hands the detector
+// a different stream from the one the gain lands on, which is what an external
+// key input is; the key has to carry at least as many frames as the audio,
+// because the wrapper is the one that decides how short a run may be.
 static PyObject *dynamics_state_process(audioif_dynamics_object_t *self,
-    PyObject *argument) {
+    PyObject *args) {
+    PyObject *audio = NULL;
+    PyObject *key_object = NULL;
+    if (!PyArg_ParseTuple(args, "O|O:process", &audio, &key_object)) {
+        return NULL;
+    }
     Py_buffer input = {0};
-    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    if (PyObject_GetBuffer(audio, &input, PyBUF_SIMPLE) < 0) return NULL;
     const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
     if (input.len % width) {
         PyBuffer_Release(&input);
@@ -761,11 +770,31 @@ static PyObject *dynamics_state_process(audioif_dynamics_object_t *self,
             "input must be whole 16-bit frames for the configured channel count");
         return NULL;
     }
+    Py_buffer key = {0};
+    int have_key = 0;
+    if (key_object != NULL && key_object != Py_None) {
+        if (PyObject_GetBuffer(key_object, &key, PyBUF_SIMPLE) < 0) {
+            PyBuffer_Release(&input);
+            return NULL;
+        }
+        if (key.len < input.len) {
+            PyBuffer_Release(&key);
+            PyBuffer_Release(&input);
+            PyErr_SetString(PyExc_ValueError,
+                "the key must carry at least as many frames as the input");
+            return NULL;
+        }
+        have_key = 1;
+    }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
     if (result != NULL) {
-        audioif_dynamics_process_s16(&self->config, &self->state,
+        audioif_dynamics_process_s16_key(&self->config, &self->state,
             (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            have_key ? (const int16_t *)key.buf : NULL,
             (uint32_t)(input.len / width));
+    }
+    if (have_key) {
+        PyBuffer_Release(&key);
     }
     PyBuffer_Release(&input);
     return result;
@@ -786,7 +815,7 @@ static PyMethodDef dynamics_state_methods[] = {
     {"configure", (PyCFunction)dynamics_state_configure, METH_VARARGS, NULL},
     {"finish", (PyCFunction)dynamics_state_finish, METH_NOARGS, NULL},
     {"reset", (PyCFunction)dynamics_state_reset, METH_NOARGS, NULL},
-    {"process", (PyCFunction)dynamics_state_process, METH_O, NULL},
+    {"process", (PyCFunction)dynamics_state_process, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL},
 };
 
