@@ -26,6 +26,8 @@
 
 // audiomp3 (tier 5) has real content now -- see audiomp3/module.c.
 
+// audioladder (tier 6) has real content now -- see audioladder/module.c.
+
 // audiodynamics / audioroute (tier 6) are the first modules here that are not
 // CircuitPython ports at all -- they come from micropython-vst3's `vstaudio`
 // usermod. See audiodynamics/module.c, audioroute/module.c.

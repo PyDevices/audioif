@@ -24,6 +24,7 @@
 #include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
 #include "shared/audioif_shaper.h"
+#include "shared/audioif_ladder.h"
 #include "shared/audioif_filter_f32.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
@@ -42,6 +43,7 @@ typedef struct {
     PyObject *splitter_ring_type;
     PyObject *feedback_delay_state_type;
     PyObject *waveshaper_state_type;
+    PyObject *ladder_state_type;
     PyObject *biquad_f32_state_type;
     PyObject *allpass_f32_state_type;
     PyObject *suboctave_state_type;
@@ -1521,6 +1523,109 @@ static PyType_Spec waveshaper_state_spec = {
     .slots = waveshaper_state_slots,
 };
 
+// audioladder.Ladder's integrators and solver history. Small enough to sit in
+// the object -- unlike FeedbackDelayState above there is no line to allocate,
+// four floats a stage and three more a channel is the whole of it -- but a
+// type all the same, because it is state and the Python side must not be able
+// to lose it between blocks.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_ladder_config_t config;
+    audioif_ladder_state_t state;
+} audioif_ladder_object_t;
+
+static int ladder_state_init(audioif_ladder_object_t *self, PyObject *args,
+    PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"sample_rate", "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|II:LadderState",
+        keywords, &sample_rate, &channel_count)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_ladder_config_init(&self->config, sample_rate);
+    audioif_ladder_set_channel_count(&self->config, channel_count);
+    audioif_ladder_state_init(&self->state);
+    return 0;
+}
+
+static PyObject *ladder_state_configure(audioif_ladder_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_LADDER_OPT_CUTOFF_HZ ||
+        option > AUDIOIF_LADDER_OPT_MIX) {
+        PyErr_SetString(PyExc_ValueError, "unknown ladder option");
+        return NULL;
+    }
+    audioif_ladder_configure(&self->config,
+        (audioif_ladder_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *ladder_state_finish(audioif_ladder_object_t *self,
+    PyObject *unused) {
+    audioif_ladder_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *ladder_state_reset(audioif_ladder_object_t *self,
+    PyObject *unused) {
+    audioif_ladder_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+static PyObject *ladder_state_process(audioif_ladder_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_ladder_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef ladder_state_methods[] = {
+    {"configure", (PyCFunction)ladder_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)ladder_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)ladder_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)ladder_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot ladder_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, ladder_state_init},
+    {Py_tp_methods, ladder_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec ladder_state_spec = {
+    .name = "_audioif.LadderState",
+    .basicsize = sizeof(audioif_ladder_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = ladder_state_slots,
+};
+
 // audioconvolve.Convolver's transform tables, frequency-delay line and stored
 // impulse. All state, and a great deal of it -- one allocation carved up by
 // the DSP layer, exactly as in the MicroPython binding.
@@ -2421,6 +2526,13 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_SHAPER_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "SHAPER_MAX_OVERSAMPLE",
         AUDIOIF_SHAPER_MAX_OVERSAMPLE) < 0) return -1;
+    state->ladder_state_type = PyType_FromModuleAndSpec(module,
+        &ladder_state_spec, NULL);
+    if (state->ladder_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "LadderState",
+        state->ladder_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "LADDER_FRAMES",
+        AUDIOIF_LADDER_FRAMES) < 0) return -1;
     state->biquad_f32_state_type = PyType_FromModuleAndSpec(module,
         &biquad_f32_state_spec, NULL);
     if (state->biquad_f32_state_type == NULL) return -1;
@@ -2468,6 +2580,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->splitter_ring_type);
     Py_VISIT(state->feedback_delay_state_type);
     Py_VISIT(state->waveshaper_state_type);
+    Py_VISIT(state->ladder_state_type);
     Py_VISIT(state->biquad_f32_state_type);
     Py_VISIT(state->allpass_f32_state_type);
     Py_VISIT(state->suboctave_state_type);
@@ -2486,6 +2599,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->splitter_ring_type);
     Py_CLEAR(state->feedback_delay_state_type);
     Py_CLEAR(state->waveshaper_state_type);
+    Py_CLEAR(state->ladder_state_type);
     Py_CLEAR(state->biquad_f32_state_type);
     Py_CLEAR(state->allpass_f32_state_type);
     Py_CLEAR(state->suboctave_state_type);

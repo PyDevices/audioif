@@ -45,6 +45,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_suboctave.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_filter_f32.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_shaper.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_ladder.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
@@ -179,17 +180,18 @@ SRC_USERMOD_C += \
 
 # --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter,
 #     MidSide), audiomath (Multiply, SubOctave), audioecho
-#     (FeedbackDelay), audioconvolve (Convolver) and audiobiquad
-#     (Biquad, AllPass) ---
+#     (FeedbackDelay), audioladder (Ladder), audioconvolve (Convolver)
+#     and audiobiquad (Biquad, AllPass) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
 # library; the rest are audioif's own -- audiomath is the only way to modulate
 # a stream at audio rate and the only way to divide one down in frequency,
-# audioecho puts a filter inside a delay's feedback loop, audioconvolve
-# applies a measured impulse response rather than imitating one, and
-# audiobiquad filters in float so a tail reaches exact zero, which neither
-# ported kernel can (audioif#23, #36). See
+# audioecho puts a filter inside a delay's feedback loop, audioladder puts
+# four one-poles and a saturator inside a filter's, audioconvolve applies a
+# measured impulse response rather than imitating one, and audiobiquad
+# filters in float so a tail reaches exact zero, which neither ported
+# kernel can (audioif#23, #36). See
 # docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
@@ -209,6 +211,8 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioshaper/Waveshaper.c \
     $(MPAUDIO_SRC_DIR)/audioshaper/module.c
+    $(MPAUDIO_SRC_DIR)/audioladder/Ladder.c \
+    $(MPAUDIO_SRC_DIR)/audioladder/module.c
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioconvolve/Convolver.c \
     $(MPAUDIO_SRC_DIR)/audioconvolve/module.c

@@ -22,6 +22,8 @@ src/shared/audioif_feedback_delay.h	shared/audioif_feedback_delay.h
 src/shared/audioif_feedback_delay.c	shared/audioif_feedback_delay.c
 src/shared/audioif_shaper.h	shared/audioif_shaper.h
 src/shared/audioif_shaper.c	shared/audioif_shaper.c
+src/shared/audioif_ladder.h	shared/audioif_ladder.h
+src/shared/audioif_ladder.c	shared/audioif_ladder.c
 src/shared/audioif_trig.h	shared/audioif_trig.h
 src/shared/audioif_trig.c	shared/audioif_trig.c
 src/shared/audioif_fft.h	shared/audioif_fft.h
@@ -77,6 +79,12 @@ src/circuitpython_spike/shared-bindings/audioshaper/Waveshaper.h	shared-bindings
 src/circuitpython_spike/shared-bindings/audioshaper/Waveshaper.c	shared-bindings/audioshaper/Waveshaper.c
 src/circuitpython_spike/shared-module/audioshaper/Waveshaper.h	shared-module/audioshaper/Waveshaper.h
 src/circuitpython_spike/shared-module/audioshaper/Waveshaper.c	shared-module/audioshaper/Waveshaper.c
+src/circuitpython_spike/shared-bindings/audioladder/__init__.h	shared-bindings/audioladder/__init__.h
+src/circuitpython_spike/shared-bindings/audioladder/__init__.c	shared-bindings/audioladder/__init__.c
+src/circuitpython_spike/shared-bindings/audioladder/Ladder.h	shared-bindings/audioladder/Ladder.h
+src/circuitpython_spike/shared-bindings/audioladder/Ladder.c	shared-bindings/audioladder/Ladder.c
+src/circuitpython_spike/shared-module/audioladder/Ladder.h	shared-module/audioladder/Ladder.h
+src/circuitpython_spike/shared-module/audioladder/Ladder.c	shared-module/audioladder/Ladder.c
 
 src/circuitpython_spike/shared-bindings/audioconvolve/__init__.h	shared-bindings/audioconvolve/__init__.h
 src/circuitpython_spike/shared-bindings/audioconvolve/__init__.c	shared-bindings/audioconvolve/__init__.c

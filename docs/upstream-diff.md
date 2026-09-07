@@ -2430,3 +2430,134 @@ zero-width operator both enclose exactly 0.0. Each check was shown to fail
 before it was believed -- discarding the play operator's result reddens both
 hysteresis tests, and replacing the half-bands with a zero-order hold and a
 decimating drop reddens the alias-floor test.
+
+## `audioladder`: the loop CircuitPython's filters cannot close (effects Phase 1)
+
+`audiofilters.Filter` cascades RBJ biquads and does it very well: measured
+against the analytic four-pole ladder response it tracks the resonant peak to
+-0.05 dB at every feedback through 3.95. What it cannot do is not a matter of
+degree. It is **linear**, and three of the ladder's fixed traits are things a
+linear filter does not have at any setting:
+
+- **It sustains.** At a feedback of 4 a ladder's loop gain reaches 1 at its
+  own cutoff and a tone appears out of silence. A biquad cascade at any Q
+  decays; fed silence it stays silent. The trait fails at its own definition.
+- **What bounds that tone is a nonlinearity inside the loop.** Not a limiter
+  after the filter, which would bound the level and leave the tone a sine:
+  the saturator is in the feedback path, so it is what sets the amplitude,
+  and its odd curve is where the growl comes from. A linear filter has no
+  harmonic ladder to measure at all.
+- **Its character follows the input level**, for the same reason. A linear
+  filter's is identically level-independent, which is that trait's own stated
+  disconfirmation.
+
+Nothing else in the palette closes a loop of the right shape. An audioif
+graph is a pull DAG in which no node accepts its own output, so a loop exists
+only inside one C kernel, and no kernel held four one-poles round a feedback
+path with a saturator in it. `audiodelays.Echo`'s loop is
+`echo * decay + sample` into a delay line -- one tap, no filter, no saturator
+(`audioif_echo.c:24`, `:31`). `audioecho.FeedbackDelay`'s loop has a low-pass,
+a high-pass and a cubic clip in it, but behind a delay line clamped to at
+least one frame: that is a comb, whose resonances are harmonics of 1/delay,
+not one movable cutoff. And a loop closed in Python runs at block rate, about
+187 Hz at 48 kHz, which is not a filter.
+
+`audioladder.Ladder` is four topology-preserving one-pole stages round a
+global feedback loop with the odd cubic saturator inside it -- the same curve
+`audioif_feedback_delay.c` puts in its own loop, in the +-1 domain rather than
+the int16 one. `shared/audioif_ladder.c`, `float` working precision to match
+`audioif_dynamics.c` and `audioif_feedback_delay.c`. The options are
+`cutoff_hz`, `resonance` (0..4.2), `drive` (a linear gain into the loop),
+`poles` (1..4, which stage the output is tapped from), `passband_comp`,
+`oversample` (1 or 2) and `mix` (a plain crossfade).
+
+**A new module rather than arguments on `audiofilters.Filter`,
+deliberately** -- the same reason `audioecho` is not arguments on
+`audiodelays.Echo`. An argument added to audioif's copy of a CircuitPython
+module would not exist on a stock board, so a `LadderFilter` written against
+it would silently be a different effect there. A new module either installs
+whole or is absent and says so on import.
+
+Three details worth recording.
+
+### The feedback has no delay in it, and that is the whole node
+
+The obvious way to write this is to feed back the previous sample's fourth
+stage. It does not work, and it fails at exactly the trait the node exists
+for. Four bilinear one-poles reach -180 degrees at the cutoff with a gain of
+1/4, so the loop sustains at a feedback of exactly 4, at exactly the cutoff,
+and not before. One sample of delay adds its own phase, which moves the
+180-degree point *below* the cutoff, where each stage is louder -- so the
+loop sustains early, and at the wrong frequency. Measured on the first draft
+of this file: 3.52 rather than 4 at a 1 kHz cutoff and 48 kHz, oscillating
+six percent flat, and worse the higher the cutoff goes, since the delay's
+phase is a fixed fraction of the sample rate while the filter's is not.
+
+So the loop is solved instead of delayed, and the solve costs no division, no
+library call and no branch on the signal. The loop equation is
+`y + a*sat(y) = c`, with `a = resonance * g^4` and `c` what the chain would
+put out with the feedback disconnected. Where `|y| >= 1` the saturator is
+constant at 2/3 and the equation is linear, so that branch is exact and
+closed form -- and the test for it is exact too. Inside, `sat(y) = y - y^3/3`
+exactly, so it rearranges to `y = (c + a*y^3/3)/(1 + a)`, a map whose
+derivative is `a*y^2/(1+a)` -- below 1 for every `a` and every `|y| <= 1`, so
+it contracts from any seed. Four passes, seeded by extrapolating the last two
+solved samples, with two constants computed in `set()` and three multiplies a
+pass. The count is fixed rather than tested for convergence on purpose: a
+convergence test branches on the signal, and two interpreters that took
+different branches would render different bytes.
+
+### `tan()` in `set()`, never in the loop
+
+`g = tan(pi*fc/fs')/(1 + tan(pi*fc/fs'))` and everything derived from it are
+recomputed whenever any option changes, which for a class with a macro on it
+is once a block -- about 187 Hz at 48 kHz. The integrator state is kept
+*unscaled* for that reason: the per-sample loop recomputes `(1-g)*z` rather
+than storing it, which costs one multiply a stage and is what lets
+`cutoff_hz` move mid-stream without the stored state silently meaning
+something else afterwards.
+
+`fs'` is the sample rate times `oversample`, so `oversample` moves the rate
+the filter is measured against; `cutoff_hz` is therefore stored as asked for
+and clamped where it is used, not on the way in.
+
+### `mix` is a crossfade here, and 0..2 in `audioecho`
+
+Deliberately different, and this is the place it is written down.
+`audiodelays.Echo`'s convention -- dry at unity until 1, wet alone at 2 --
+exists because a delay's wet signal is something *added* to a signal that is
+still there, and six delay classes sit on `Echo` and `FeedbackDelay` where
+`mix` has to mean one thing. A filter's wet signal is that same signal,
+changed. "The dry plus all of the filtered" is not a setting any filter has.
+So `mix` is 0..1 and crossfades, defaulting to 1, and `mix=0` is a wire
+sample for sample -- the dry path takes the raw input, never the driven one.
+
+### What was measured
+
+Through the Python surface, `RawSample -> Ladder -> get_buffer` at 48 kHz, an
+impulse then three seconds of silence:
+
+| cutoff | k=3.0 | k=3.5 | k=3.9 | k=3.95 | k=4.0 | k=4.05 | k=4.2 |
+|---|---|---|---|---|---|---|---|
+| 200 Hz | silent | silent | decays | decays | sustains | sustains | sustains |
+| 800 Hz | silent | silent | silent | silent | sustains | sustains | sustains |
+| 3 kHz | silent | silent | silent | silent | sustains | sustains | sustains |
+
+and the sustained tone measures 199.5, 800.1 and 3000.0 Hz against cutoffs of
+200, 800 and 3000. At k=4.2 and an 800 Hz cutoff the peak moves 0.01 dB
+across the last two seconds of the three and the tone is 0.07 % THD; its
+second harmonic is 132 dB below the first and 69 dB below the third, which is
+what an odd nonlinearity looks like. Driving a 200 Hz tone into the filter at
+k=3.9, h3/h1 rises monotonically 45 dB across drive 0/+8/+16/+24 dB. THD
+rises monotonically with input level, 0.010 % at -40 dBFS in to 0.302 % at 0.
+Feeding `-x` returns exactly `-y` wherever the signal is off the int16 rails,
+where the asymmetry is two's complement's (`+32767` against `-32768`) and is
+the same in every other node here.
+
+Verified by `tests/parity/ladder_probe.py` through `verify_dsp.py`, with no
+oracle -- the golden is captured from the port, as `audiomath`, `audioecho`
+and `audioconvolve` are. It is the most sensitive fixture in that file: the
+loop is recursive, runs in `float`, *and* is solved, so a one-ulp
+disagreement between two builds has the solver's seed to grow through as well
+as the feedback path, and several of its cases sit where the loop sustains a
+tone of its own and nothing damps a difference at all.

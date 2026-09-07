@@ -10,6 +10,7 @@
     "feedback_delay_probe.py": "a5ecffab77c60ff4888afb69a30f5185b67c543d1d77dfbe4ee3bd904f89da99",
     "filter_f32_probe.py": "bdbc6c79069a66dc8b73792fb2e79c42d1ff9fd6fdd99c29c35039100ee92c6b",
     "midside_probe.py": "d6d72f976bd7461f9f5c5d8750cfd1a2a195e0b435ef3f96b2cdfd02079a0d20",
+    "ladder_probe.py": "f893f29ef490e8ddae82bae2f06afb095d42edd0a7c4639c95b38deaf25d63cc",
     "multiply_probe.py": "f3d5ff2ed758647f73692426ef6046dfe8ffcdf9e13dd71a19f01f3f483fe46d",
     "route_dry_probe.py": "bb495c065900819b2ba6858de03fdf000bb6c08d0f6ef07001813412ef2ca81b",
     "route_probe.py": "fdb04d12c18c37e0c3f57c8c8b1411a6b0eb5659091f710fb77876f2651f73aa",

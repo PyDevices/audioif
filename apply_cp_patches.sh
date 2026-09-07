@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Add audioif's audiodynamics, audioroute (Splitter, MidSide),
-# audiomath, audioecho, audioshaper, audioconvolve and audiobiquad
-# modules to a CircuitPython tree.
+# audiomath, audioecho, audioshaper, audioladder, audioconvolve and
+# audiobiquad modules to a CircuitPython tree.
 # to a CircuitPython tree.
 #
 #   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
@@ -249,6 +249,7 @@ if [[ "$MODE" == "--status" ]]; then
                 shared-bindings/audiomath/__init__.c \
                 shared-bindings/audioecho/__init__.c \
                 shared-bindings/audioshaper/__init__.c \
+                shared-bindings/audioladder/__init__.c \
                 shared-bindings/audioconvolve/__init__.c \
                 shared-bindings/audiobiquad/__init__.c \
                 shared/audioif_dynamics.c shared/audioif_splitter.c \
@@ -256,6 +257,8 @@ if [[ "$MODE" == "--status" ]]; then
                 shared/audioif_multiply.c shared/audioif_suboctave.c \
                 shared/audioif_feedback_delay.c \
                 shared/audioif_shaper.c \
+                shared/audioif_multiply.c shared/audioif_feedback_delay.c \
+                shared/audioif_ladder.c \
                 shared/audioif_trig.c shared/audioif_fft.c \
                 shared/audioif_convolve.c shared/audioif_filter_f32.c; do
         [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
@@ -287,6 +290,8 @@ CIRCUITPY_AUDIOECHO ?= 0
 CFLAGS += -DCIRCUITPY_AUDIOECHO=\$(CIRCUITPY_AUDIOECHO)
 CIRCUITPY_AUDIOSHAPER ?= 0
 CFLAGS += -DCIRCUITPY_AUDIOSHAPER=\$(CIRCUITPY_AUDIOSHAPER)
+CIRCUITPY_AUDIOLADDER ?= 0
+CFLAGS += -DCIRCUITPY_AUDIOLADDER=\$(CIRCUITPY_AUDIOLADDER)
 CIRCUITPY_AUDIOCONVOLVE ?= 0
 CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=\$(CIRCUITPY_AUDIOCONVOLVE)
 CIRCUITPY_AUDIOBIQUAD ?= 0
@@ -313,6 +318,9 @@ endif
 ifeq (\$(CIRCUITPY_AUDIOSHAPER),1)
 SRC_PATTERNS += audioshaper/%
 endif
+ifeq (\$(CIRCUITPY_AUDIOLADDER),1)
+SRC_PATTERNS += audioladder/%
+endif
 ifeq (\$(CIRCUITPY_AUDIOCONVOLVE),1)
 SRC_PATTERNS += audioconvolve/%
 endif
@@ -338,6 +346,8 @@ CIRCUITPY_AUDIOECHO = 1
 CFLAGS += -DCIRCUITPY_AUDIOECHO=1
 CIRCUITPY_AUDIOSHAPER = 1
 CFLAGS += -DCIRCUITPY_AUDIOSHAPER=1
+CIRCUITPY_AUDIOLADDER = 1
+CFLAGS += -DCIRCUITPY_AUDIOLADDER=1
 CIRCUITPY_AUDIOCONVOLVE = 1
 CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1
 CIRCUITPY_AUDIOBIQUAD = 1
@@ -362,6 +372,8 @@ insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioecho/
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioecho/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioshaper/Waveshaper.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioshaper/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioladder/Ladder.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioladder/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/Convolver.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiobiquad/Biquad.c \\'
@@ -375,6 +387,7 @@ insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiomath/Mul
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiomath/SubOctave.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioecho/FeedbackDelay.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioshaper/Waveshaper.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioladder/Ladder.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioconvolve/Convolver.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiobiquad/Biquad.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiobiquad/AllPass.c \\'
@@ -384,6 +397,7 @@ insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_multiply.c \
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_suboctave.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_feedback_delay.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_shaper.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_ladder.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_trig.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_fft.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_convolve.c \\'
@@ -411,6 +425,9 @@ if [ -f "$VARIANT_H" ]; then
 #endif
 #ifndef CIRCUITPY_AUDIOSHAPER
 #define CIRCUITPY_AUDIOSHAPER (0)
+#endif
+#ifndef CIRCUITPY_AUDIOLADDER
+#define CIRCUITPY_AUDIOLADDER (0)
 #endif
 #ifndef CIRCUITPY_AUDIOCONVOLVE
 #define CIRCUITPY_AUDIOCONVOLVE (0)
