@@ -64,7 +64,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
-`audiomath`, `audioecho`, `audioconvolve`, and the `audiorender` package.
+`audiomath`, `audioecho`, `audioladder`, `audioconvolve`, and the
+`audiorender` package.
 `audiomp3` remains firmware-only. The distribution declares no *required*
 runtime dependencies and does not itself publish an `audioif` import; its
 version is the `VERSION` file, which is also what `_audioif.__version__`
@@ -111,15 +112,46 @@ those packages installed.
 
 ## Additions beyond CircuitPython
 
-Five things here are not CircuitPython's. `audiodynamics` (compression,
+Six things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute` (fan one
 stream out to parallel branches) come from micropython-vst3's audio engine,
 which had them and CircuitPython does not. `audiomath` (multiply one stream
 by another — ring and amplitude modulation), `audioecho` (a delay with a
-filter, a soft-clip and a cross-feed inside its feedback loop) and
-`audioconvolve` (apply a measured or synthesized impulse response, by
-partitioned FFT) have no ancestor anywhere and are audioif's own.
-`apply_cp_patches.sh` adds all five to a CircuitPython tree too.
+filter, a soft-clip and a cross-feed inside its feedback loop),
+`audioladder` (a transistor ladder filter — four one-pole stages round a
+feedback loop with an odd saturator inside it) and `audioconvolve` (apply a
+measured or synthesized impulse response, by partitioned FFT) have no
+ancestor anywhere and are audioif's own. `apply_cp_patches.sh` adds all six
+to a CircuitPython tree too.
+
+`audioladder` is the newest, and the one whose reason for existing is least
+obvious next to a module CircuitPython already has. `audiofilters.Filter`
+is a better *resonant low-pass* than this: a cascade of biquads tracks the
+analytic response to a fraction of a decibel. It is also linear, so it never
+sustains a tone of its own, has no harmonics to speak of, and sounds exactly
+the same however hard you hit it — and those three are what a ladder is. The
+whole surface:
+
+```python
+import audioladder
+
+ladder = audioladder.Ladder(
+    sample_rate=48000,      # and channel_count=1 or 2
+    cutoff_hz=800.0,        # where the filter turns over
+    resonance=3.6,          # 0..4.2; at 4 it sustains a tone at the cutoff
+    drive=2.5,              # linear gain into the loop, 1 being unity
+    poles=4,                # tap stage 1..4: 6, 12, 18 or 24 dB an octave
+    passband_comp=0.0,      # 0..1, how much of the passband to give back
+    oversample=2,           # 1 or 2; 2 folds back fewer of its harmonics
+    mix=1.0,                # 0 a wire, 1 the filter
+)
+ladder.play(source)
+ladder.set(cutoff_hz=1200.0)   # any option, mid-stream, once a block
+ladder.clear()                 # empty the integrators; stops a sustained tone
+```
+
+See [docs/upstream-diff.md](docs/upstream-diff.md) for why its feedback loop
+is solved rather than delayed, and what that was measured to be worth.
 
 ## Status
 
