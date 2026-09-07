@@ -17,7 +17,7 @@ audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
 one -- the same C the CPython extension links, so a disagreement between two
 interpreters would itself be the finding.
 
-Four of the seven probes are held against no oracle, because there is nothing
+Five of the eight probes are held against no oracle, because there is nothing
 older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
 audioif's own modules, with no ancestor in CircuitPython or in the engine, and
 neither have `Dynamics`' lookahead and true-peak options -- which is why those
@@ -26,6 +26,13 @@ being held against `vstaudio_dsp.c` compiled unmodified and so restricted to
 forms the original accepts. Their goldens are captured from the port under
 CPython, and what they prove is cross-interpreter agreement and no accidental
 change over time, not fidelity to something older.
+
+`audioecho` is split the same way and for the same reason, even though both
+halves are the port's: one hash covers a probe's whole output, so a case
+appended to feedback_delay_probe.py would move the very number that says
+`wow_shape`, `delay_slew`, `wow_am_depth` and `loop_semitones` changed
+nothing. They live in feedback_delay_options_probe.py, whose first two cases
+render exactly what that file's `plain` renders.
 
 Two of those four are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
@@ -55,6 +62,7 @@ PROBES = (
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
     ("multiply_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
+    ("feedback_delay_options_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
     ("convolve_probe.py", "audioconvolve", None, {}),
 )
