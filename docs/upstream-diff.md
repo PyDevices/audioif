@@ -834,6 +834,86 @@ soundtrack uses:
 at 14% wet should cost.) Three racks in the soundtrack used it, so their
 renders move -- that is the fix arriving, not a regression.
 
+## `audioecho.FeedbackDelay` gains a shape table, a slew, wet AM and a loop pitch shift (effects Phase 1)
+
+Additive, and all four default off, so a `FeedbackDelay` built the way it was
+*is* what it was -- `tests/parity/feedback_delay_probe.py`'s hash is unchanged
+across this phase, which is the check that says so. The new paths get their
+own fixture (`feedback_delay_options_probe.py`) rather than joining that one,
+because a probe's golden is one hash over its whole output: a case appended to
+it would move the very number the additive claim rests on. That fixture's
+first two cases render `feedback_delay_probe.py`'s `plain` line for line.
+
+Asked for by the effects program (audioif#37, its Phase 1 palette work): the
+Phase 0 survey fixed traits across the modulation, delay and pitch families
+that no arrangement of the existing nodes reaches, and the program's vision
+§6 permits additive options on audioif's *own* modules for exactly that.
+
+- **`wow_shape`** replaces the built-in sine with one period of the caller's
+  own, `int16` Q15, a power of two from 2 to 4096 samples; `None` is the sine
+  again. The node's only modulation was `wow_depth_frames * wow_sine` added to
+  the delay, and a bucket brigade's delay is its line length over twice its
+  clock -- so the Small Clone's *triangle on the clock* arrives as a
+  reciprocal on the delay, which no sine is. The magic-circle pair carries no
+  phase index to look a table up with, so the table gets a Q32 accumulator
+  beside it, stepped from the same `wow_hz`. The pair keeps turning either
+  way: `wow_am_depth` reads it, and stopping it would move the default path's
+  arithmetic. The table is *borrowed*, not copied -- the bindings hold the
+  object (`self->wow_shape` under MicroPython and CircuitPython, an open
+  `Py_buffer` under CPython) because the config only keeps a pointer.
+- **`delay_slew`** walks the read head to a new `delay_ms` instead of jumping
+  to it, in delay-seconds per second -- a dimensionless rate, so it is the
+  same number at every sample rate. `delay_ms` is a plain float read
+  unsmoothed at the top of the loop, so before this a Time move landed in one
+  jump on a block boundary: no pitch bend, and a discontinuity. A constant
+  slew rate is a constant pitch offset for exactly as long as the move lasts,
+  which is what an Echoplex's capstan and a DM-2's clock both do.
+- **`wow_am_depth`** (0..1) puts the wow oscillator on the wet gain as well as
+  on the delay. Tape and bucket-brigade level wobble is a loss, so this dips
+  to `1 - depth` and returns to unity and never boosts; it is on the output
+  only, so it cannot change what the feedback path does.
+- **`loop_semitones`** (-24..+24) pitch-shifts the line read *inside* the
+  loop, two taps half a `loop_window_ms` window apart under a triangular
+  crossfade whose two halves sum to exactly one. Every pass rises again, which
+  is what a shimmer is; `audiodelays.PitchShift` chained after a delay shifts
+  the *sum* of the repeats once, not each repeat one more time.
+  `loop_window_ms` defaults to 25 ms and is capped at a quarter of the line:
+  it is the grain rate traded against smear, and it also bounds how far the
+  read head may wander from the delay it was asked for.
+
+**The option enum is appended, never renumbered.** `src/cpython/audioecho.py`
+maps option names to those integers and `_audioif.c` range-checks against the
+last one, so inserting an option would silently change what an already
+installed wheel configures.
+
+**Off means the same floats in the same order**, not the same floats times
+one. With no table the offset is the expression it always was; with no slew
+the read head is `config->delay_frames` itself, assigned rather than
+computed; and both new gains are branched around rather than multiplied by
+1.0. The one structural change to the default path is that the single line
+read moved into a `tap_for()`/`read_tap()` pair the shifter's two taps share
+-- the same operations on the same operands, which the unchanged hash
+confirms.
+
+What the four do, measured on the CPython target at 48 kHz rather than
+asserted:
+
+| Option | Measurement | Result |
+|---|---|---|
+| `delay_slew` | 200 -> 100.4 ms at 0.99175, pitch while travelling | **+1192.9 cents** (the law says +1192.8), +0.00 cents after arrival |
+| `delay_slew` | first difference across the block boundary carrying the step | **1559**, against 1566 in steady state -- and **15960** with the slew off |
+| `wow_shape` | a flat table at depth 4 ms vs. moving `delay_ms` by 4 ms | peak difference **0.0** |
+| `wow_shape` | 256-point ramp, 2 Hz, depth 10 ms: d(delay)/dt over the middle half | mean **+0.04000**, spread **0.00219** (the sine's spread is 0.12966) |
+| `wow_am_depth` | envelope min/max at depth 0 / 0.25 / 0.5 / 1.0 | **1.0000 / 0.7499 / 0.5000 / 0.0000**, against a law of 1-depth |
+| `loop_semitones` | a 500 Hz burst, first three passes at +12 / -12 / +7 st | **1000, 2000, 4000** / 250, 124, 60 (ideal 250, 125, 62.5) / 749, 1118, 1700 (ideal 749, 1122, 1682) |
+
+One cost worth stating: `powf` is called once, at configure time, to turn
+semitones into a ratio -- the same shape as the `expf` and `sinf` the node
+already calls there. The desktop targets and the parity oracle share a libm
+so the goldens are safe, but a board's newlib could round that ratio
+differently in the last bit, which would show as a different phase step and
+so a different digest. Nothing per sample is a library call.
+
 ## `audiodynamics` gains lookahead and true-peak detection (phase 11)
 
 Additive, and both default off, so a `Dynamics` built the way the original was

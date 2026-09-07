@@ -119,6 +119,21 @@ by another — ring and amplitude modulation), `audioecho` (a delay with a
 filter, a soft-clip and a cross-feed inside its feedback loop) and
 `audioconvolve` (apply a measured or synthesized impulse response, by
 partitioned FFT) have no ancestor anywhere and are audioif's own.
+
+`audioecho.FeedbackDelay` takes four further options, each off at its
+default. `wow_shape` swaps the built-in modulation sine for one period of
+your own — `int16` Q15, a power-of-two count from 2 to 4096 — because a
+bucket brigade's delay is its line length over its clock, so a triangle on
+the clock is a reciprocal on the delay and no sine is that. `delay_slew`
+walks the read head to a new `delay_ms` at a constant rate (delay-seconds
+per second) instead of jumping to it, which is both an Echoplex's varispeed
+and the reason a delay-time knob can be turned mid-take without a click.
+`wow_am_depth` puts the same oscillator on the wet gain, dipping only.
+`loop_semitones` pitch-shifts the line read *inside* the loop, so every
+repeat rises again — a shimmer, which chaining `audiodelays.PitchShift`
+after a delay is not. See
+[docs/upstream-diff.md](docs/upstream-diff.md) for what each was asked for
+and what it measures.
 `apply_cp_patches.sh` adds all five to a CircuitPython tree too.
 
 ## Status
