@@ -11,14 +11,15 @@ for source compatibility; only this repo's own name differs.
   (esp32/rp2, CMake-based ports) — build glue for `USER_C_MODULES` discovery
 - `src/` — one directory per module (`audiocore/`, `synthio/`, `audiomixer/`,
   `audiospeed/`, `audiofreeverb/`, `audiofilters/`, `audiodelays/`,
-  `audiomp3/`, `audiodynamics/`, `audioroute/`, `audiomath/`, `audioecho/`),
-  plus `src/cp_compat/`
+  `audiomp3/`, `audiodynamics/`, `audioroute/`, `audiomath/`, `audioecho/`,
+  `audioshaper/`), plus `src/cp_compat/`
   (CircuitPython-only core primitives ported as standalone compat shims, each
   individually verified against mainline MicroPython before use — not assumed
   missing) and `src/shared/` (runtime-neutral DSP the MicroPython usermod and
   the CPython extension both compile)
 - `src/cpython/` — the whole CPython target: `_audioif.c`, the extension built
-  in place, and the twelve modules that wrap it (`audiocore.py`, `synthio.py`,
+  in place, and the thirteen modules that wrap it (`audiocore.py`,
+  `synthio.py`,
   …). They install as top-level modules, so it is `import audiocore` no matter
   which of the three runtimes is underneath. Nothing puts this directory on
   `sys.path`: audioif is a dependency, imported from wherever it is installed.
@@ -31,10 +32,11 @@ for source compatibility; only this repo's own name differs.
   their own distributions depending on `pydevices-audioif`; nothing in this
   repository builds, tests, publishes or freezes them.
 - `apply_cp_patches.sh` + `src/circuitpython_spike/` — add `audiodynamics`,
-  `audioroute`, `audiomath` and `audioecho` to a CircuitPython tree. None of
-  the four is a CircuitPython port: the first two come from micropython-vst3's
-  `vstaudio` engine and the last two are audioif's own, so CircuitPython gains
-  them here rather than the other way round.
+  `audioroute`, `audiomath`, `audioecho`, `audioshaper` and `audioconvolve` to
+  a CircuitPython tree. None of the six is a CircuitPython port: the first two
+  come from micropython-vst3's `vstaudio` engine and the last four are
+  audioif's own, so CircuitPython gains them here rather than the other way
+  round.
 - `docs/porting-plan.md` — the full phased porting history, architecture,
   and target layout
 - `docs/upstream-diff.md` — every deliberate deviation from upstream

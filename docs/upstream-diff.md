@@ -1722,3 +1722,174 @@ that stack notes are a listen Brad reserved for himself when he made the
 raise; audiocomponents' CPython leg follows the next audioif release, at
 which point its three moved digests are re-captured at 64 with this entry
 as the reason, and not before.
+
+## `audioshaper`: audioif's own, and the two things a fixed curve cannot be (2026-09-07)
+
+A new module, not a port and not from `vstaudio` either. It exists because
+the palette's only steerable nonlinearity is `audiofilters.Distortion`, and
+two facts about that node put every drive circuit out of reach.
+
+**The curve is not yours.** Its whole argument list is `drive`, `pre_gain`,
+`post_gain`, `mode`, `soft_clip` and `mix` (`audioif_distortion.c:7-9`), and
+`mode` selects one of four fixed shapes written for a game engine
+(`:15-34`). A diode pair in an op-amp's feedback loop, diodes to ground, a
+biased germanium transistor: each is a specific curve, and none of the four
+is any of them. Worse, two of the four are odd-symmetric by construction --
+CLIP is `pow(fabs(value), drive)` with the sign restored (`:16-19`), and
+WAVESHAPE is `(1+d)x / (1+d|x|)` (`:30-32`) -- so neither can produce an even
+harmonic at all, and CLIP is homogeneous, so its harmonic profile is
+identical at -20 dBFS and at -6 dBFS where a circuit's is not.
+
+**It runs at the base rate.** A nonlinearity makes harmonics above Nyquist
+and they fold straight back onto the signal. Nothing else in audioif
+resamples either: `audiospeed.SpeedChanger` steps `phase >> SPEED_SHIFT` with
+no interpolation and no anti-alias filter, and is itself a CircuitPython
+port.
+
+### What the node does instead
+
+`audioshaper.Waveshaper` takes the curve as **int16 Q15 data** -- computed
+once on CPython, where a dossier can show the circuit maths that produced it,
+and never rebuilt on the target, whose float is single-precision where the
+desktop's is double, so a table built on a board would be a different table
+-- and applies it at **2x, 4x or 8x** the sample rate between a matched pair
+of two-path polyphase all-pass half-bands. `pre_gain` is the drive knob (gain
+into one normalised curve, never a curve rebuilt per knob move), `bias` moves
+the operating point, `post_gain` and a 0..1 `mix` follow, the last being
+`audiofilters.Distortion`'s convention (`audioif_distortion.c:47`) rather
+than `audiodelays.Echo`'s 0..2, because this is the node the drive family is
+leaving.
+
+**A new module rather than arguments on `Distortion`**, for the reason
+`audioecho` is not `audiodelays`: an argument added to audioif's copy of a
+CircuitPython module would not exist on a stock board, so an `Overdrive`
+written against it would silently be a different effect there. This installs
+whole, through `apply_cp_patches.sh`, or is absent and says so on import.
+
+### The half-band coefficients are measured, not quoted
+
+`tools/design_halfband.py` is where they come from: a minimax search over
+four coefficients for the stopband peak of
+`H(w) = (A0(e^{j2w}) + e^{-jw} A1(e^{j2w})) / 2` from `0.5833*pi`. That
+stopband edge is what the *last* decimation stage of a 48 kHz chain needs --
+it runs at 96 kHz, folds everything above 24 kHz down, and has to stay clear
+of 20 kHz -- so the transition band is 20..28 kHz. `--verify` is the check
+that the numbers in the C are the numbers the search produced:
+
+    passband ripple +0.00000 / -0.00000 dB (to 0.4167 pi)
+    stopband peak   -64.57 dB (from 0.5833 pi)
+    gain at pi/2    0.7071 (the half-band condition wants 0.7071)
+    all poles at |z| = sqrt(a) < 1
+
+Four coefficients rather than six, and that is a measurement rather than a
+preference: with an identity curve loaded, the whole up/down chain's
+non-harmonic energy sits 88-89 dB below the fundamental at every factor,
+which is the int16 output's own quantisation floor. A six-coefficient design
+(-68.8 dB in the same search) moves nothing this node can measure.
+
+### What the oversampling buys
+
+Measured on the built CPython extension with an exact-bin DFT -- 65536
+points, 1379 and 5051 cycles in the window, so every harmonic and every alias
+lands on its own bin and a rectangular window leaks nothing -- through a soft
++-0.6 knee at `post_gain` 0.5, non-harmonic energy against the fundamental:
+
+| | 1010 Hz, pre_gain 8 | 3700 Hz, pre_gain 8 | 3700 Hz, pre_gain 2 |
+|---|---|---|---|
+| x1 | -36.2 dBc | -19.3 dBc | -31.9 dBc |
+| x2 | -47.6 | -33.2 | -45.1 |
+| x4 | -55.8 | -41.6 | -56.1 |
+| x8 | -57.0 | -43.4 | -63.9 |
+
+Two things that table says and a bare "it oversamples" would not. The probe
+frequency is part of the measurement: at 1000 Hz exactly, every alias folds
+back onto the harmonic grid and the same node reads a floor that is not
+there. And the -60 dB bar the drive dossiers ask for is a function of curve,
+drive *and* factor together, never of the factor alone -- at heavy drive a
+near-square curve's own in-band aliasing sets the floor and a further
+doubling does not move it. **The alias floor at each factor on the P4 and the
+S3 is Phase 1's, measured on flashed firmware; this is the desktop figure the
+board table is measured against.**
+
+### Latency, which is not zero
+
+Measured by output phase against input phase over 200 Hz..5 kHz at 48 kHz:
+group delay 0 samples at x1, 2.2 (46 us) at x2, 3.3 (69 us) at x4, 3.9 (80
+us) at x8, with the magnitude response flat to within 0.001 dB from 200 Hz to
+18 kHz. It is small -- a linear-phase FIR half-band steep enough for this
+transition would be several times that -- but it is not zero and it is not an
+integer, so `audioshaper.GROUP_DELAY_SAMPLES` carries the table and a
+component reporting `latency_samples` reports the entry for the factor it
+built with.
+
+### `hysteresis`: default off, and the half-width is a coercivity
+
+Additive and off by default, so a `Waveshaper` built without it is a static
+table sample for sample -- `waveshaper_probe.py` prints
+`shp hysteresis-off identical` and `shp hysteresis-on changed`, so the golden
+pins both halves of that claim and neither can be met by the option doing
+nothing.
+
+Above zero it puts a *play* (backlash) operator in front of the table: one
+position per channel that follows the signal at a lag of one half-width, so
+the rising and falling branches separate. This is the one thing a table
+cannot do. A static curve's output depends only on its present input, so a
+slow triangle in and out retraces its own path and encloses exactly zero
+area, which is the disconfirmation condition of the Saturation dossier's TP3
+met a priori, without a measurement.
+
+**`hysteresis_width` is a fraction of full scale at the node's *input*, and
+`config_finish` multiplies by `|pre_gain|` once, at configure time.** That
+factor is the whole entry. Written the other way -- a half-width in the
+operator's own units, the operator sitting after the drive gain -- twice the
+drive covers half as much of the input's swing and the enclosed loop
+*shrinks*: normalised area 0.163, 0.084, 0.045 over `pre_gain` 1, 2, 4,
+measured before the fix. That is precisely the direction the two memory
+elements the palette already has fail TP3 in, and the Phase 0 seed drove both
+rather than arguing them: `audioecho.FeedbackDelay`'s normalised area is
+*largest* with its nonlinearity switched off and falls when `loop_drive` is
+engaged, and `audiodynamics.Dynamics`' shrinks with drive and swings two
+orders of magnitude with probe frequency, because its loop is an envelope
+artefact against the period rather than a quasi-static magnetisation loop.
+Shipping a third node that fails the same way would have been no use to
+anybody.
+
+`hysteresis_bias` splits the half-width between the rising and falling
+branches, so the loop may be asymmetric. There is no direction flag: the
+comparison that fires already says which branch is which, so the flag the
+Phase 0 sketch carried would have been a byte of state nothing reads.
+
+### Two things the Phase 0 sketch asked for that are not here
+
+- **`pre_gain` and `bias` are plain floats, not `BlockInput`s.** The sketch
+  allowed them as streams because `Tremolo` B4 and the Fuzz Face's gating
+  move the operating point per sample. B4 is struck: both of its refuters
+  showed, and Arthur's ruling of 2026-09-07 accepted, that a per-sample bias
+  is a second stream summed in front of a static shaper, which
+  `audiomixer.Mixer` does sample by sample with a saturating signed add
+  (`src/audiomixer/Mixer.c:216-230`). No surviving claimant needs a stream
+  here, and keeping the kernel free of `mp_obj` is what lets one golden hash
+  cover every interpreter -- the arithmetic all lives in `src/shared/`, so
+  two interpreters disagreeing would itself be the finding.
+- **There is no `pre_filter_hz`.** Vision section 6 says the input filter is
+  the class's to compose, and `audiofilters.Filter` with a `synthio.Biquad`
+  composes a better one than a one-pole inside this node would be. A node
+  option that duplicates a palette node is what the "compose the existing
+  palette first" rule refuses.
+
+### How it is gated
+
+`tests/parity/waveshaper_probe.py`, oracle `None` -- there is no ancestor to
+hold it to, so what the golden pins is that every interpreter renders the
+same bytes. Its curves are built out of integer arithmetic on purpose: a
+table computed with `math.exp` would be a *different table* under
+CircuitPython, whose floats are single-precision, and the probe would then be
+measuring three libms rather than this node.
+
+`tests/test_cpython_waveshaper.py` carries what the golden cannot: that
+oversampling actually lowers the alias floor, that the hysteresis knob is
+monotone and clears its control by 6 dB, and that a static table and a
+zero-width operator both enclose exactly 0.0. Each check was shown to fail
+before it was believed -- discarding the play operator's result reddens both
+hysteresis tests, and replacing the half-bands with a zero-order hold and a
+decimating drop reddens the alias-floor test.

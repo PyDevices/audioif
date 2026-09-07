@@ -6,7 +6,7 @@
 //
 //   * **The curve is not yours.** Its whole argument list is `drive`,
 //     `pre_gain`, `post_gain`, `mode`, `soft_clip` and `mix`
-//     (audioif_distortion.c:6-8), and `mode` picks one of four fixed shapes
+//     (audioif_distortion.c:7-9), and `mode` picks one of four fixed shapes
 //     written for a game engine. A diode pair in a feedback loop, diodes to
 //     ground, a biased germanium transistor: each is a specific curve, and
 //     none of the four is any of them. Two of the four (CLIP and WAVESHAPE)
@@ -114,7 +114,7 @@ typedef struct {
     float bias;
     float post_gain;
     //: 0..1, a straight crossfade -- `audiofilters.Distortion`'s convention
-    //: (audioif_distortion.c:45), which is the node the drive family is
+    //: (audioif_distortion.c:47), which is the node the drive family is
     //: leaving. Not `audiodelays.Echo`'s 0..2.
     float mix;
     //: 0 switches the play operator off entirely, and the node is then a

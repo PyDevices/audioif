@@ -64,7 +64,8 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
-`audiomath`, `audioecho`, `audioconvolve`, and the `audiorender` package.
+`audiomath`, `audioecho`, `audioshaper`, `audioconvolve`, and the
+`audiorender` package.
 `audiomp3` remains firmware-only. The distribution declares no *required*
 runtime dependencies and does not itself publish an `audioif` import; its
 version is the `VERSION` file, which is also what `_audioif.__version__`
@@ -111,15 +112,38 @@ those packages installed.
 
 ## Additions beyond CircuitPython
 
-Five things here are not CircuitPython's. `audiodynamics` (compression,
+Six things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute` (fan one
 stream out to parallel branches) come from micropython-vst3's audio engine,
 which had them and CircuitPython does not. `audiomath` (multiply one stream
 by another — ring and amplitude modulation), `audioecho` (a delay with a
-filter, a soft-clip and a cross-feed inside its feedback loop) and
-`audioconvolve` (apply a measured or synthesized impulse response, by
-partitioned FFT) have no ancestor anywhere and are audioif's own.
-`apply_cp_patches.sh` adds all five to a CircuitPython tree too.
+filter, a soft-clip and a cross-feed inside its feedback loop),
+`audioshaper` (a waveshaper whose curve is data, applied above the sample
+rate) and `audioconvolve` (apply a measured or synthesized impulse response,
+by partitioned FFT) have no ancestor anywhere and are audioif's own.
+`apply_cp_patches.sh` adds all six to a CircuitPython tree too.
+
+`audioshaper.Waveshaper(sample_rate=…, curve=…, oversample=4,
+channel_count=2, **options)` is the newest of them, and everything but the
+first four moves in `set()`. `curve` is int16 Q15, at least two points,
+spanning −1..+1 of input: compute it once on a desktop and ship it as data,
+never rebuild it on a board, whose float is single-precision where the
+desktop's is double. `oversample` is 1, 2, 4 or 8 — the shaping happens there,
+between a matched pair of polyphase all-pass half-bands, because a
+nonlinearity at the base rate folds the harmonics it makes above Nyquist
+straight back onto the signal. `pre_gain` is the drive knob (gain into one
+normalised curve, never a curve rebuilt per knob move), `bias` moves the
+operating point, `post_gain` follows the curve, and `mix` is a straight 0..1
+crossfade. `hysteresis` is **off by default**; above zero it gives the curve a
+memory, so a slow signal in and out traces two paths and encloses an area,
+with `hysteresis_width` its half-width as a fraction of full scale *at the
+input* and `hysteresis_bias` splitting that between the rising and falling
+branches. `audioshaper.GROUP_DELAY_SAMPLES` carries the measured group delay
+per factor — 0, 2.2, 3.3 and 3.9 base samples — for a component that has to
+report its latency. Why each of those is the shape it is, and what the
+oversampling measures:
+[docs/upstream-diff.md](docs/upstream-diff.md), "`audioshaper`: audioif's own,
+and the two things a fixed curve cannot be".
 
 ## Status
 
