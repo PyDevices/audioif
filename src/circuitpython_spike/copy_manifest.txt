@@ -32,6 +32,8 @@ src/shared/audioif_convolve.h	shared/audioif_convolve.h
 src/shared/audioif_convolve.c	shared/audioif_convolve.c
 src/shared/audioif_filter_f32.h	shared/audioif_filter_f32.h
 src/shared/audioif_filter_f32.c	shared/audioif_filter_f32.c
+src/shared/audioif_tank.h	shared/audioif_tank.h
+src/shared/audioif_tank.c	shared/audioif_tank.c
 
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.h	shared-bindings/audiodynamics/__init__.h
 src/circuitpython_spike/shared-bindings/audiodynamics/__init__.c	shared-bindings/audiodynamics/__init__.c
@@ -103,3 +105,9 @@ src/circuitpython_spike/shared-module/audiobiquad/Biquad.h	shared-module/audiobi
 src/circuitpython_spike/shared-module/audiobiquad/Biquad.c	shared-module/audiobiquad/Biquad.c
 src/circuitpython_spike/shared-module/audiobiquad/AllPass.h	shared-module/audiobiquad/AllPass.h
 src/circuitpython_spike/shared-module/audiobiquad/AllPass.c	shared-module/audiobiquad/AllPass.c
+src/circuitpython_spike/shared-bindings/audioverb/__init__.h	shared-bindings/audioverb/__init__.h
+src/circuitpython_spike/shared-bindings/audioverb/__init__.c	shared-bindings/audioverb/__init__.c
+src/circuitpython_spike/shared-bindings/audioverb/Tank.h	shared-bindings/audioverb/Tank.h
+src/circuitpython_spike/shared-bindings/audioverb/Tank.c	shared-bindings/audioverb/Tank.c
+src/circuitpython_spike/shared-module/audioverb/Tank.h	shared-module/audioverb/Tank.h
+src/circuitpython_spike/shared-module/audioverb/Tank.c	shared-module/audioverb/Tank.c

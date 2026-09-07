@@ -65,7 +65,7 @@ python -m pip install --index-url https://test.pypi.org/simple/ pydevices-audioi
 This gets you `audiocore`, `synthio`, `audiomixer`, `audiofilters`,
 `audiodelays`, `audiofreeverb`, `audiospeed`, `audiodynamics`, `audioroute`,
 `audiomath`, `audioecho`, `audioshaper`, `audioladder`, `audioconvolve`,
-`audiobiquad`, and the
+`audiobiquad`, `audioverb`, and the
 `audiorender` package.
 `audiomp3` remains firmware-only. The distribution declares no *required*
 runtime dependencies and does not itself publish an `audioif` import; its
@@ -113,21 +113,21 @@ those packages installed.
 
 ## Additions beyond CircuitPython
 
-Nine things here are not CircuitPython's. `audiodynamics` (compression,
+Ten things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute.Splitter`
 (fan one stream out to parallel branches) come from micropython-vst3's audio
 engine, which had them and CircuitPython does not. `audiomath` (multiply one
 stream by another — ring and amplitude modulation; and divide one down in
-frequency — the analog octave divider), `audioecho` (a delay with
-a filter, a soft-clip and a cross-feed inside its feedback loop),
-`audioshaper` (a waveshaper whose curve is data, applied above the
-sample rate), `audioladder` (a transistor ladder filter — four one-pole
-stages round a feedback loop with an odd saturator inside it),
-`audioconvolve` (apply a measured or synthesized impulse
-response, by partitioned FFT), `audioroute.MidSide` (scale the difference between a stereo
-pair's channels) and `audiobiquad` (below) have no ancestor anywhere and are
-audioif's own. `apply_cp_patches.sh` adds all nine to a CircuitPython tree
-too.
+frequency — the analog octave divider), `audioecho` (a delay with a filter,
+a soft-clip and a cross-feed inside its feedback loop), `audioshaper` (a
+waveshaper whose curve is data, applied above the sample rate),
+`audioladder` (a transistor ladder filter — four one-pole stages round a
+feedback loop with an odd saturator inside it), `audioconvolve` (apply a
+measured or synthesized impulse response, by partitioned FFT), `audioverb`
+(a reverberation tank whose line lengths and output taps come from Python),
+`audioroute.MidSide` (scale the difference between a stereo pair's channels)
+and `audiobiquad` (below) have no ancestor anywhere and are audioif's own.
+`apply_cp_patches.sh` adds every one of them to a CircuitPython tree too.
 
 ### `audiobiquad` — filters whose tails reach exact zero
 
@@ -264,6 +264,40 @@ ladder.clear()                 # empty the integrators; stops a sustained tone
 
 See [docs/upstream-diff.md](docs/upstream-diff.md) for why its feedback loop
 is solved rather than delayed, and what that was measured to be worth.
+
+### `audioverb.Tank`
+
+Dattorro's plate reverberator, with the network handed in rather than compiled
+in — which is the difference from `audiofreeverb.Freeverb`, whose comb and
+all-pass lengths are constants in a CircuitPython-ported kernel.
+
+```python
+plate = audioverb.Tank(
+    sample_rate=48000, channel_count=2, max_predelay_ms=200,
+    decay=0.7, diffusion=0.75, bandwidth_hz=9000, damping_hz=4500,
+    mod_rate_hz=1.0, mod_depth_ms=0.27, mix=0.35)
+plate.play(source)
+audio_out.play(plate)
+```
+
+Construction fixes the allocation and the topology: `sample_rate`,
+`channel_count` (1 or 2), `max_predelay_ms`, `delays` and `taps`. `delays` is
+twelve line lengths in frames — the four input diffusers, then each tank
+half's modulated all-pass, delay, all-pass and delay. `taps` is four values
+per tap (channel, line index, offset in frames, gain), at most 32. Both
+default to Dattorro's published table, scaled from 29761 Hz to `sample_rate`.
+
+`set()` moves the rest, mid-stream and without emptying the lines: `decay`,
+`diffusion`, `damping_hz`, `bandwidth_hz`, `low_cut_hz`, `predelay_ms`,
+`mod_depth_ms`, `mod_rate_hz`, `drive`, `width`, `tone_db`, `mix`. Every
+filter is out of the path at zero, so a bare `Tank()` is that network with
+nothing added to it; `mix` follows `audiodelays.Echo`'s 0..2 convention, dry
+at unity until 1. `clear()` empties every line and every filter. Latency is
+zero dry-to-wet, and the tail reaches *exact* zero rather than sitting at one
+LSB — every line write is a magnitude truncation, which is the standard cure
+for a recirculating fixed-point network's limit cycles. See
+[docs/upstream-diff.md](docs/upstream-diff.md) for the measurement, the cost
+and the memory the default table needs.
 
 ## Status
 

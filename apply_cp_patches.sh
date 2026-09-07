@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Add audioif's audiodynamics, audioroute (Splitter, MidSide),
-# audiomath, audioecho, audioshaper, audioladder, audioconvolve and
-# audiobiquad modules to a CircuitPython tree.
+# audiomath, audioecho, audioshaper, audioladder, audioconvolve,
+# audiobiquad and audioverb modules to a CircuitPython tree.
 # to a CircuitPython tree.
 #
 #   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
@@ -252,15 +252,16 @@ if [[ "$MODE" == "--status" ]]; then
                 shared-bindings/audioladder/__init__.c \
                 shared-bindings/audioconvolve/__init__.c \
                 shared-bindings/audiobiquad/__init__.c \
+                shared-bindings/audioverb/__init__.c \
                 shared/audioif_dynamics.c shared/audioif_splitter.c \
                 shared/audioif_midside.c \
                 shared/audioif_multiply.c shared/audioif_suboctave.c \
                 shared/audioif_feedback_delay.c \
                 shared/audioif_shaper.c \
-                shared/audioif_multiply.c shared/audioif_feedback_delay.c \
                 shared/audioif_ladder.c \
                 shared/audioif_trig.c shared/audioif_fft.c \
-                shared/audioif_convolve.c shared/audioif_filter_f32.c; do
+                shared/audioif_convolve.c shared/audioif_filter_f32.c \
+                shared/audioif_tank.c; do
         [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
     done
     python3 "$REPLACEMENTS" "$CP_DIR" status
@@ -295,7 +296,9 @@ CFLAGS += -DCIRCUITPY_AUDIOLADDER=\$(CIRCUITPY_AUDIOLADDER)
 CIRCUITPY_AUDIOCONVOLVE ?= 0
 CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=\$(CIRCUITPY_AUDIOCONVOLVE)
 CIRCUITPY_AUDIOBIQUAD ?= 0
-CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=\$(CIRCUITPY_AUDIOBIQUAD)"
+CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=\$(CIRCUITPY_AUDIOBIQUAD)
+CIRCUITPY_AUDIOVERB ?= 0
+CFLAGS += -DCIRCUITPY_AUDIOVERB=\$(CIRCUITPY_AUDIOVERB)"
 echo
 
 echo "==> py/circuitpy_defns.mk (source patterns)"
@@ -326,6 +329,9 @@ SRC_PATTERNS += audioconvolve/%
 endif
 ifeq (\$(CIRCUITPY_AUDIOBIQUAD),1)
 SRC_PATTERNS += audiobiquad/%
+endif
+ifeq (\$(CIRCUITPY_AUDIOVERB),1)
+SRC_PATTERNS += audioverb/%
 endif" "SRC_PATTERNS += audiodynamics/%"
 echo
 
@@ -351,7 +357,9 @@ CFLAGS += -DCIRCUITPY_AUDIOLADDER=1
 CIRCUITPY_AUDIOCONVOLVE = 1
 CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1
 CIRCUITPY_AUDIOBIQUAD = 1
-CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=1"
+CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=1
+CIRCUITPY_AUDIOVERB = 1
+CFLAGS += -DCIRCUITPY_AUDIOVERB=1"
 echo
 
 echo "==> Unix variant: source list"
@@ -379,6 +387,8 @@ insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvo
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiobiquad/Biquad.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiobiquad/AllPass.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiobiquad/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioverb/Tank.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioverb/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/MidSide.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/Splitter.c \\'
@@ -391,6 +401,7 @@ insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioladder/L
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioconvolve/Convolver.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiobiquad/Biquad.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiobiquad/AllPass.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioverb/Tank.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_multiply.c \\'
@@ -402,6 +413,7 @@ insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_trig.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_fft.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_convolve.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_filter_f32.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared/audioif_tank.c \\'
 echo
 
 echo "==> Unix variant: mpconfigvariant.h guards"
@@ -434,6 +446,9 @@ if [ -f "$VARIANT_H" ]; then
 #endif
 #ifndef CIRCUITPY_AUDIOBIQUAD
 #define CIRCUITPY_AUDIOBIQUAD (0)
+#endif
+#ifndef CIRCUITPY_AUDIOVERB
+#define CIRCUITPY_AUDIOVERB (0)
 #endif"
 fi
 echo

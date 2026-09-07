@@ -82,7 +82,8 @@ tier 4  effects: audiofilters, audiodelays, audiofreeverb, audiospeed
 tier 5  audiomp3 (vendored lib/mp3 decoder; license check first)
 tier 6  outputs (new code, not a port — see below)
 tier 7  audiodynamics, audioroute, audiomath, audioecho, audioshaper,
-        audioconvolve: native, NOT ports
+        audioladder, audioconvolve, audiobiquad, audioverb: native,
+        NOT ports
 tier 8  lib/: pure Python built on the tiers above (audiorender here;
         audioinstruments and audioeffects have since moved to audiocomponents)
 dep     ulab: cloned sibling in the parent workspace, pinned to CP's 6.5.2
@@ -102,9 +103,9 @@ and their source is micropython-vst3 rather than CircuitPython:
   application outside that plugin could use them and half of its own effects
   library could not be exercised offline at all.
 
-  `audiomath`, `audioecho`, `audioshaper`, `audioconvolve` and
-  `audioroute.MidSide` have no ancestor at all — nothing upstream and nothing
-  in the engine does any of the five. Nothing
+  `audiomath`, `audioecho`, `audioshaper`, `audioconvolve`,
+  `audioverb` and `audioroute.MidSide` have no ancestor at all — nothing
+  upstream and nothing in the engine does any of the six. Nothing
   multiplies two *streams*, which is what ring modulation needs and what an
   LFO at block rate cannot reach. Nothing puts a filter inside a delay's
   feedback loop, which is what separates a tape echo from a delay with a tone
@@ -121,7 +122,11 @@ and their source is micropython-vst3 rather than CircuitPython:
   reason: nothing divides a
   *frequency* either, so an octave down could only be granular (smeared) or a
   ring modulator (locked to nothing), never the flip-flop divider a pedal
-  actually contains.
+  actually contains. And `audiofreeverb` reverberates with
+  a network compiled into it, so nothing could re-cut a reverberation tank per
+  character or modulate a line inside its loop — nor could a cycle of palette
+  nodes stand in, the pull graph having none (the first `get_buffer` of one
+  raises `RecursionError`).
 
   CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —

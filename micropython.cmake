@@ -46,6 +46,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_trig.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_fft.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_convolve.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_tank.c
     ${MPAUDIO_SRC_DIR}/mpaudio_modules.c
     ${MPAUDIO_SRC_DIR}/audiocore/__init__.c
     ${MPAUDIO_SRC_DIR}/audiocore/RawSample.c
@@ -94,6 +95,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiobiquad/Biquad.c
     ${MPAUDIO_SRC_DIR}/audiobiquad/AllPass.c
     ${MPAUDIO_SRC_DIR}/audiobiquad/module.c
+    ${MPAUDIO_SRC_DIR}/audioverb/Tank.c
+    ${MPAUDIO_SRC_DIR}/audioverb/module.c
 )
 
 target_include_directories(usermod_mpaudio INTERFACE ${MPAUDIO_SRC_DIR})

@@ -25,6 +25,7 @@
 #include "shared/audioif_feedback_delay.h"
 #include "shared/audioif_shaper.h"
 #include "shared/audioif_ladder.h"
+#include "shared/audioif_tank.h"
 #include "shared/audioif_filter_f32.h"
 
 // setup.py defines this from the VERSION file; the fallback is only for
@@ -48,6 +49,7 @@ typedef struct {
     PyObject *allpass_f32_state_type;
     PyObject *suboctave_state_type;
     PyObject *convolver_state_type;
+    PyObject *tank_state_type;
 } audioif_state_t;
 
 typedef struct {
@@ -1626,6 +1628,211 @@ static PyType_Spec ladder_state_spec = {
     .slots = ladder_state_slots,
 };
 
+// audioverb.Tank's twelve lines, its predelay and its filters. All state, and
+// a great deal of it: one allocation carved up by the DSP layer, exactly as in
+// the MicroPython binding and in audioconvolve's.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_tank_config_t config;
+    audioif_tank_state_t state;
+    int16_t *lines;
+} audioif_tank_object_t;
+
+static int tank_state_status(audioif_tank_status_t status) {
+    const char *message;
+    switch (status) {
+        case AUDIOIF_TANK_OK:
+            return 0;
+        case AUDIOIF_TANK_ERR_COUNT:
+            message = "delays needs 12 line lengths; "
+                      "taps needs 4 values per tap";
+            break;
+        case AUDIOIF_TANK_ERR_LENGTH:
+            message = "every line needs at least 4 frames";
+            break;
+        case AUDIOIF_TANK_ERR_TOTAL:
+            message = "the lines do not fit";
+            break;
+        case AUDIOIF_TANK_ERR_CHANNEL:
+            message = "a tap channel is not 0 or 1";
+            break;
+        case AUDIOIF_TANK_ERR_LINE:
+            message = "a tap line index is not 0..11";
+            break;
+        default:
+            message = "a tap offset is past the end of its line";
+            break;
+    }
+    PyErr_SetString(PyExc_ValueError, message);
+    return -1;
+}
+
+static int tank_state_floats(PyObject *sequence, float *out, uint32_t limit,
+    uint32_t *count) {
+    PyObject *fast = PySequence_Fast(sequence, "expected a sequence of numbers");
+    if (fast == NULL) return -1;
+    const Py_ssize_t length = PySequence_Fast_GET_SIZE(fast);
+    if ((uint32_t)length > limit) {
+        Py_DECREF(fast);
+        PyErr_SetString(PyExc_ValueError, "too many values");
+        return -1;
+    }
+    for (Py_ssize_t index = 0; index < length; ++index) {
+        const double value =
+            PyFloat_AsDouble(PySequence_Fast_GET_ITEM(fast, index));
+        if (value == -1.0 && PyErr_Occurred()) {
+            Py_DECREF(fast);
+            return -1;
+        }
+        out[index] = (float)value;
+    }
+    Py_DECREF(fast);
+    *count = (uint32_t)length;
+    return 0;
+}
+
+static int tank_state_init(audioif_tank_object_t *self, PyObject *args,
+    PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
+    double max_predelay_ms = 200.0;
+    PyObject *delays = NULL;
+    PyObject *taps = NULL;
+    static char *keywords[] = {"sample_rate", "max_predelay_ms",
+                               "channel_count", "delays", "taps", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|IdIOO:TankState",
+        keywords, &sample_rate, &max_predelay_ms, &channel_count, &delays,
+        &taps)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (max_predelay_ms < 0.0) {
+        PyErr_SetString(PyExc_ValueError,
+            "max_predelay_ms must not be negative");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_tank_config_t config;
+    audioif_tank_config_init(&config, sample_rate, (float)max_predelay_ms);
+    audioif_tank_set_channel_count(&config, channel_count);
+    // The topology first: both tables size the allocation, so neither can be
+    // changed once the lines exist.
+    if (delays != NULL && delays != Py_None) {
+        float values[AUDIOIF_TANK_LINES];
+        uint32_t count = 0;
+        if (tank_state_floats(delays, values, AUDIOIF_TANK_LINES,
+            &count) < 0) return -1;
+        uint32_t frames[AUDIOIF_TANK_LINES];
+        for (uint32_t line = 0; line < count; ++line) {
+            frames[line] = values[line] < 0.0f ? 0u : (uint32_t)values[line];
+        }
+        if (tank_state_status(
+            audioif_tank_set_delays(&config, frames, count)) < 0) return -1;
+    }
+    if (taps != NULL && taps != Py_None) {
+        float values[AUDIOIF_TANK_MAX_TAPS * 4u];
+        uint32_t count = 0;
+        if (tank_state_floats(taps, values, AUDIOIF_TANK_MAX_TAPS * 4u,
+            &count) < 0) return -1;
+        if (tank_state_status(
+            audioif_tank_set_taps(&config, values, count)) < 0) return -1;
+    }
+    const uint32_t samples = audioif_tank_buffer_samples(&config);
+    int16_t *lines = PyMem_Calloc((size_t)samples, sizeof(int16_t));
+    if (lines == NULL) {
+        PyErr_NoMemory();
+        return -1;
+    }
+    PyMem_Free(self->lines);
+    self->lines = lines;
+    self->config = config;
+    audioif_tank_state_init(&self->state, &self->config, lines);
+    return 0;
+}
+
+static void tank_state_dealloc(audioif_tank_object_t *self) {
+    PyTypeObject *type = Py_TYPE(self);
+    PyMem_Free(self->lines);
+    self->lines = NULL;
+    type->tp_free((PyObject *)self);
+    Py_DECREF(type);
+}
+
+static PyObject *tank_state_configure(audioif_tank_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_TANK_OPT_DECAY || option > AUDIOIF_TANK_OPT_MIX) {
+        PyErr_SetString(PyExc_ValueError, "unknown tank option");
+        return NULL;
+    }
+    audioif_tank_configure(&self->config, (audioif_tank_option_t)option,
+        (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *tank_state_finish(audioif_tank_object_t *self,
+    PyObject *unused) {
+    audioif_tank_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *tank_state_reset(audioif_tank_object_t *self,
+    PyObject *unused) {
+    audioif_tank_reset(&self->state, &self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *tank_state_process(audioif_tank_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_tank_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef tank_state_methods[] = {
+    {"configure", (PyCFunction)tank_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)tank_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)tank_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)tank_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot tank_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, tank_state_init},
+    {Py_tp_dealloc, tank_state_dealloc},
+    {Py_tp_methods, tank_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec tank_state_spec = {
+    .name = "_audioif.TankState",
+    .basicsize = sizeof(audioif_tank_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = tank_state_slots,
+};
+
 // audioconvolve.Convolver's transform tables, frequency-delay line and stored
 // impulse. All state, and a great deal of it -- one allocation carved up by
 // the DSP layer, exactly as in the MicroPython binding.
@@ -2563,6 +2770,17 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_CONVOLVE_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "CONVOLVE_MAX_PARTITIONS",
         AUDIOIF_CONVOLVE_MAX_PARTITIONS) < 0) return -1;
+    state->tank_state_type = PyType_FromModuleAndSpec(module,
+        &tank_state_spec, NULL);
+    if (state->tank_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "TankState",
+        state->tank_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "TANK_FRAMES",
+        AUDIOIF_TANK_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "TANK_LINES",
+        AUDIOIF_TANK_LINES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "TANK_MAX_TAPS",
+        AUDIOIF_TANK_MAX_TAPS) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__",
     AUDIOIF_VERSION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
@@ -2585,6 +2803,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->allpass_f32_state_type);
     Py_VISIT(state->suboctave_state_type);
     Py_VISIT(state->convolver_state_type);
+    Py_VISIT(state->tank_state_type);
     return 0;
 }
 
@@ -2604,6 +2823,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->allpass_f32_state_type);
     Py_CLEAR(state->suboctave_state_type);
     Py_CLEAR(state->convolver_state_type);
+    Py_CLEAR(state->tank_state_type);
     return 0;
 }
 

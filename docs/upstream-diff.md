@@ -2561,3 +2561,123 @@ loop is recursive, runs in `float`, *and* is solved, so a one-ulp
 disagreement between two builds has the solver's seed to grow through as well
 as the feedback path, and several of its cases sit where the loop sustains a
 tone of its own and nothing damps a difference at all.
+
+## `audioverb`: a reverberation tank whose network comes from Python (2026-09-07)
+
+`audiofreeverb.Freeverb` exists upstream, and it is the only reverberator the
+palette had. It is a *fixed* Schroeder/Moorer bank: eight combs and four
+all-passes, with `roomsize`, `damp` and `mix` on top. Three things follow that
+no argument on it could reach:
+
+- **The network cannot be re-cut.** Its line lengths are `static const` tables
+  in a CircuitPython-ported kernel -- `default_comb_sizes`
+  (`audioif_freeverb.c:6`) and `default_allpass_sizes` (`:8`) -- and the
+  exported entry point hands those two to the loop unconditionally
+  (`:81`-`:82`), so nothing a binding can pass reaches them. A plate, a hall, a
+  room and a chamber are not one topology at four settings; they are different
+  line-length sets and different tap positions, and Freeverb's are compiled in.
+- **There are no modulated taps.** Each comb and each all-pass walks its index
+  by exactly one per sample and wraps (`:39`, `:49`); there is no oscillator in
+  the file at all. A static plate rings with a picket fence of fixed modes, and
+  breaking it means wobbling a line *inside* the loop by a fraction of a
+  millisecond, which nothing outside the loop can do.
+- **Nothing diffuses the input.** Freeverb's four all-passes sit on the *sum*
+  of the comb bank (`:43`-`:51`), after the recirculation rather than before
+  it, so what enters the combs is the raw signal and the early density is
+  whatever the comb spacing happens to give.
+
+**And the palette cannot compose one, which was measured rather than assumed.**
+A tank's defining element is recirculation, and the pull graph has no cycles:
+`d1.play(s); d2.play(d1); d1.play(d2)` constructs without complaint and the
+first `audioecho.get_buffer(d1)` raises `RecursionError: maximum recursion
+depth exceeded`. The only Python-side loop that exists at all quantises every
+line to one 256-frame block -- 5.33 ms at 48 kHz, longer than most of a
+plate's lines.
+
+`audioverb.Tank` is Dattorro's plate network in `shared/audioif_tank.c`,
+`float` working precision over `int16` lines to match
+`audioif_feedback_delay.c`: predelay, a one-pole `bandwidth_hz`, an optional
+`low_cut_hz` and cubic `drive`, four Schroeder all-passes, then two tank
+halves that feed each other -- each a modulated all-pass, a delay, an in-loop
+`damping_hz` one-pole, the `decay` multiply, a second all-pass and another
+delay. The stereo comes back out of the tap table, then `width`, a tilt at
+`tone_db` and `mix`. `delays` is twelve line lengths and `taps` is four values
+per tap (channel, line, offset, gain); both default to Dattorro's published
+table scaled from 29761 Hz, so a bare `Tank(sample_rate=...)` is his network
+and not a transposed one.
+
+**A new module rather than arguments on `Freeverb`, deliberately** -- the same
+reason `audioecho` is not `audiodelays`. An argument added to audioif's copy of
+a CircuitPython module would not exist on a stock board, so a `Plate` written
+against it would silently be a different effect there. `audiofreeverb` is not
+touched by any of this.
+
+Four details worth recording:
+
+- **Every line write is a magnitude truncation, not a rounding, and that is
+  what makes the tail reach exact zero.** A recirculating `int16` network that
+  rounds to nearest has limit cycles by construction: a line holding 1 with
+  `decay` 0.5 computes 0.5, which rounds back to 1, and the tank hums at one
+  LSB for as long as anything pulls it. Truncating toward zero makes
+  `|Q(v)| <= |v|` unconditionally, so a loop under unity gain strictly loses
+  magnitude every pass and lands on exact zero. It is the standard cure for
+  fixed-point limit cycles and it costs nothing. **Proved by planting the
+  fault:** with `tank_quantize` rounding instead, the probe's tail fixture
+  sits at a block peak of 4 for 1500 blocks (48 s at 8 kHz) and never reaches
+  zero; with the truncation restored it is exactly zero at block 81 (2.59 s,
+  `decay` 0.5) and at block 348 (11.14 s, `decay` 0.9, against an RT60 of
+  about 8.5 s). The *output* quantiser still rounds -- it is in no loop.
+- **The cross between the halves reads a delay line, not the other half's
+  output.** Each half's contribution is taken from its last delay line before
+  anything in that frame writes to it, so it is the value that entered a whole
+  line-length ago and neither half waits on the other. There is no algebraic
+  loop and no one-sample fudge.
+- **One `diffusion` knob drives four all-pass coefficients**, as ratios of
+  Dattorro's own: input diffusion 1 at the knob, input diffusion 2 at
+  0.8333 of it, decay diffusion 1 at 0.9333 and decay diffusion 2 at 0.6667.
+  `diffusion=0.75` therefore reproduces his 0.75 / 0.625 / 0.70 / 0.50
+  exactly, and the knob moves all four together the way a diffusion control is
+  expected to.
+- **`reset_buffer` really does drop everything**, unlike `audiodynamics`. A
+  reverberation tail is entirely state: a chain restarted with the old tail
+  still in the lines plays the previous take underneath the new one. And, like
+  `audioecho.FeedbackDelay`, the lines only advance for frames that arrive --
+  a starved chain gets silence and the tail stops with the source rather than
+  ringing on. A class that wants the tail rung out feeds the tank silence for
+  as long as its `tail_samples` says.
+
+**What it costs.** Counted from the source, with everything switched on and
+the default 14-tap table: about 62 multiplies per stereo frame -- input
+fold-down 1, bandwidth 1, low cut 1, drive 6, four input diffusers 8, the two
+tank halves 16, the modulation oscillator 2, the taps 14, width 3, the tilt 6,
+the output mix 4. `audioif_freeverb.c` spends 30 `int16` multiplies per sample
+per channel (`:28` the input scale, then `:36` twice and `:38` once in each
+of eight combs, `:42` the sum scale, `:52` the output scale, `:53`-`:54` dry
+and wet, plus the mix-down's `pair_scale` at `:56`), which is 60 per stereo
+frame: the same order, in float rather than Q15. Its four all-passes cost no
+multiply at all -- they are a shift and a subtract (`:47`-`:48`).
+
+Measured on this desktop (x86-64, CPython, the two kernels called directly on
+four seconds of stereo at 48 kHz, best of five), the tank is the *cheaper* of
+the two -- 13.1 ms against Freeverb's 48.7 ms, 306x real time against 82x --
+because Freeverb's saturating Q15 helper costs more on a part with a hardware
+FPU than the tank's floats do. **That ratio is a desktop fact and does not
+transfer**: the ESP32-S3 and ESP32-P4 figures are the effects roadmap's Phase
+1 cost-table item, produced by the board cost runner on flashed firmware, and
+nothing here estimates them from this.
+
+Memory is the other half of the cost, and it is the part a board feels first.
+The default table needs 36,280 `int16` (70.9 KB) of line at 48 kHz, plus the
+predelay: 89.6 KB with the 200 ms default, 41.2 KB at 22.05 kHz. A shorter
+`delays` table is how a lean character pays less.
+
+Verified by `tests/parity/tank_probe.py` through `verify_dsp.py`, with no
+oracle -- the golden is captured from the port, the same weaker-but-stricter
+claim `audioecho` and `audioconvolve` make. It is the most recursive fixture
+in the suite: ten lines feeding each other in `float`, the two halves crossed,
+so a one-ulp disagreement between two builds is amplified for thousands of
+frames rather than staying one ulp. The probe's own last two lines are not
+checksums -- `wire-exact` says `mix=0` came out bit-identical to what went in
+while the whole network ran, and `tail` is the block at which the wet output
+reaches exact zero, which is the fixture a build with a rounding quantiser
+would fail while still hashing everything else plausibly.

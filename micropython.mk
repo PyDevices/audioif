@@ -49,6 +49,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_ladder.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_fft.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_convolve.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_tank.c
 
 # --- ulab (numpy-alike): cloned sibling dependency, pinned to match this
 #     workspace's CircuitPython checkout (see docs/porting-plan.md). Its own
@@ -180,8 +181,8 @@ SRC_USERMOD_C += \
 
 # --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter,
 #     MidSide), audiomath (Multiply, SubOctave), audioecho
-#     (FeedbackDelay), audioladder (Ladder), audioconvolve (Convolver)
-#     and audiobiquad (Biquad, AllPass) ---
+#     (FeedbackDelay), audioladder (Ladder), audioconvolve (Convolver),
+#     audiobiquad (Biquad, AllPass) and audioverb (Tank) ---
 #
 # The modules here are not CircuitPython ports. The first two come from
 # micropython-vst3's `vstaudio` usermod, which grew them for its effects
@@ -189,9 +190,11 @@ SRC_USERMOD_C += \
 # a stream at audio rate and the only way to divide one down in frequency,
 # audioecho puts a filter inside a delay's feedback loop, audioladder puts
 # four one-poles and a saturator inside a filter's, audioconvolve applies a
-# measured impulse response rather than imitating one, and audiobiquad
+# measured impulse response rather than imitating one, audiobiquad
 # filters in float so a tail reaches exact zero, which neither ported
-# kernel can (audioif#23, #36). See
+# kernel can (audioif#23, #36), and audioverb is a reverberation tank whose
+# line lengths and output taps come from Python rather than being compiled
+# in the way audiofreeverb's are. See
 # docs/upstream-diff.md.
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
@@ -220,6 +223,8 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiobiquad/Biquad.c \
     $(MPAUDIO_SRC_DIR)/audiobiquad/AllPass.c \
     $(MPAUDIO_SRC_DIR)/audiobiquad/module.c
+    $(MPAUDIO_SRC_DIR)/audioverb/Tank.c \
+    $(MPAUDIO_SRC_DIR)/audioverb/module.c
 
 # --- tier 5: audiomp3 (MP3Decoder) ---
 #
