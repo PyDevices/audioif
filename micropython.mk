@@ -224,6 +224,7 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiobiquad/Biquad.c \
     $(MPAUDIO_SRC_DIR)/audiobiquad/AllPass.c \
     $(MPAUDIO_SRC_DIR)/audiobiquad/module.c
+SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audioverb/Tank.c \
     $(MPAUDIO_SRC_DIR)/audioverb/module.c
 
