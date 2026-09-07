@@ -460,6 +460,12 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
         ? audioif_dynamics_db_to_gain(config->depth_db > 0.0f
                                       ? -80.0f : config->depth_db)
         : 0.0f;
+    // Program-dependent attack measures the overshoot against the threshold,
+    // which is the "how far over" a compressor's attack is meant to depend
+    // on. Against the envelope instead it would be enormous out of silence
+    // and every attack would collapse to one sample.
+    const float threshold_level = config->program_attack
+        ? audioif_dynamics_db_to_gain(config->threshold_db) : 0.0f;
 
     const uint32_t channels = config->channel_count == 1u ? 1u : 2u;
     while (frames-- != 0) {
@@ -597,7 +603,12 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
         if (config->mode == AUDIOIF_DYNAMICS_TRANSIENT) {
             state->fast_env += (level > state->fast_env ? fast_att : fast_rel)
                 * (level - state->fast_env);
-            if (config->slow_hold_frames != 0u) {
+            // The peak-hold goes on whichever slow envelope drives the
+            // sustain section: the only one there is, or the second pair's
+            // when `transient_dual` gives the sustain its own. Holding the
+            // first pair's while a second exists would cost the attack gain
+            // for nothing -- a held slow envelope is never below the fast one.
+            if (config->slow_hold_frames != 0u && !config->transient_dual) {
                 // A peak-hold rather than a follower: the sustain difference
                 // then grows monotonically through a note's decay instead of
                 // peaking early and falling away with it.
@@ -632,9 +643,23 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
                 state->fast_env2 +=
                     (level > state->fast_env2 ? sus_fast_att : sus_fast_rel)
                     * (level - state->fast_env2);
-                state->slow_env2 +=
-                    (level > state->slow_env2 ? sus_slow_att : sus_slow_rel)
-                    * (level - state->slow_env2);
+                if (config->slow_hold_frames != 0u) {
+                    if (level >= state->slow_peak) {
+                        state->slow_peak = level;
+                        state->slow_hold_left = config->slow_hold_frames;
+                    } else if (state->slow_hold_left != 0u) {
+                        state->slow_hold_left--;
+                    } else {
+                        state->slow_peak +=
+                            sus_slow_rel * (level - state->slow_peak);
+                    }
+                    state->slow_env2 = state->slow_peak;
+                } else {
+                    state->slow_env2 +=
+                        (level > state->slow_env2 ? sus_slow_att
+                                                  : sus_slow_rel)
+                        * (level - state->slow_env2);
+                }
                 const float diff2 =
                     audioif_dynamics_gain_to_db(state->fast_env2 + 1e-5f) -
                     audioif_dynamics_gain_to_db(state->slow_env2 + 1e-5f);
@@ -703,16 +728,17 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
         } else {
             const bool rising = level > state->envelope;
             float coef = rising ? config->attack_coef : config->release_coef;
-            if (config->program_attack && rising) {
-                // Program-dependent attack: the coefficient is scaled by how
-                // far the level overshoots the envelope, so 20 dB over is
-                // caught about 3x faster than 10 dB over rather than at one
-                // fixed time. A ratio, so no logarithm is needed.
-                const float floor_env = state->envelope > 1e-6f
-                    ? state->envelope : 1e-6f;
-                const float overshoot = level / floor_env;
+            if (config->program_attack && rising &&
+                threshold_level > 0.0f) {
+                // The coefficient is scaled by the square root of how far
+                // the level is over the threshold, which puts 20 dB over
+                // about 3.4x faster than 10 dB over -- the ratio a
+                // program-dependent attack is specified by. Scaling by the
+                // overshoot itself gives 6x, which is past every dossier's
+                // band. A root and a ratio, so no logarithm is needed.
+                const float overshoot = level / threshold_level;
                 if (overshoot > 1.0f) {
-                    coef *= overshoot;
+                    coef *= sqrtf(overshoot);
                     if (coef > 1.0f) {
                         coef = 1.0f;
                     }

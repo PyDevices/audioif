@@ -26,10 +26,13 @@
 //| """Hold the level at the threshold."""
 //|
 //| DYN_EXPAND: int
-//| """Push level below the threshold further down, to a floor of -60 dB."""
+//| """Push level below the threshold further down, to a floor of -60 dB
+//| unless ``depth_db`` names another one."""
 //|
 //| DYN_GATE: int
-//| """Close hard below the threshold, to a floor of -80 dB."""
+//| """Close hard below the threshold, to a floor of -80 dB unless
+//| ``depth_db`` names another one. With ``hold_ms`` set it closes through a
+//| four-stage envelope instead."""
 //|
 //| DYN_TRANSIENT: int
 //| """Shape attacks and sustains by comparing a fast and a slow detector."""

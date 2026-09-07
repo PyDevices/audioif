@@ -26,6 +26,13 @@ typedef struct {
     // Source frames fetched but not yet consumed, carried across output blocks.
     const int16_t *pending;
     uint32_t pending_frames;
+    // The external key, if `key()` was given one: a second stream the
+    // detector reads while the gain still lands on `source`. Pulled in
+    // lockstep with the audio, so a block is only ever as long as the shorter
+    // of the two has frames for.
+    mp_obj_t key_source;
+    const int16_t *key_pending;
+    uint32_t key_pending_frames;
 } audiodynamics_dynamics_obj_t;
 
 extern const mp_obj_type_t audiodynamics_dynamics_type;

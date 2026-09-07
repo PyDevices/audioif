@@ -32,13 +32,61 @@
 //|         attack_gain_db: float = 0.0,
 //|         sustain_gain_db: float = 0.0,
 //|         sidechain_hz: float = 0.0,
+//|         lookahead_ms: float = 0.0,
+//|         true_peak: int = 0,
+//|         detector: str = "peak",
+//|         rms_ms: float = 10.0,
+//|         feedback_detector: bool = False,
+//|         relative_threshold: bool = False,
+//|         program_attack: bool = False,
+//|         sidechain_lp_hz: float = 0.0,
+//|         sidechain_poles: int = 1,
+//|         key_listen: bool = False,
+//|         depth_db: float = 1.0,
+//|         hold_ms: float = 0.0,
+//|         hysteresis_db: float = 0.0,
+//|         transient_fast_attack_ms: float = 1.0,
+//|         transient_fast_release_ms: float = 50.0,
+//|         transient_slow_attack_ms: float = 25.0,
+//|         transient_slow_release_ms: float = 300.0,
+//|         slow_hold_ms: float = 0.0,
+//|         transient_dual: bool = False,
+//|         sustain_fast_attack_ms: float = 1.0,
+//|         sustain_fast_release_ms: float = 200.0,
+//|         sustain_slow_attack_ms: float = 25.0,
+//|         sustain_slow_release_ms: float = 1200.0,
 //|     ) -> None:
 //|         """Create a dynamics processor in one of the ``DYN_*`` modes.
 //|
 //|         ``sidechain_hz`` high-passes the detector without touching the
 //|         audio, which is how a de-esser is built. ``attack_gain_db`` and
 //|         ``sustain_gain_db`` apply to ``DYN_TRANSIENT`` only; the threshold,
-//|         ratio and knee apply to the others."""
+//|         ratio and knee apply to the others.
+//|
+//|         ``lookahead_ms`` holds the audio back while the detector reads
+//|         ahead of it, capped at 50 ms. ``true_peak`` is a level: 1 adds a
+//|         four-point half-band estimate of the peak between samples, 2 a 4x
+//|         polyphase reconstruction of it.
+//|
+//|         The rest are the effects program's additions and are all
+//|         default-off. ``detector="rms"`` averages a mean square over
+//|         ``rms_ms`` instead of rectifying a peak. ``feedback_detector``
+//|         reads the frame the node last put out rather than this frame's
+//|         input, and ``key()`` reads a different stream entirely;
+//|         ``key_listen`` puts the detector's signal on the output.
+//|         ``sidechain_lp_hz`` closes the top of the key band and
+//|         ``sidechain_poles=2`` cascades a second pole through both ends.
+//|         ``depth_db`` replaces the expander's -60 dB and the gate's -80 dB
+//|         floors - positive means unset, because a depth is an attenuation.
+//|         ``hold_ms`` and ``hysteresis_db`` swap the gate's memoryless gain
+//|         computer for a closed/attack/hold/decay machine.
+//|         ``relative_threshold`` drives the gain computer with the
+//|         side-chained level minus the full-band one, and ``program_attack``
+//|         scales the attack coefficient by the overshoot. The four
+//|         ``transient_*_ms`` times are the shaper's detector constants;
+//|         ``slow_hold_ms`` makes the slow one a peak-hold and
+//|         ``transient_dual`` runs the four ``sustain_*_ms`` times as a second
+//|         pair so both differences apply at once."""
 //|         ...
 
 // The options __init__ and set() accept, paired with the shared DSP's enum.
@@ -62,6 +110,36 @@ static const dynamics_option_name_t dynamics_option_names[] = {
     { MP_QSTR_sidechain_hz, AUDIOIF_DYNAMICS_OPT_SIDECHAIN_HZ },
     { MP_QSTR_lookahead_ms, AUDIOIF_DYNAMICS_OPT_LOOKAHEAD_MS },
     { MP_QSTR_true_peak, AUDIOIF_DYNAMICS_OPT_TRUE_PEAK },
+    // The effects program's additions, every one of them default-off.
+    { MP_QSTR_transient_fast_attack_ms,
+      AUDIOIF_DYNAMICS_OPT_TRANSIENT_FAST_ATTACK_MS },
+    { MP_QSTR_transient_fast_release_ms,
+      AUDIOIF_DYNAMICS_OPT_TRANSIENT_FAST_RELEASE_MS },
+    { MP_QSTR_transient_slow_attack_ms,
+      AUDIOIF_DYNAMICS_OPT_TRANSIENT_SLOW_ATTACK_MS },
+    { MP_QSTR_transient_slow_release_ms,
+      AUDIOIF_DYNAMICS_OPT_TRANSIENT_SLOW_RELEASE_MS },
+    { MP_QSTR_detector, AUDIOIF_DYNAMICS_OPT_DETECTOR },
+    { MP_QSTR_rms_ms, AUDIOIF_DYNAMICS_OPT_RMS_MS },
+    { MP_QSTR_feedback_detector, AUDIOIF_DYNAMICS_OPT_FEEDBACK_DETECTOR },
+    { MP_QSTR_sidechain_lp_hz, AUDIOIF_DYNAMICS_OPT_SIDECHAIN_LP_HZ },
+    { MP_QSTR_sidechain_poles, AUDIOIF_DYNAMICS_OPT_SIDECHAIN_POLES },
+    { MP_QSTR_key_listen, AUDIOIF_DYNAMICS_OPT_KEY_LISTEN },
+    { MP_QSTR_depth_db, AUDIOIF_DYNAMICS_OPT_DEPTH_DB },
+    { MP_QSTR_hold_ms, AUDIOIF_DYNAMICS_OPT_HOLD_MS },
+    { MP_QSTR_hysteresis_db, AUDIOIF_DYNAMICS_OPT_HYSTERESIS_DB },
+    { MP_QSTR_relative_threshold, AUDIOIF_DYNAMICS_OPT_RELATIVE_THRESHOLD },
+    { MP_QSTR_program_attack, AUDIOIF_DYNAMICS_OPT_PROGRAM_ATTACK },
+    { MP_QSTR_transient_dual, AUDIOIF_DYNAMICS_OPT_TRANSIENT_DUAL },
+    { MP_QSTR_sustain_fast_attack_ms,
+      AUDIOIF_DYNAMICS_OPT_SUSTAIN_FAST_ATTACK_MS },
+    { MP_QSTR_sustain_fast_release_ms,
+      AUDIOIF_DYNAMICS_OPT_SUSTAIN_FAST_RELEASE_MS },
+    { MP_QSTR_sustain_slow_attack_ms,
+      AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_ATTACK_MS },
+    { MP_QSTR_sustain_slow_release_ms,
+      AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_RELEASE_MS },
+    { MP_QSTR_slow_hold_ms, AUDIOIF_DYNAMICS_OPT_SLOW_HOLD_MS },
 };
 
 // The lookahead buffer is allocated only once someone asks for one, and only
@@ -108,7 +186,24 @@ static void dynamics_apply_kwargs(audiodynamics_dynamics_obj_t *self,
         if (name == MP_QSTR_sample_rate || name == MP_QSTR_channel_count) {
             continue;
         }
-        float value = (float)mp_obj_get_float(kw->table[i].value);
+        // `detector=` reads better as a word than as a number. Every option
+        // the DSP takes is a float, so the word is mapped to one here rather
+        // than teaching the kernel about strings.
+        float value;
+        if (name == MP_QSTR_detector &&
+            mp_obj_is_str(kw->table[i].value)) {
+            const qstr word = mp_obj_str_get_qstr(kw->table[i].value);
+            if (word == MP_QSTR_rms) {
+                value = (float)AUDIOIF_DYNAMICS_DETECT_RMS;
+            } else if (word == MP_QSTR_peak) {
+                value = (float)AUDIOIF_DYNAMICS_DETECT_PEAK;
+            } else {
+                mp_raise_ValueError(MP_ERROR_TEXT(
+                    "detector must be 'peak' or 'rms'"));
+            }
+        } else {
+            value = (float)mp_obj_get_float(kw->table[i].value);
+        }
         bool known = false;
         for (size_t option = 0; option < MP_ARRAY_SIZE(dynamics_option_names);
              ++option) {
@@ -141,6 +236,9 @@ static mp_obj_t audiodynamics_dynamics_make_new(const mp_obj_type_t *type,
     self->source = MP_OBJ_NULL;
     self->pending = NULL;
     self->pending_frames = 0;
+    self->key_source = MP_OBJ_NULL;
+    self->key_pending = NULL;
+    self->key_pending_frames = 0;
 
     const int mode = n_args >= 1 ? (int)mp_obj_get_int(all_args[0])
                                  : AUDIOIF_DYNAMICS_COMPRESS;
@@ -168,6 +266,29 @@ static mp_obj_t audiodynamics_dynamics_play(mp_obj_t self_in,
 }
 MP_DEFINE_CONST_FUN_OBJ_2(audiodynamics_dynamics_play_obj,
     audiodynamics_dynamics_play);
+
+//|     def key(self, sample: circuitpython_typing.AudioSample | None) -> None:
+//|         """Feed the detector from ``sample`` instead of from the audio.
+//|
+//|         The gain still lands on whatever ``play()`` is playing. ``None``
+//|         goes back to reading the audio; a key that runs dry starves the
+//|         node the same way an absent source does."""
+//|         ...
+static mp_obj_t audiodynamics_dynamics_key(mp_obj_t self_in,
+    mp_obj_t sample) {
+    audiodynamics_dynamics_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    if (sample == mp_const_none) {
+        self->key_source = MP_OBJ_NULL;
+    } else {
+        (void)audiosample_check(sample);
+        self->key_source = sample;
+    }
+    self->key_pending = NULL;
+    self->key_pending_frames = 0;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(audiodynamics_dynamics_key_obj,
+    audiodynamics_dynamics_key);
 
 //|     def set(self, **options: float) -> None:
 //|         """Change any of the constructor's options mid-stream. The detector
@@ -197,6 +318,7 @@ MP_DEFINE_CONST_FUN_OBJ_1(audiodynamics_dynamics_gain_reduction_db_obj,
 
 static const mp_rom_map_elem_t audiodynamics_dynamics_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiodynamics_dynamics_play_obj) },
+    { MP_ROM_QSTR(MP_QSTR_key), MP_ROM_PTR(&audiodynamics_dynamics_key_obj) },
     { MP_ROM_QSTR(MP_QSTR_set), MP_ROM_PTR(&audiodynamics_dynamics_set_obj) },
     { MP_ROM_QSTR(MP_QSTR_gain_reduction_db),
       MP_ROM_PTR(&audiodynamics_dynamics_gain_reduction_db_obj) },
