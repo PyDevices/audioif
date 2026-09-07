@@ -37,6 +37,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_dynamics.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_splitter.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multiply.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_suboctave.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_feedback_delay.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_trig.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_fft.c
@@ -75,6 +76,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audioroute/SplitterTap.c
     ${MPAUDIO_SRC_DIR}/audioroute/module.c
     ${MPAUDIO_SRC_DIR}/audiomath/Multiply.c
+    ${MPAUDIO_SRC_DIR}/audiomath/SubOctave.c
     ${MPAUDIO_SRC_DIR}/audiomath/module.c
     ${MPAUDIO_SRC_DIR}/audioecho/FeedbackDelay.c
     ${MPAUDIO_SRC_DIR}/audioecho/module.c

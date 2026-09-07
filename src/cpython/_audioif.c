@@ -19,6 +19,7 @@
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
 #include "shared/audioif_multiply.h"
+#include "shared/audioif_suboctave.h"
 #include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
 
@@ -37,6 +38,7 @@ typedef struct {
     PyObject *dynamics_state_type;
     PyObject *splitter_ring_type;
     PyObject *feedback_delay_state_type;
+    PyObject *suboctave_state_type;
     PyObject *convolver_state_type;
 } audioif_state_t;
 
@@ -1255,6 +1257,111 @@ static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
     return result;
 }
 
+// audiomath.SubOctave's divider. Unlike multiply_s16() above -- which is a
+// plain function, because the multiply carries no state at all -- the divider
+// is nothing but state: the count has to survive from one block to the next,
+// and a chain that restarted it every block would flip polarity at the block
+// rate rather than at half the note's frequency. So it is a type, the way
+// FeedbackDelayState is, though a very much smaller one: four fields, no
+// allocation.
+
+typedef struct {
+    PyObject_HEAD
+    audioif_suboctave_config_t config;
+    audioif_suboctave_state_t state;
+} audioif_suboctave_object_t;
+
+static int suboctave_state_init(audioif_suboctave_object_t *self,
+    PyObject *args, PyObject *kwargs) {
+    unsigned int sample_rate = 48000;
+    unsigned int channel_count = 2;
+    static char *keywords[] = {"sample_rate", "channel_count", NULL};
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|II:SubOctaveState",
+        keywords, &sample_rate, &channel_count)) return -1;
+    if (sample_rate < 1) {
+        PyErr_SetString(PyExc_ValueError, "sample_rate must be at least 1");
+        return -1;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return -1;
+    }
+    audioif_suboctave_config_init(&self->config, sample_rate);
+    audioif_suboctave_set_channel_count(&self->config, channel_count);
+    audioif_suboctave_state_init(&self->state);
+    return 0;
+}
+
+static PyObject *suboctave_state_configure(audioif_suboctave_object_t *self,
+    PyObject *args) {
+    int option;
+    double value;
+    if (!PyArg_ParseTuple(args, "id:configure", &option, &value)) return NULL;
+    if (option < AUDIOIF_SUBOCTAVE_OPT_ORDER ||
+        option > AUDIOIF_SUBOCTAVE_OPT_HOLD_MS) {
+        PyErr_SetString(PyExc_ValueError, "unknown sub-octave option");
+        return NULL;
+    }
+    audioif_suboctave_configure(&self->config,
+        (audioif_suboctave_option_t)option, (float)value);
+    Py_RETURN_NONE;
+}
+
+static PyObject *suboctave_state_finish(audioif_suboctave_object_t *self,
+    PyObject *unused) {
+    audioif_suboctave_config_finish(&self->config);
+    Py_RETURN_NONE;
+}
+
+static PyObject *suboctave_state_reset(audioif_suboctave_object_t *self,
+    PyObject *unused) {
+    audioif_suboctave_reset(&self->state);
+    Py_RETURN_NONE;
+}
+
+static PyObject *suboctave_state_process(audioif_suboctave_object_t *self,
+    PyObject *argument) {
+    Py_buffer input = {0};
+    if (PyObject_GetBuffer(argument, &input, PyBUF_SIMPLE) < 0) return NULL;
+    const Py_ssize_t width = 2 * (Py_ssize_t)self->config.channel_count;
+    if (input.len % width) {
+        PyBuffer_Release(&input);
+        PyErr_SetString(PyExc_ValueError,
+            "input must be whole 16-bit frames for the configured channel count");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);
+    if (result != NULL) {
+        audioif_suboctave_process_s16(&self->config, &self->state,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)input.buf,
+            (uint32_t)(input.len / width));
+    }
+    PyBuffer_Release(&input);
+    return result;
+}
+
+static PyMethodDef suboctave_state_methods[] = {
+    {"configure", (PyCFunction)suboctave_state_configure, METH_VARARGS, NULL},
+    {"finish", (PyCFunction)suboctave_state_finish, METH_NOARGS, NULL},
+    {"reset", (PyCFunction)suboctave_state_reset, METH_NOARGS, NULL},
+    {"process", (PyCFunction)suboctave_state_process, METH_O, NULL},
+    {NULL, NULL, 0, NULL},
+};
+
+static PyType_Slot suboctave_state_slots[] = {
+    {Py_tp_new, PyType_GenericNew},
+    {Py_tp_init, suboctave_state_init},
+    {Py_tp_methods, suboctave_state_methods},
+    {0, NULL},
+};
+
+static PyType_Spec suboctave_state_spec = {
+    .name = "_audioif.SubOctaveState",
+    .basicsize = sizeof(audioif_suboctave_object_t),
+    .flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE,
+    .slots = suboctave_state_slots,
+};
+
 static PyObject *audioif_mix_s16(PyObject *module, PyObject *args) {
     Py_buffer left = {0};
     Py_buffer right = {0};
@@ -1791,6 +1898,13 @@ static int audioif_exec(PyObject *module) {
         state->feedback_delay_state_type) < 0) return -1;
     if (PyModule_AddIntConstant(module, "FEEDBACK_DELAY_FRAMES",
         AUDIOIF_FEEDBACK_DELAY_FRAMES) < 0) return -1;
+    state->suboctave_state_type = PyType_FromModuleAndSpec(module,
+        &suboctave_state_spec, NULL);
+    if (state->suboctave_state_type == NULL) return -1;
+    if (PyModule_AddObjectRef(module, "SubOctaveState",
+        state->suboctave_state_type) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "SUBOCTAVE_FRAMES",
+        AUDIOIF_SUBOCTAVE_FRAMES) < 0) return -1;
     state->convolver_state_type = PyType_FromModuleAndSpec(module,
         &convolver_state_spec, NULL);
     if (state->convolver_state_type == NULL) return -1;
@@ -1816,6 +1930,7 @@ static int audioif_traverse(PyObject *module, visitproc visit, void *arg) {
     Py_VISIT(state->dynamics_state_type);
     Py_VISIT(state->splitter_ring_type);
     Py_VISIT(state->feedback_delay_state_type);
+    Py_VISIT(state->suboctave_state_type);
     Py_VISIT(state->convolver_state_type);
     return 0;
 }
@@ -1830,6 +1945,7 @@ static int audioif_clear(PyObject *module) {
     Py_CLEAR(state->dynamics_state_type);
     Py_CLEAR(state->splitter_ring_type);
     Py_CLEAR(state->feedback_delay_state_type);
+    Py_CLEAR(state->suboctave_state_type);
     Py_CLEAR(state->convolver_state_type);
     return 0;
 }

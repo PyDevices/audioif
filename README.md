@@ -115,7 +115,8 @@ Five things here are not CircuitPython's. `audiodynamics` (compression,
 limiting, expansion, gating, transient shaping) and `audioroute` (fan one
 stream out to parallel branches) come from micropython-vst3's audio engine,
 which had them and CircuitPython does not. `audiomath` (multiply one stream
-by another — ring and amplitude modulation), `audioecho` (a delay with a
+by another — ring and amplitude modulation; and divide one down in
+frequency — the analog octave divider), `audioecho` (a delay with a
 filter, a soft-clip and a cross-feed inside its feedback loop) and
 `audioconvolve` (apply a measured or synthesized impulse response, by
 partitioned FFT) have no ancestor anywhere and are audioif's own.

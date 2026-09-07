@@ -756,6 +756,10 @@ oracle, the golden is captured from the port under CPython and what it proves
 is cross-interpreter agreement and no accidental drift, not fidelity to
 something older. All three interpreters render it identically.
 
+The module gained a second class, `SubOctave`, in the effects program's
+Phase 1 -- an analog octave divider, which is arithmetic on one stream
+against its own zero crossings. See "`audiomath` gains `SubOctave`" below.
+
 ### `apply_cp_patches.sh` could not add a module to a tree it had already
 ### patched
 
@@ -1722,3 +1726,111 @@ that stack notes are a listen Brad reserved for himself when he made the
 raise; audiocomponents' CPython leg follows the next audioif release, at
 which point its three moved digests are re-captured at 64 with this entry
 as the reason, and not before.
+
+## `audiomath` gains `SubOctave`, an analog octave divider (2026-09-07)
+
+Additive: a new class in an audioif-own module, nothing existing touched.
+`tests/parity/multiply_probe.py`'s hash is unchanged across it, and so are
+`dynamics_probe.py`'s, `route_probe.py`'s and `feedback_delay_probe.py`'s --
+the diff of `tests/parity/golden/dsp_nodes.json` in the commit that landed it
+adds one digest and changes none, which is the check that says so.
+
+**Why the palette could not do it.** Nothing here divides a *frequency*:
+
+- **`audiodelays.PitchShift`** is granular. It resamples grains and
+  crossfades them, so an octave down arrives with the smear and the comb that
+  windowing costs, and it costs a grain buffer per instance. It is a pitch
+  shifter, which is a different device from a divider and does not sound like
+  one.
+- **`audiospeed.SpeedChanger`** moves the whole stream in time. An octave
+  down there is the take played at half speed, which is not something a
+  player can perform through.
+- **`audiomath.Multiply`** rings the signal against a *free-running* table.
+  Multiplying by a square that is not locked to the input is a ring
+  modulator, and its sum and difference tones are exactly what a divider must
+  not produce.
+
+**What the circuit does, and what this does.** A Boss OC-2 and every pedal
+like it squares the input up with a comparator, halves that square with a
+flip-flop, and multiplies the *original* signal by the halved square. The
+square is +/-1, so that multiply is a negate: the output is the input with
+every other cycle inverted, which has twice the period, the input's own
+timbre, and no latency at all. A second flip-flop in series gives `order=2`,
+two octaves down. `shared/audioif_suboctave.c`, int16 in and out with Q15
+coefficients and int32 intermediates -- `audioif_multiply.c`'s convention, no
+float on the pull path. Two multiplies and a clamp per sample, one fewer than
+`Multiply`'s three, plus three compares and a counter.
+
+`SubOctave(source, order=1, mix=1.0, threshold=0.01, hold_ms=1.0,
+sample_rate=48000, channel_count=2)`, with `set()` taking the same four
+options mid-stream and `clear()` restarting the count. `mix` follows
+`Multiply`'s 0..1 convention, not `Echo`'s 0..2: at 0.5 a signal and its own
+inverse cancel exactly, which the parity fixture renders as a block of
+digital silence.
+
+Four things worth recording:
+
+- **The defaults live in the C, once.** `audioif_suboctave_config_init()` is
+  the only place `order` 1, `mix` 1.0, `threshold` 0.01 and `hold_ms` 1.0 are
+  written down; every binding passes "not asked for" rather than a copy of
+  the number, so the four targets cannot drift apart. Written the obvious way
+  first -- with the values repeated in each binding's signature -- and caught
+  by a planted fault: moving the C default did not move the golden, because
+  no target ever reached it.
+- **One divider drives every channel**, clocked by the mean of the frame.
+  Two dividers, one per channel, would count differently the moment the
+  channels differed, and the pair would then be an octave down in opposite
+  polarities -- which cancels in mono.
+- **`threshold` and `hold_ms` are the two ways of not counting a harmonic**,
+  and both are the class's business, not the node's. A waveform with a strong
+  second harmonic crosses zero more than twice per period, and a divider that
+  counts the extra crossings drops an octave too far. Measured on a 110 Hz
+  triangle carrying a second harmonic at 83% of its amplitude, rendered
+  through `order=1, mix=1.0` and read as the magnitude at 55 Hz (right) and
+  110 Hz (wrong):
+
+  | `hold_ms` | `threshold` | 55 Hz | 110 Hz |
+  |---|---|---|---|
+  | 0.0 | 0.01 | 112 | **3816** |
+  | 1.0 (default) | 0.01 | 112 | **3816** |
+  | 6.0 | 0.01 | **6111** | 65 |
+  | 0.0 | 0.25 | **5719** | 57 |
+
+  A lockout longer than the harmonic's period fixes it; so does a threshold
+  above the harmonic's own excursion. The **default of 1.0 ms does not**, and
+  is not meant to: 1 ms is a period of 1 kHz, so the default tracks every
+  fundamental a guitar or bass can produce and rejects only re-triggers
+  closer together than that. A class built for one note range sets `hold_ms`
+  from the lowest note it expects, or filters the input the way the pedal
+  does. **The Phase 0 sketch proposed 8.0 ms**, which rejects the harmonic on
+  a low note but silently divides by four above 125 Hz -- a wrong octave with
+  no error, which is worse than a divider that counts what it was given.
+
+- **`reset_buffer` restarts the count.** The divider holds no audio, so
+  unlike a delay's reset this drops nothing anybody can hear; what it stops
+  is a restarted chain beginning on the inverted half of the count.
+
+Verified by `tests/parity/suboctave_probe.py` through `verify_dsp.py`, with
+no oracle -- the golden is captured from the port under CPython and what it
+proves is cross-interpreter agreement, not fidelity to something older. The
+fixtures are integer-only for a reason a triangle does not have elsewhere in
+the suite: a divider is decided by *where* the signal crosses a threshold, so
+a fixture that moved by one LSB because two interpreters rounded `sin()`
+differently would move an edge and change every sample after it.
+
+**The probe was shown to fail before it was believed.** Twelve faults planted
+one at a time in `audioif_suboctave.c`, each rebuilt and run: the second
+flip-flop clocked on the falling edge; the lockout ignored; each of the three
+defaults moved by one step (threshold 328 -> 329, hold 1.0 -> 0.9 ms and
+1.0 -> 1.1 ms); the hysteresis made one-sided; the divider clocked by the left
+channel alone; `order` ignored; the positive clamp rail moved; the Q15 rounding
+term dropped; `reset` starting inverted; and the square never inverting. All
+twelve moved the digest. Two fixtures exist only because a fault got through
+the first version of the probe and did not: the two pulse trains at 45 and 50
+frames, which are the only cases that pin the default lockout from both
+sides, and the rails square, which was written with the channels in
+opposition so that the frame mean was -1 and the comparator never fired at
+all. The one thing the probe does **not** pin is the negative clamp rail,
+which is unreachable: with `q = +/-s` the blend cannot fall below -32768, so
+that branch is defensive symmetry with `audioif_multiply.c` and nothing
+exercises it.

@@ -12,12 +12,12 @@ wants a shared memory mapping a VST host created.
 
 One hash per probe covers every interpreter, unlike the instrument goldens.
 The arithmetic here is entirely inside shared/audioif_dynamics.c,
-audioif_splitter.c, audioif_multiply.c, audioif_feedback_delay.c and
-audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
+audioif_splitter.c, audioif_multiply.c, audioif_suboctave.c,
+audioif_feedback_delay.c and audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
 one -- the same C the CPython extension links, so a disagreement between two
 interpreters would itself be the finding.
 
-Four of the seven probes are held against no oracle, because there is nothing
+Five of the eight probes are held against no oracle, because there is nothing
 older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
 audioif's own modules, with no ancestor in CircuitPython or in the engine, and
 neither have `Dynamics`' lookahead and true-peak options -- which is why those
@@ -27,7 +27,7 @@ forms the original accepts. Their goldens are captured from the port under
 CPython, and what they prove is cross-interpreter agreement and no accidental
 change over time, not fidelity to something older.
 
-Two of those four are unusually sensitive, which is most of the reason for
+Two of those five are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
 disagreement between two builds would not stay one ulp; and every convolver
 output sample is a sum of hundreds of float products through two transforms.
@@ -54,6 +54,7 @@ PROBES = (
     ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
     ("multiply_probe.py", "audiomath", None, {}),
+    ("suboctave_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
     ("convolve_probe.py", "audioconvolve", None, {}),

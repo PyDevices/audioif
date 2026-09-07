@@ -38,6 +38,7 @@ setup(
                 "src/shared/audioif_dynamics.c",
                 "src/shared/audioif_splitter.c",
                 "src/shared/audioif_multiply.c",
+                "src/shared/audioif_suboctave.c",
                 "src/shared/audioif_feedback_delay.c",
                 "src/shared/audioif_trig.c",
                 "src/shared/audioif_fft.c",
