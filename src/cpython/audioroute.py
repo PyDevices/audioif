@@ -1,8 +1,13 @@
-"""Fan one audio stream out to several parallel branches.
+"""Route audio: fan one stream out to parallel branches, or move it between
+the channels.
 
 Unlike the rest of this package, `audioroute` is not a CircuitPython module.
-It comes from micropython-vst3's `vstaudio` engine, where the effects
+`Splitter` comes from micropython-vst3's `vstaudio` engine, where the effects
 library's exciters, Haas wideners and multiband splits are built on it.
+`MidSide` is audioif's own and has no ancestor anywhere: it turns a stereo
+pair into its mono sum and its difference, scales the difference, and rebuilds
+the pair, which is how a stereo drive keeps its image and the only way this
+palette collapses a pair to mono or pushes its sides out.
 
     split = audioroute.Splitter(source, taps=3)
     low.play(split.tap(0))
@@ -95,4 +100,95 @@ class Splitter:
         self._ring.write(bytes(data))
 
 
-__all__ = ("Splitter", "SplitterTap")
+MIDSIDE_FRAMES = _audioif.MIDSIDE_FRAMES
+
+
+class MidSide(_AudioSample):
+    """Scale the difference between the channels, leaving the sum alone.
+
+    ``width=0`` collapses the pair to mono, ``1`` passes it through
+    untouched, ``2`` doubles the sides. The identity at ``width=1`` is
+    exact - the output bytes are the input bytes, for every int16 pair -
+    so the node costs nothing to leave in a chain that is not using it.
+    """
+
+    def __init__(self, source=None, width=1.0, sample_rate=48000,
+                 channel_count=2):
+        channel_count = int(channel_count)
+        if channel_count not in (1, 2):
+            raise ValueError("channel_count must be 1 or 2")
+        self.sample_rate = int(sample_rate)
+        self.bits_per_sample = 16
+        self.channel_count = channel_count
+        self.samples_signed = True
+        self.single_buffer = False
+        self.max_buffer_length = MIDSIDE_FRAMES * 2 * channel_count
+        self._deinited = False
+        self._source = source
+        self._width = 1.0
+        self._pending = b""
+        self._apply({"width": width})
+
+    def _apply(self, options):
+        for name, value in options.items():
+            if name != "width":
+                raise TypeError("unknown MidSide option %r" % (name,))
+            self._width = min(2.0, max(0.0, float(value)))
+
+    def set(self, **options):
+        """Change settings mid-stream."""
+        self._check()
+        self._apply(options)
+
+    @property
+    def playing(self):
+        return self._source is not None
+
+    def play(self, sample, *, loop=False):
+        """Set the source the matrix reads from."""
+        self._check()
+        self._source = sample
+        self._pending = b""
+
+    def stop(self):
+        self._source = None
+        self._pending = b""
+
+    def _release(self):
+        self.stop()
+
+    def _reset_buffer(self, single_channel_output=False, audio_channel=0):
+        self._check()
+        # The cursor is all there is to reset: the matrix carries no state
+        # between frames.
+        self._pending = b""
+
+    def _get_buffer(self, single_channel_output=False, audio_channel=0):
+        self._check()
+        output = bytearray()
+        produced = 0
+        width = 2 * self.channel_count
+        while produced < MIDSIDE_FRAMES:
+            if not self._pending:
+                if self._source is None:
+                    break
+                result, data = get_buffer(self._source, False, 0)
+                data = bytes(data)
+                if result == GET_BUFFER_ERROR or len(data) < width:
+                    break
+                self._pending = data[:len(data) // width * width]
+            run = min(MIDSIDE_FRAMES - produced, len(self._pending) // width)
+            output += _audioif.midside_s16(
+                self._pending[:run * width], self._width, self.channel_count)
+            self._pending = self._pending[run * width:]
+            produced += run
+        # A starved chain gets silence rather than a short block: this node
+        # sits in the middle of a live graph and never reports itself
+        # finished.
+        if produced == 0:
+            return GET_BUFFER_MORE_DATA, memoryview(
+                bytes(MIDSIDE_FRAMES * 2 * self.channel_count))
+        return GET_BUFFER_MORE_DATA, memoryview(bytes(output))
+
+
+__all__ = ("MidSide", "Splitter", "SplitterTap")

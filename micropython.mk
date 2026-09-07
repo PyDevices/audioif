@@ -39,6 +39,7 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_pitchshift.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_freeverb.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_dynamics.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_splitter.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_midside.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multiply.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_feedback_delay.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_trig.c
@@ -173,7 +174,8 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/PitchShift.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c
 
-# --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter),
+# --- tier 6: audiodynamics (Dynamics, DYN_*), audioroute (Splitter,
+#     MidSide),
 #     audiomath (Multiply), audioecho (FeedbackDelay) and audioconvolve
 #     (Convolver) ---
 #
@@ -187,6 +189,7 @@ SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodynamics/Dynamics.c \
     $(MPAUDIO_SRC_DIR)/audiodynamics/module.c
 SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audioroute/MidSide.c \
     $(MPAUDIO_SRC_DIR)/audioroute/Splitter.c \
     $(MPAUDIO_SRC_DIR)/audioroute/SplitterTap.c \
     $(MPAUDIO_SRC_DIR)/audioroute/module.c

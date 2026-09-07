@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Add audioif's audiodynamics, audioroute, audiomath, audioecho and
-# audioconvolve modules
-# to a CircuitPython tree.
+# Add audioif's audiodynamics, audioroute (Splitter, MidSide), audiomath,
+# audioecho and audioconvolve modules to a CircuitPython tree.
 #
 #   ./apply_cp_patches.sh --dry-run [--port PORT] [--variant VARIANT]
 #   ./apply_cp_patches.sh --apply   [--port PORT] [--variant VARIANT]
@@ -249,6 +248,7 @@ if [[ "$MODE" == "--status" ]]; then
                 shared-bindings/audioecho/__init__.c \
                 shared-bindings/audioconvolve/__init__.c \
                 shared/audioif_dynamics.c shared/audioif_splitter.c \
+                shared/audioif_midside.c \
                 shared/audioif_multiply.c shared/audioif_feedback_delay.c \
                 shared/audioif_trig.c shared/audioif_fft.c \
                 shared/audioif_convolve.c; do
@@ -331,6 +331,7 @@ BINDING_ANCHOR=$'\tshared-bindings/audiofilters/__init__.c \\'
 MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/__init__.c \\'
+insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/MidSide.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/Splitter.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/SplitterTap.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/__init__.c \\'
@@ -341,6 +342,7 @@ insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioecho/
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/Convolver.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioconvolve/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiodynamics/Dynamics.c \\'
+insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/MidSide.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/Splitter.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audioroute/SplitterTap.c \\'
 insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\tshared-module/audiomath/Multiply.c \\'

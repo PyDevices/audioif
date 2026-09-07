@@ -18,6 +18,7 @@
 #include "shared/audioif_freeverb.h"
 #include "shared/audioif_dynamics.h"
 #include "shared/audioif_splitter.h"
+#include "shared/audioif_midside.h"
 #include "shared/audioif_multiply.h"
 #include "shared/audioif_convolve.h"
 #include "shared/audioif_feedback_delay.h"
@@ -1255,6 +1256,40 @@ static PyObject *audioif_multiply_s16(PyObject *module, PyObject *args) {
     return result;
 }
 
+static PyObject *audioif_midside_s16(PyObject *module, PyObject *args) {
+    Py_buffer signal = {0};
+    double width = 1.0;
+    unsigned int channel_count = 2;
+    if (!PyArg_ParseTuple(args, "y*d|I:midside_s16", &signal, &width,
+        &channel_count)) {
+        return NULL;
+    }
+    if (channel_count < 1 || channel_count > 2) {
+        PyBuffer_Release(&signal);
+        PyErr_SetString(PyExc_ValueError, "channel_count must be 1 or 2");
+        return NULL;
+    }
+    const Py_ssize_t frame = 2 * (Py_ssize_t)channel_count;
+    if (signal.len % frame) {
+        PyBuffer_Release(&signal);
+        PyErr_SetString(PyExc_ValueError,
+            "buffer must be a whole number of configured frames");
+        return NULL;
+    }
+    PyObject *result = PyBytes_FromStringAndSize(NULL, signal.len);
+    if (result != NULL) {
+        audioif_midside_config_t config;
+        audioif_midside_config_init(&config);
+        audioif_midside_set_channel_count(&config, channel_count);
+        audioif_midside_set_width(&config, (float)width);
+        audioif_midside_process_s16(&config,
+            (int16_t *)PyBytes_AS_STRING(result), (const int16_t *)signal.buf,
+            (uint32_t)(signal.len / frame));
+    }
+    PyBuffer_Release(&signal);
+    return result;
+}
+
 static PyObject *audioif_mix_s16(PyObject *module, PyObject *args) {
     Py_buffer left = {0};
     Py_buffer right = {0};
@@ -1747,6 +1782,7 @@ static PyMethodDef audioif_methods[] = {
     {"pitchshift_s16", audioif_pitchshift_s16, METH_VARARGS, NULL},
     {"freeverb_s16", audioif_freeverb_s16, METH_VARARGS, NULL},
     {"multiply_s16", audioif_multiply_s16, METH_VARARGS, NULL},
+    {"midside_s16", audioif_midside_s16, METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL},
 };
 
@@ -1784,6 +1820,8 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_DYNAMICS_FRAMES) < 0) return -1;
     if (PyModule_AddIntConstant(module, "MULTIPLY_FRAMES",
         AUDIOIF_MULTIPLY_FRAMES) < 0) return -1;
+    if (PyModule_AddIntConstant(module, "MIDSIDE_FRAMES",
+        AUDIOIF_MIDSIDE_FRAMES) < 0) return -1;
     state->feedback_delay_state_type = PyType_FromModuleAndSpec(module,
         &feedback_delay_state_spec, NULL);
     if (state->feedback_delay_state_type == NULL) return -1;

@@ -12,20 +12,23 @@ wants a shared memory mapping a VST host created.
 
 One hash per probe covers every interpreter, unlike the instrument goldens.
 The arithmetic here is entirely inside shared/audioif_dynamics.c,
-audioif_splitter.c, audioif_multiply.c, audioif_feedback_delay.c and
-audioif_convolve.c -- with audioif_fft.c and audioif_trig.c under that last
-one -- the same C the CPython extension links, so a disagreement between two
-interpreters would itself be the finding.
+audioif_splitter.c, audioif_midside.c, audioif_multiply.c,
+audioif_feedback_delay.c and audioif_convolve.c -- with audioif_fft.c and
+audioif_trig.c under that last one -- the same C the CPython extension links,
+so a disagreement between two interpreters would itself be the finding.
 
-Four of the seven probes are held against no oracle, because there is nothing
+Five of the eight probes are held against no oracle, because there is nothing
 older to hold them to. `audiomath`, `audioecho` and `audioconvolve` are
-audioif's own modules, with no ancestor in CircuitPython or in the engine, and
-neither have `Dynamics`' lookahead and true-peak options -- which is why those
-get a fixture of their own rather than joining dynamics_probe.py, that one
-being held against `vstaudio_dsp.c` compiled unmodified and so restricted to
-forms the original accepts. Their goldens are captured from the port under
-CPython, and what they prove is cross-interpreter agreement and no accidental
-change over time, not fidelity to something older.
+audioif's own modules, with no ancestor in CircuitPython or in the engine;
+`audioroute.MidSide` is audioif's own too, added to a module that did come
+from the engine, so it gets its own fixture rather than joining
+route_probe.py; and neither has `Dynamics`' lookahead and true-peak options --
+which is why those get a fixture of their own rather than joining
+dynamics_probe.py, that one being held against `vstaudio_dsp.c` compiled
+unmodified and so restricted to forms the original accepts. Their goldens are
+captured from the port under CPython, and what they prove is cross-interpreter
+agreement and no accidental change over time, not fidelity to something
+older.
 
 Two of those four are unusually sensitive, which is most of the reason for
 running them on every interpreter. The delay's loop is recursive, so a one-ulp
@@ -53,6 +56,7 @@ PROBES = (
     ("route_probe.py", "audioroute", "vstaudio_oracle", {}),
     ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
      {"circuitpython": "its coverage variant does not compile audiospeed"}),
+    ("midside_probe.py", "audioroute", None, {}),
     ("multiply_probe.py", "audiomath", None, {}),
     ("feedback_delay_probe.py", "audioecho", None, {}),
     ("dynamics_extras_probe.py", "audiodynamics", None, {}),
@@ -106,8 +110,9 @@ def capture(args):
     fixture = {
         "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, "
                   "compiled unmodified (see build_vstaudio_oracle.sh)",
-        "no_oracle": "audiomath and audioecho are audioif's own; their "
-                     "probes are captured from the port under CPython",
+        "no_oracle": "audiomath, audioecho, audioconvolve and "
+                     "audioroute.MidSide are audioif's own; their probes "
+                     "are captured from the port under CPython",
         "probes": {},
     }
     for probe, module, old_module, _skips in PROBES:
