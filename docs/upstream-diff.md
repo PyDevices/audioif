@@ -1722,3 +1722,85 @@ that stack notes are a listen Brad reserved for himself when he made the
 raise; audiocomponents' CPython leg follows the next audioif release, at
 which point its three moved digests are re-captured at 64 with this entry
 as the reason, and not before.
+
+## `audioroute` gains `MidSide` (2026-09-07)
+
+Additive, and the default is the identity, so an `audioroute` built the way it
+was *is* what it was -- `tests/parity/route_probe.py`'s and
+`route_dry_probe.py`'s hashes are unchanged across this addition, which is the
+check that says so. `Splitter` still hashes to `vstaudio_dsp.c` compiled
+unmodified. The new class gets its own fixture (`midside_probe.py`) rather
+than joining either of those, because both are held against that oracle and
+may only use forms the original accepts, and the original has no `MidSide`
+at all: `audioroute` came from micropython-vst3's engine, this class did not.
+It is audioif's own, like `audiomath`, `audioecho` and `audioconvolve`, so
+there is nothing older to diff against and this section records a new class
+rather than a deviation.
+
+**What it is.** A stereo pair taken apart into its mono sum and the difference
+between its channels, the difference scaled by `width`, and the pair put back
+together. `width=0` collapses to mono, `1` passes through, `2` doubles the
+sides; `set(width=)` moves it mid-stream and out-of-range values clamp to
+those rails rather than being honoured, the same treatment
+`audioif_multiply_set_mix` gives a mix outside 0..1.
+
+**Why the palette could not already do it.** `audiomixer.Mixer` has a
+per-voice `pan`, which *places* a source between the speakers. It cannot reach
+what is already between them: no combination of pans collapses a pair to mono
+or pushes its sides out, and `Splitter`'s branches all carry the same stereo
+pair, never a mid on one and a side on another.
+
+**Why a drive node lives in a routing module.** The traits that asked for this
+are drive traits, not stereo-width ones. A nonlinearity applied to a stereo
+pair intermodulates the channels -- what comes back on the sides is
+sum-and-difference products of both -- so a stereo overdrive, fuzz or
+saturator that wants to keep its image drives the mid and leaves the side
+alone. That is a routing decision (which signal reaches which channel), which
+is the job `Splitter` already does one level up (which branch reaches which
+chain), so it goes here rather than into a module of its own. A new module
+would have been a third import for every class that already needs `Splitter`,
+and one more thing `apply_cp_patches.sh` has to install whole.
+
+**The width is Q14, not Q15.** Every other integer coefficient in this tree is
+Q15, because every other one runs 0..1. This one runs 0..2. Q15 would put
+`width = 2` at 65536, and `65536 * 65535` -- 65535 being the widest difference
+two int16 samples can have -- is 4294901760, past `INT32_MAX`, on the hot
+path, on parts where a 64-bit multiply is not free. Q14 caps the same product
+at `32768 * 65535 = 2147450880`, which fits `int32` with 32767 to spare. That
+bound is checked rather than argued: a standalone driver over
+`src/shared/audioif_midside.c` forms the widest product the kernel can reach
+and prints it beside `INT32_MAX`.
+
+**The halving comes last, and that is what makes the identity exact.** Per
+frame the kernel computes `sum = L+R`, `diff = L-R`, `side = (w*diff) >> 14`,
+then `outL = clamp16((sum+side+1) >> 1)` and `outR = clamp16((sum-side+1) >> 1)`.
+At `width = 1` (`w = 16384`) a Q14 multiply is a shift left by 14 and the
+shift right by 14 returns `diff` bit for bit, negatives included -- so
+`sum + side` is `2L` and `(2L+1) >> 1` is `L` for every int16 there is. The
+output bytes are the input bytes, with no special case in the code and none in
+the API. Halving the sum first would lose a bit before the side was ever
+added, and a `MidSide` left at its default would quietly cost the chain an LSB
+wherever a class leaves one in a signal path it is not currently using.
+
+The `+1` rounds half up rather than toward minus infinity. Without it every
+odd result loses half an LSB downward, which is a small DC offset on anything
+asymmetric -- exactly what a drive downstream turns into an audible bias. It
+goes on both halves, so the mono sum lands on `L+R` or one more, never split
+between the channels; `midside_probe.py` holds that to 1 LSB per frame at
+every width, below the clamp.
+
+**Latency and state: none of either.** No line, no filter, no accumulator, so
+a block boundary is not observable, `reset_buffer` has only the source cursor
+to drop, and no option can add latency later without changing what the class
+is. That is the trait a `FeedbackDelay` composition cannot hold: its delay
+clamps at one frame (`audioif_feedback_delay.c:81-83`).
+
+**What the probe asserts that a checksum cannot.** Two things, both printed so
+the golden covers them: at `width=1` the output bytes are compared against the
+source bytes rather than against a hash of themselves -- a checksum would go on
+matching a golden captured from a node that had started costing an LSB -- and
+the mono sum is held to 1 LSB per frame at every width. Three planted faults
+were run, each caught by a different mechanism: halving before adding breaks
+the identity comparison; scaling the mid instead of the side leaves the
+identity intact and moves the mono sum by 30000; dropping the `+1` leaves both
+assertions passing and moves the checksum.

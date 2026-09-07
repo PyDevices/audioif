@@ -96,19 +96,24 @@ and their source is micropython-vst3 rather than CircuitPython:
 
 - **tier 7** is `audiodynamics` (compressor, limiter, downward expander, gate,
   transient shaper, with a high-passed detector for de-essing) and
-  `audioroute` (fan one stream out to parallel branches over a shared ring).
+  `audioroute.Splitter` (fan one stream out to parallel branches over a shared
+  ring).
   Both lived in micropython-vst3's `vstaudio` usermod, which meant no
   application outside that plugin could use them and half of its own effects
   library could not be exercised offline at all.
 
-  `audiomath`, `audioecho` and `audioconvolve` have no ancestor at all —
-  nothing upstream and nothing in the engine does any of the three. Nothing
+  `audiomath`, `audioecho`, `audioconvolve` and `audioroute.MidSide` have no
+  ancestor at all —
+  nothing upstream and nothing in the engine does any of the four. Nothing
   multiplies two *streams*, which is what ring modulation needs and what an
   LFO at block rate cannot reach. Nothing puts a filter inside a delay's
   feedback loop, which is what separates a tape echo from a delay with a tone
-  control. And nothing transforms anything at all, so nothing can apply a
+  control. Nothing transforms anything at all, so nothing can apply a
   measured impulse response — the one effect on the catalogue the rest of the
-  palette genuinely cannot approximate.
+  palette genuinely cannot approximate. And nothing reaches what is already
+  *between* the speakers: `Mixer`'s `pan` places a source, but no combination
+  of pans collapses a stereo pair to mono or pushes its sides out, which is
+  what a stereo drive needs in order to keep its image.
 
   CircuitPython has no equivalent to
   any of them, so `apply_cp_patches.sh` adds them to a CircuitPython tree —

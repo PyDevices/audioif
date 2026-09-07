@@ -112,14 +112,28 @@ those packages installed.
 ## Additions beyond CircuitPython
 
 Five things here are not CircuitPython's. `audiodynamics` (compression,
-limiting, expansion, gating, transient shaping) and `audioroute` (fan one
-stream out to parallel branches) come from micropython-vst3's audio engine,
-which had them and CircuitPython does not. `audiomath` (multiply one stream
-by another — ring and amplitude modulation), `audioecho` (a delay with a
-filter, a soft-clip and a cross-feed inside its feedback loop) and
+limiting, expansion, gating, transient shaping) and `audioroute.Splitter`
+(fan one stream out to parallel branches) come from micropython-vst3's audio
+engine, which had them and CircuitPython does not. `audiomath` (multiply one
+stream by another — ring and amplitude modulation), `audioecho` (a delay with
+a filter, a soft-clip and a cross-feed inside its feedback loop),
 `audioconvolve` (apply a measured or synthesized impulse response, by
-partitioned FFT) have no ancestor anywhere and are audioif's own.
+partitioned FFT) and `audioroute.MidSide` (scale the difference between a
+stereo pair's channels) have no ancestor anywhere and are audioif's own.
 `apply_cp_patches.sh` adds all five to a CircuitPython tree too.
+
+`audioroute.MidSide(source, width=1.0, sample_rate=48000, channel_count=2)`
+takes a stereo pair apart into its mono sum and the difference between its
+channels, scales the difference, and puts the pair back together. `width=0`
+collapses to mono, `1` passes through, `2` doubles the sides; values outside
+0..2 clamp to those rails. `play(sample)` sets the source, `set(width=...)`
+moves the width mid-stream. There is no state and no latency — and at
+`width=1` the output bytes are the input bytes, exactly, for every int16 pair,
+so the node costs nothing to leave in a chain that is not using it. A mono
+source passes through: there is no difference to scale. It exists for the
+drive classes as much as for stereo width: a nonlinearity applied to a stereo
+pair intermodulates its channels, so a saturator that wants to keep its image
+drives the mid and leaves the side alone.
 
 ## Status
 
