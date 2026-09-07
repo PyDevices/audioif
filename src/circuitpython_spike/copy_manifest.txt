@@ -16,6 +16,8 @@ src/shared/audioif_multiply.h	shared/audioif_multiply.h
 src/shared/audioif_multiply.c	shared/audioif_multiply.c
 src/shared/audioif_feedback_delay.h	shared/audioif_feedback_delay.h
 src/shared/audioif_feedback_delay.c	shared/audioif_feedback_delay.c
+src/shared/audioif_shaper.h	shared/audioif_shaper.h
+src/shared/audioif_shaper.c	shared/audioif_shaper.c
 src/shared/audioif_trig.h	shared/audioif_trig.h
 src/shared/audioif_trig.c	shared/audioif_trig.c
 src/shared/audioif_fft.h	shared/audioif_fft.h
@@ -54,6 +56,13 @@ src/circuitpython_spike/shared-bindings/audioecho/FeedbackDelay.h	shared-binding
 src/circuitpython_spike/shared-bindings/audioecho/FeedbackDelay.c	shared-bindings/audioecho/FeedbackDelay.c
 src/circuitpython_spike/shared-module/audioecho/FeedbackDelay.h	shared-module/audioecho/FeedbackDelay.h
 src/circuitpython_spike/shared-module/audioecho/FeedbackDelay.c	shared-module/audioecho/FeedbackDelay.c
+
+src/circuitpython_spike/shared-bindings/audioshaper/__init__.h	shared-bindings/audioshaper/__init__.h
+src/circuitpython_spike/shared-bindings/audioshaper/__init__.c	shared-bindings/audioshaper/__init__.c
+src/circuitpython_spike/shared-bindings/audioshaper/Waveshaper.h	shared-bindings/audioshaper/Waveshaper.h
+src/circuitpython_spike/shared-bindings/audioshaper/Waveshaper.c	shared-bindings/audioshaper/Waveshaper.c
+src/circuitpython_spike/shared-module/audioshaper/Waveshaper.h	shared-module/audioshaper/Waveshaper.h
+src/circuitpython_spike/shared-module/audioshaper/Waveshaper.c	shared-module/audioshaper/Waveshaper.c
 
 src/circuitpython_spike/shared-bindings/audioconvolve/__init__.h	shared-bindings/audioconvolve/__init__.h
 src/circuitpython_spike/shared-bindings/audioconvolve/__init__.c	shared-bindings/audioconvolve/__init__.c
