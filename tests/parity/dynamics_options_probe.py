@@ -252,4 +252,52 @@ for rate in (22050, 96000):
     node.play(source())
     emit("rate-%d" % rate, node, 3)
 
+# `gain_smooth_ms` (audioif#61): a one-pole on the computed gain, between the
+# gain computer and the multiply. Off is asserted here as well as on, because
+# off is what every other fixture in this file and in dynamics_probe.py was
+# captured under -- an "off" case that stopped matching the un-smoothed cases
+# would say the default had moved.
+#
+# A short release on low-frequency material is the condition the option exists
+# for: the per-sample gain follows the waveform, which is intermodulation
+# rather than compression. Measured on the 50 Hz tone this fixture is not (the
+# probe's own source is broadband on purpose), the ripple runs 6.82 % at a
+# 10 ms release and falls to 1.04 % at 10 ms of smoothing and 0.41 % at 30 ms.
+SMOOTH_BASE = {"threshold_db": -30.0, "ratio": 6.0, "knee_db": 0.0,
+               "attack_ms": 1.0, "release_ms": 10.0}
+for milliseconds in (0.0, 1.0, 10.0, 30.0):
+    node = dynamics.Dynamics(0, sample_rate=SAMPLE_RATE,
+                             **options(SMOOTH_BASE,
+                                       gain_smooth_ms=milliseconds))
+    node.play(source())
+    emit("smooth-%g" % milliseconds, node, 3)
+
+# Set mid-stream, and set back off again: the coefficient is recomputed and
+# the smoother's own memory carries across, which is a different fixture from
+# building the node with it.
+node = dynamics.Dynamics(0, sample_rate=SAMPLE_RATE, **SMOOTH_BASE)
+node.play(source())
+emit("smooth-late-a", node, 2)
+node.set(gain_smooth_ms=20.0)
+emit("smooth-late-b", node, 2)
+node.set(gain_smooth_ms=0.0)
+emit("smooth-late-c", node, 2)
+
+# Every mode goes through the same smoother, so each is captured with it on.
+for name, mode, extra in (("limit", 1, {"threshold_db": -26.0}),
+                          ("expand", 2, {"threshold_db": -20.0, "ratio": 3.0}),
+                          ("gate", 3, GATE),
+                          ("transient", 4, SHAPE)):
+    node = dynamics.Dynamics(mode, sample_rate=SAMPLE_RATE,
+                             gain_smooth_ms=8.0, **extra)
+    node.play(source())
+    emit("smooth-%s" % name, node, 3)
+
+# The millisecond reading is against the sample rate, as every other one is.
+for rate in (22050, 96000):
+    node = dynamics.Dynamics(0, sample_rate=rate, threshold_db=-30.0,
+                             ratio=6.0, release_ms=10.0, gain_smooth_ms=10.0)
+    node.play(source())
+    emit("smooth-rate-%d" % rate, node, 2)
+
 print("done dynamics options")

@@ -94,6 +94,7 @@ typedef enum {
     AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_ATTACK_MS,
     AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_RELEASE_MS,
     AUDIOIF_DYNAMICS_OPT_SLOW_HOLD_MS,
+    AUDIOIF_DYNAMICS_OPT_GAIN_SMOOTH_MS,
     //: One past the last option, for a binding that range-checks.
     AUDIOIF_DYNAMICS_OPT_COUNT,
 } audioif_dynamics_option_t;
@@ -177,6 +178,20 @@ typedef struct {
     //: gain computer the original had.
     uint32_t hold_frames;
     float hysteresis_db;
+    //: A one-pole on the computed gain, between the gain computer and the
+    //: multiply. 1.0 is off and is the default, which makes the smoothing an
+    //: identity -- every figure measured before this option existed stays
+    //: where it is (audioif#61).
+    //:
+    //: What it is for: with a short release the per-sample gain follows the
+    //: waveform on low-frequency material, which is intermodulation rather
+    //: than compression. Measured at 10 dB of gain reduction on a 50 Hz tone,
+    //: five of `audioeffects.Compressor`'s fourteen shipped patches were over
+    //: their 0.5 % THD bar -- the constructor's own defaults among them --
+    //: while at 1 kHz only the patch that is *meant* to be dirty was. Nothing
+    //: downstream of this node can remove that ripple without also removing
+    //: the compression, which is why it belongs here.
+    float gain_smooth_coef;
 } audioif_dynamics_config_t;
 
 //: What the detector remembers between blocks.
@@ -213,6 +228,13 @@ typedef struct {
     uint32_t hold_left;
     // Twelve detector samples back per channel, for the 4x reconstruction.
     float tp_history[2][AUDIOIF_DYNAMICS_TP_TAPS];
+    // The smoothed gain, and whether it holds one yet. The first sample after
+    // a reset takes the computed gain whole rather than ramping to it from an
+    // assumed resting value: the resting gain is makeup, not unity, so a
+    // fixed starting point would put a short fade on the front of every
+    // reset.
+    float smoothed_gain;
+    bool gain_smooth_primed;
 } audioif_dynamics_state_t;
 
 //: Where the gate's four-stage envelope is. CLOSED sits at the floor, ATTACK

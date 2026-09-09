@@ -113,6 +113,7 @@ _OPTIONS = {
     "sustain_slow_attack_ms": 29,
     "sustain_slow_release_ms": 30,
     "slow_hold_ms": 31,
+    "gain_smooth_ms": 32,
 }
 
 #: `detector=` reads better as a word than as a number, and the C option is a

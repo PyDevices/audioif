@@ -54,6 +54,7 @@ void audioif_dynamics_config_init(audioif_dynamics_config_t *config, int mode,
     config->slow_hold_frames = 0;
     config->detector = AUDIOIF_DYNAMICS_DETECT_PEAK;
     config->rms_coef = 0.0f;
+    config->gain_smooth_coef = 1.0f;   // off
     config->feedback_detector = false;
     config->relative_threshold = false;
     config->program_attack = false;
@@ -153,6 +154,13 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
             break;
         case AUDIOIF_DYNAMICS_OPT_RMS_MS:
             config->rms_coef = audioif_dynamics_ms_to_coef(value,
+                (float)config->sample_rate);
+            break;
+        case AUDIOIF_DYNAMICS_OPT_GAIN_SMOOTH_MS:
+            // The house ms-to-coefficient helper, which already returns
+            // 1.0 for a non-positive time -- and 1.0 is off here, because the
+            // one-pole then passes the computed gain through unchanged.
+            config->gain_smooth_coef = audioif_dynamics_ms_to_coef(value,
                 (float)config->sample_rate);
             break;
         case AUDIOIF_DYNAMICS_OPT_FEEDBACK_DETECTOR:
@@ -292,6 +300,8 @@ void audioif_dynamics_reset(audioif_dynamics_state_t *state) {
             sizeof(int16_t));
         state->lookahead_write = 0;
     }
+    state->smoothed_gain = 0.0f;
+    state->gain_smooth_primed = false;
     memset(state->peak_history, 0, sizeof(state->peak_history));
     audioif_dynamics_clear_extras(state);
 }
@@ -759,6 +769,20 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
             const float gain_db = dynamics_gain_db(config, env_db);
             state->gain_reduction_db = gain_db;
             gain = audioif_dynamics_db_to_gain(gain_db) * config->makeup_gain;
+        }
+        // The gain smoother sits here, after every one of the gain
+        // computers above and before the multiply, so one place covers all
+        // five modes. Off by default, where `gain_smooth_coef` is 1.0 and
+        // this is an identity.
+        if (config->gain_smooth_coef < 1.0f) {
+            if (!state->gain_smooth_primed) {
+                state->smoothed_gain = gain;
+                state->gain_smooth_primed = true;
+            } else {
+                state->smoothed_gain += config->gain_smooth_coef *
+                    (gain - state->smoothed_gain);
+            }
+            gain = state->smoothed_gain;
         }
         // Key Listen puts the detector's own signal on the output, which is
         // how a gate's key band is auditioned; otherwise this is the audio.
