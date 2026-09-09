@@ -1,12 +1,34 @@
-"""audiodynamics and audioroute: the surface the parity gate cannot check.
+"""audioroute: the traits and the surface the renders cannot check.
 
-What `Dynamics` and `Splitter` *render* is pinned byte-for-byte against the
-original `vstaudio` implementation by tests/parity/verify_dsp.py, and what
-`MidSide` renders is pinned there too, against itself across the three
-interpreters -- it is audioif's own and has no original. What is left for here
-is everything those comparisons cannot reach: the argument forms the original
-never accepted, the errors, and the source behaviours only a Python-defined
-audiosample can produce.
+`tests/parity/route_probe.py`, `route_dry_probe.py` and `midside_probe.py` pin
+what this module renders across the three targets. What is left for here is
+what a render cannot say: the argument forms, the errors, the source behaviours
+only a Python-defined audiosample can produce, and the numeric traits.
+
+`docs/correctness-standard.md` is what this file implements for `audioroute`:
+the module is ours - upstream CircuitPython has no counterpart - so it is held
+to three-target agreement plus the traits below, never to a previous version of
+its own output.
+
+## The traits, with their bars
+
+| ID | Trait | Bar |
+|---|---|---|
+| R1 | Taps may be named, and the count and indices are bounded | raises |
+| R2 | Every tap reads the same stream | exact |
+| R3 | A tap keeps its splitter alive | no collection |
+| R4 | A dry source yields silence, not an end | exact |
+| R5 | A tap can feed another node | renders |
+| R6 | MidSide presents itself as a stereo sample | exact |
+| R7 | `width=1` is the identity, through the active path | exact, at the rails |
+| R8 | `width=0` collapses to mono | exact |
+| R9 | The width clamps to its rails | exact |
+| R10 | `set()` moves the width mid-stream | exact |
+| R11 | A mono source passes through | exact |
+
+R7 is this module's form of the identity trait
+(`docs/correctness-standard.md`): an exact answer through the DSP rather than a
+bypass, which is where an arithmetic overflow shows and a range check does not.
 """
 
 import unittest
@@ -50,81 +72,6 @@ class Dry:
         self._left -= 1
         block = array("h", (((index * 37) % 2001) - 1000 for index in range(512)))
         return audiocore.GET_BUFFER_MORE_DATA, memoryview(block)
-
-
-class DynamicsTest(unittest.TestCase):
-    def test_it_presents_itself_as_a_stereo_sample(self):
-        node = audiodynamics.Dynamics(audiodynamics.DYN_LIMIT,
-                                      sample_rate=SAMPLE_RATE)
-        self.assertEqual(node.sample_rate, SAMPLE_RATE)
-        self.assertEqual(node.channel_count, 2)
-        self.assertEqual(node.bits_per_sample, 16)
-        self.assertTrue(node.samples_signed)
-        self.assertFalse(node.single_buffer)
-
-    def test_an_unknown_option_is_refused(self):
-        # A silently ignored typo would be a patch that quietly does nothing.
-        with self.assertRaises(TypeError):
-            audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS, thresh_db=-12)
-        node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS)
-        with self.assertRaises(TypeError):
-            node.set(squash=1.0)
-
-    def test_keyword_order_does_not_change_the_coefficients(self):
-        # attack_ms is converted against the sample rate, so a sample_rate
-        # written after it still has to win.
-        first = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
-                                       sample_rate=8000, attack_ms=25.0)
-        second = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
-                                        attack_ms=25.0, sample_rate=8000)
-        first.play(source())
-        second.play(source())
-        self.assertEqual(bytes(audiocore.get_buffer(first)[1]),
-                         bytes(audiocore.get_buffer(second)[1]))
-
-    def test_a_source_that_finishes_leaves_silence_behind(self):
-        node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
-                                      sample_rate=SAMPLE_RATE)
-        node.play(Dry(blocks=1))
-        result, data = audiocore.get_buffer(node)
-        self.assertEqual(result, audiocore.GET_BUFFER_MORE_DATA)
-        self.assertEqual(len(bytes(data)), 512 * 2)   # the one block it got
-        # And then it keeps answering, because the graph around it is running.
-        for _ in range(2):
-            result, data = audiocore.get_buffer(node)
-            self.assertEqual(result, audiocore.GET_BUFFER_MORE_DATA)
-            self.assertEqual(bytes(data), bytes(audiodynamics.FRAMES * 4))
-
-    def test_gain_reduction_follows_the_signal(self):
-        node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
-                                      sample_rate=SAMPLE_RATE,
-                                      threshold_db=-40.0, ratio=8.0)
-        self.assertEqual(node.gain_reduction_db(), 0.0)
-        node.play(source())
-        audiocore.get_buffer(node)
-        self.assertLess(node.gain_reduction_db(), -1.0)
-
-    def test_stop_and_play_are_symmetric(self):
-        node = audiodynamics.Dynamics(audiodynamics.DYN_GATE)
-        self.assertFalse(node.playing)
-        node.play(source())
-        self.assertTrue(node.playing)
-        node.stop()
-        self.assertFalse(node.playing)
-
-    def test_a_dynamics_can_feed_another(self):
-        first = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
-                                       sample_rate=SAMPLE_RATE,
-                                       threshold_db=-30.0)
-        first.play(source())
-        second = audiodynamics.Dynamics(audiodynamics.DYN_LIMIT,
-                                        sample_rate=SAMPLE_RATE,
-                                        threshold_db=-12.0)
-        second.play(first)
-        data = bytes(audiocore.get_buffer(second)[1])
-        self.assertEqual(len(data), audiodynamics.FRAMES * 4)
-        self.assertNotEqual(data, bytes(len(data)))
-
 
 class SplitterTest(unittest.TestCase):
     def test_taps_may_be_named(self):
