@@ -18,6 +18,8 @@ its own output.
 | E3 | `clear()` leaves the node as a freshly built one | exact |
 | E4 | A starved node yields a full block of silence, not a short block | exact |
 | E5 | A mono render of a short source has no gaps in it | exact, 0 zero samples |
+| E6 | `audiodelays.Echo` with no filter is a bit-exact identity with `filter=None` | exact, 0 LSB |
+| E7 | `Echo.filter` in the feedback loop changes the delay line | at least 1 sample differs |
 
 **E1 is this module's form of the identity trait** that
 `docs/correctness-standard.md` asks of every own node - an exact answer through
@@ -198,6 +200,65 @@ class StateTest(unittest.TestCase):
         self.assertEqual(result, audiocore.GET_BUFFER_MORE_DATA)
         self.assertEqual(len(data), 256 * CHANNELS * 2)
         self.assertEqual(bytes(data), bytes(len(data)))
+
+
+class EchoFilterTest(unittest.TestCase):
+    """E6 and E7 - CircuitPython 10.3.0's Echo.filter, on the CPython twin.
+
+    The render agreement lives in `echo_filter_probe.py`. What is left here is
+    the empty-chain identity and the control that a set filter is not a no-op.
+    """
+
+    def test_no_filter_matches_an_explicit_none(self):
+        """E6."""
+        import audiodelays
+        implicit = audiodelays.Echo(
+            max_delay_ms=80, delay_ms=40, decay=0.7, mix=1.0,
+            freq_shift=False, sample_rate=SAMPLE_RATE, channel_count=2,
+            buffer_size=512)
+        explicit = audiodelays.Echo(
+            max_delay_ms=80, delay_ms=40, decay=0.7, mix=1.0,
+            freq_shift=False, filter=None, sample_rate=SAMPLE_RATE,
+            channel_count=2, buffer_size=512)
+        implicit.play(alternating())
+        explicit.play(alternating())
+        for _block in range(6):
+            self.assertEqual(bytes(audiocore.get_buffer(implicit)[1]),
+                             bytes(audiocore.get_buffer(explicit)[1]))
+
+    def test_E6_discriminates_a_set_filter(self):
+        """E6's control."""
+        import audiodelays
+        import synthio
+        bare = audiodelays.Echo(
+            max_delay_ms=80, delay_ms=40, decay=0.7, mix=1.0,
+            freq_shift=False, sample_rate=SAMPLE_RATE, channel_count=2,
+            buffer_size=512)
+        filtered = audiodelays.Echo(
+            max_delay_ms=80, delay_ms=40, decay=0.7, mix=1.0,
+            freq_shift=False,
+            filter=synthio.Biquad(synthio.FilterMode.LOW_PASS, 800, 0.7),
+            sample_rate=SAMPLE_RATE, channel_count=2, buffer_size=512)
+        bare.play(alternating())
+        filtered.play(alternating())
+        differed = any(bytes(audiocore.get_buffer(bare)[1])
+                       != bytes(audiocore.get_buffer(filtered)[1])
+                       for _block in range(6))
+        self.assertTrue(differed, "a low-pass in the echo loop already "
+                        "matches an empty chain, so E6 cannot fail")
+
+    def test_a_lowpass_in_the_loop_changes_the_delay_line(self):
+        """E7."""
+        import audiodelays
+        import synthio
+        node = audiodelays.Echo(
+            max_delay_ms=80, delay_ms=40, decay=0.7, mix=1.0,
+            freq_shift=False,
+            filter=synthio.Biquad(synthio.FilterMode.LOW_PASS, 500, 0.7),
+            sample_rate=SAMPLE_RATE, channel_count=2, buffer_size=512)
+        node.play(alternating())
+        rendered = words(node, 6)
+        self.assertNotEqual(rendered, alternating_words(len(rendered)))
 
 
 if __name__ == "__main__":

@@ -31,6 +31,8 @@ mp_obj_t common_hal_synthio_biquad_new(synthio_filter_mode mode) {
     self->a1 = self->a2 = self->b1 = self->b2 = 0;
     self->shift = 1;
     self->b0 = 1 << self->shift;
+    self->cp_a1 = self->cp_a2 = self->cp_b1 = self->cp_b2 = 0;
+    self->cp_b0 = 1 << 15;
     return MP_OBJ_FROM_PTR(self);
 }
 
@@ -98,6 +100,76 @@ void common_hal_synthio_biquad_tick(mp_obj_t self_in) {
     self->b1 = coefficients.b1;
     self->b2 = coefficients.b2;
     self->shift = coefficients.shift;
+
+    // CircuitPython's Q15 tick (shared-module/synthio/Biquad.c). The chain
+    // helper must use this, not the widened audioif coefficients above.
+    {
+        typedef struct { mp_float_t s, c; } sincos_result_t;
+        sincos_result_t sc;
+        mp_float_t x = (W0 * MICROPY_FLOAT_CONST(4.0) / MICROPY_FLOAT_CONST(3.141592653589793)) - MICROPY_FLOAT_CONST(1.0);
+        mp_float_t x2 = x * x, x3 = x2 * x, x4 = x2 * x2, x5 = x2 * x3;
+        mp_float_t evens = MICROPY_FLOAT_CONST(0.0109) * x4 + MICROPY_FLOAT_CONST(-0.21798592) * x2 + MICROPY_FLOAT_CONST(0.70708592);
+        mp_float_t odds = MICROPY_FLOAT_CONST(-0.00171961) * x5 + MICROPY_FLOAT_CONST(0.05707685) * x3 + MICROPY_FLOAT_CONST(-0.55535724) * x;
+        sc.c = evens + odds;
+        sc.s = evens - odds;
+
+        mp_float_t alpha = sc.s / (2 * Q);
+        mp_float_t a0, a1, a2, b0, b1, b2;
+        if (self->mode < SYNTHIO_PEAKING_EQ) {
+            a0 = 1 + alpha;
+            a1 = -2 * sc.c;
+            a2 = 1 - alpha;
+            if (self->mode == SYNTHIO_LOW_PASS) {
+                b2 = b0 = (1 - sc.c) * MICROPY_FLOAT_CONST(0.5);
+                b1 = 1 - sc.c;
+            } else if (self->mode == SYNTHIO_HIGH_PASS) {
+                b2 = b0 = (1 + sc.c) * MICROPY_FLOAT_CONST(0.5);
+                b1 = -(1 + sc.c);
+            } else if (self->mode == SYNTHIO_BAND_PASS) {
+                b0 = alpha;
+                b1 = 0;
+                b2 = -b0;
+            } else {
+                b0 = 1;
+                b1 = -2 * sc.c;
+                b2 = 1;
+            }
+        } else if (self->mode == SYNTHIO_PEAKING_EQ) {
+            b0 = 1 + alpha * A;
+            b1 = -2 * sc.c;
+            b2 = 1 + alpha * A;
+            a0 = 1 + alpha / A;
+            a1 = -2 * sc.c;
+            a2 = 1 - alpha / A;
+        } else {
+            float number = (float)A;
+            union { float f; uint32_t i; } conv = { .f = number };
+            conv.i = 0x5f3759df - (conv.i >> 1);
+            conv.f *= 1.5F - (number * 0.5F * conv.f * conv.f);
+            mp_float_t sqrt_A = (mp_float_t)(A * (mp_float_t)conv.f);
+            if (self->mode == SYNTHIO_LOW_SHELF) {
+                b0 = A * ((A + 1) - (A - 1) * sc.c + 2 * sqrt_A * alpha);
+                b1 = 2 * A * ((A - 1) - (A + 1) * sc.c);
+                b2 = A * ((A + 1) - (A - 1) * sc.c - 2 * sqrt_A * alpha);
+                a0 = (A + 1) + (A - 1) * sc.c + 2 * sqrt_A * alpha;
+                a1 = -2 * ((A - 1) + (A + 1) * sc.c);
+                a2 = (A + 1) + (A - 1) * sc.c - 2 * sqrt_A * alpha;
+            } else {
+                b0 = A * ((A + 1) + (A - 1) * sc.c + 2 * sqrt_A * alpha);
+                b1 = -2 * A * ((A - 1) + (A + 1) * sc.c);
+                b2 = A * ((A + 1) + (A - 1) * sc.c - 2 * sqrt_A * alpha);
+                a0 = (A + 1) - (A - 1) * sc.c + 2 * sqrt_A * alpha;
+                a1 = 2 * ((A - 1) - (A + 1) * sc.c);
+                a2 = (A + 1) - (A - 1) * sc.c - 2 * sqrt_A * alpha;
+            }
+        }
+        mp_float_t recip_a0 = 1 / a0;
+        self->cp_a1 = (int32_t)MICROPY_FLOAT_C_FUN(round)(MICROPY_FLOAT_C_FUN(ldexp)(a1 * recip_a0, 15));
+        self->cp_a2 = (int32_t)MICROPY_FLOAT_C_FUN(round)(MICROPY_FLOAT_C_FUN(ldexp)(a2 * recip_a0, 15));
+        self->cp_b0 = (int32_t)MICROPY_FLOAT_C_FUN(round)(MICROPY_FLOAT_C_FUN(ldexp)(b0 * recip_a0, 15));
+        self->cp_b1 = (int32_t)MICROPY_FLOAT_C_FUN(round)(MICROPY_FLOAT_C_FUN(ldexp)(b1 * recip_a0, 15));
+        self->cp_b2 = (int32_t)MICROPY_FLOAT_C_FUN(round)(MICROPY_FLOAT_C_FUN(ldexp)(b2 * recip_a0, 15));
+    }
 }
 
 void synthio_biquad_filter_reset(biquad_filter_state *st) {
@@ -113,6 +185,20 @@ void synthio_biquad_filter_samples(mp_obj_t self_in, biquad_filter_state *st, in
         .shift = self->shift,
     };
     audioif_biquad_process(&coefficients, st, buffer, n_samples);
+}
+
+int32_t synthio_biquad_filter_sample(mp_obj_t self_in, biquad_filter_state *st, int32_t input) {
+    synthio_biquad_t *self = MP_OBJ_TO_PTR(self_in);
+
+    int32_t output = synthio_sat16(
+        self->cp_b0 * input + self->cp_b1 * st->x[0] + self->cp_b2 * st->x[1]
+        - self->cp_a1 * st->y[0] - self->cp_a2 * st->y[1] + (1 << 14), 15);
+
+    st->x[1] = st->x[0];
+    st->x[0] = input;
+    st->y[1] = st->y[0];
+    st->y[0] = output;
+    return output;
 }
 
 // --- from shared-bindings/synthio/Biquad.c --------------------------------

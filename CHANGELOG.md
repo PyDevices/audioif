@@ -1,5 +1,6 @@
 ## Unreleased
 
+- `audiodelays.Echo.filter` and `audiofreeverb.Freeverb.pre_filter`/`post_filter` on the MicroPython side, via one extracted `audiofilters_filter_chain`
 - audiodelays.Flanger and audiodelays.GranularPitchShift on the MicroPython side, so all three targets have the CircuitPython 10.3.0 delay nodes
 - CI configures the standalone CMake path, which no workflow had ever run
 - CI installs the `[render]` extra, and proves a bare install does not bring numpy

@@ -105,11 +105,8 @@ PROBES = (
     ("flanger_probe.py", "audiodelays", {}, None),
     ("granular_pitch_shift_probe.py", "audiodelays", {}, None),
     ("resampler_probe.py", "audiospeed", {}, None),
-    ("echo_filter_probe.py", "audiodelays", {},
-     "audioif#74: audiodelays.Echo.filter exists on the CPython target and in "
-     "CircuitPython 10.3.0, and not in the MicroPython usermod"),
-    ("freeverb_filter_probe.py", "audiofreeverb", {},
-     "audioif#74: audiofreeverb.Freeverb.pre_filter/post_filter, same gap"),
+    ("echo_filter_probe.py", "audiodelays", {}, None),
+    ("freeverb_filter_probe.py", "audiofreeverb", {}, None),
 )
 
 

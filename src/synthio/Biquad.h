@@ -32,6 +32,10 @@ struct synthio_biquad {
     // filter rather than fixing at Q15 the way upstream does. Cache it with
     // them: they are meaningless apart.
     int32_t a1, a2, b0, b1, b2, shift;
+    // CircuitPython 10.3.0's audiofilters_process_filter_chain uses these:
+    // Q15, same scale as shared-module/synthio/Biquad.c. audioif's wider
+    // shift above is a different arithmetic and is not that helper.
+    int32_t cp_a1, cp_a2, cp_b0, cp_b1, cp_b2;
 };
 
 typedef audioif_biquad_state_t biquad_filter_state;
@@ -52,3 +56,4 @@ mp_obj_t common_hal_synthio_biquad_new(synthio_filter_mode mode);
 void common_hal_synthio_biquad_tick(mp_obj_t self_in);
 void synthio_biquad_filter_reset(biquad_filter_state *st);
 void synthio_biquad_filter_samples(mp_obj_t self_in, biquad_filter_state *st, int32_t *buffer, size_t n_samples);
+int32_t synthio_biquad_filter_sample(mp_obj_t self_in, biquad_filter_state *st, int32_t input);

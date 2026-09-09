@@ -30,7 +30,7 @@
 
 // --- shared-module (DSP engine) -------------------------------------------
 
-void common_hal_audiofreeverb_freeverb_construct(audiofreeverb_freeverb_obj_t *self, mp_obj_t roomsize, mp_obj_t damp, mp_obj_t mix,
+void common_hal_audiofreeverb_freeverb_construct(audiofreeverb_freeverb_obj_t *self, mp_obj_t roomsize, mp_obj_t damp, mp_obj_t pre_filter, mp_obj_t post_filter, mp_obj_t mix,
     uint32_t buffer_size, uint8_t bits_per_sample,
     bool samples_signed, uint8_t channel_count, uint32_t sample_rate) {
 
@@ -76,6 +76,9 @@ void common_hal_audiofreeverb_freeverb_construct(audiofreeverb_freeverb_obj_t *s
     }
     synthio_block_assign_slot(damp, &self->damp, MP_QSTR_damp);
     common_hal_audiofreeverb_freeverb_set_damp(self, damp);
+
+    common_hal_audiofreeverb_freeverb_set_pre_filter(self, pre_filter);
+    common_hal_audiofreeverb_freeverb_set_post_filter(self, post_filter);
 
     if (mix == MP_OBJ_NULL) {
         mix = mp_obj_new_float(MICROPY_FLOAT_CONST(0.5));
@@ -126,6 +129,8 @@ bool common_hal_audiofreeverb_freeverb_deinited(audiofreeverb_freeverb_obj_t *se
 
 void common_hal_audiofreeverb_freeverb_deinit(audiofreeverb_freeverb_obj_t *self) {
     audiosample_mark_deinit(&self->base);
+    audiofilters_deinit_filter_chain(&self->pre_filter);
+    audiofilters_deinit_filter_chain(&self->post_filter);
     self->buffer[0] = NULL;
     self->buffer[1] = NULL;
 }
@@ -154,6 +159,22 @@ mp_obj_t common_hal_audiofreeverb_freeverb_get_damp(audiofreeverb_freeverb_obj_t
 
 void common_hal_audiofreeverb_freeverb_set_damp(audiofreeverb_freeverb_obj_t *self, mp_obj_t damp) {
     synthio_block_assign_slot(damp, &self->damp, MP_QSTR_damp);
+}
+
+mp_obj_t common_hal_audiofreeverb_freeverb_get_pre_filter(audiofreeverb_freeverb_obj_t *self) {
+    return self->pre_filter.obj;
+}
+
+void common_hal_audiofreeverb_freeverb_set_pre_filter(audiofreeverb_freeverb_obj_t *self, mp_obj_t filter_in) {
+    audiofilters_assign_filter_chain(&self->pre_filter, filter_in, self->base.channel_count);
+}
+
+mp_obj_t common_hal_audiofreeverb_freeverb_get_post_filter(audiofreeverb_freeverb_obj_t *self) {
+    return self->post_filter.obj;
+}
+
+void common_hal_audiofreeverb_freeverb_set_post_filter(audiofreeverb_freeverb_obj_t *self, mp_obj_t filter_in) {
+    audiofilters_assign_filter_chain(&self->post_filter, filter_in, self->base.channel_count);
 }
 
 void audiofreeverb_freeverb_get_damp_fixedpoint(mp_float_t n, int16_t *damp1, int16_t *damp2) {
@@ -188,6 +209,8 @@ void audiofreeverb_freeverb_reset_buffer(audiofreeverb_freeverb_obj_t *self,
     (void)channel;
     memset(self->buffer[0], 0, self->buffer_len);
     memset(self->buffer[1], 0, self->buffer_len);
+    audiofilters_reset_filter_chain(&self->pre_filter, self->base.channel_count);
+    audiofilters_reset_filter_chain(&self->post_filter, self->base.channel_count);
 }
 
 bool common_hal_audiofreeverb_freeverb_get_playing(audiofreeverb_freeverb_obj_t *self) {
@@ -251,11 +274,67 @@ audioio_get_buffer_result_t audiofreeverb_freeverb_get_buffer(audiofreeverb_free
         mp_float_t mix = synthio_block_slot_get_limited(&self->mix, MICROPY_FLOAT_CONST(0.0), MICROPY_FLOAT_CONST(1.0));
         mp_float_t roomsize = synthio_block_slot_get_limited(&self->roomsize, MICROPY_FLOAT_CONST(0.0), MICROPY_FLOAT_CONST(1.0));
         int16_t *sample_src = (int16_t *)self->sample_remaining_buffer;
-        audioif_freeverb_process_s16_banks(word_buffer,
-            self->sample == NULL ? NULL : sample_src, n, self->combbuffers,
-            self->combbuffersizes, self->combbufferindex, self->combfitlers,
-            self->allpassbuffers, self->allpassbuffersizes,
-            self->allpassbufferindex, roomsize, damp, mix);
+        audiofilters_tick_filter_chain(&self->pre_filter);
+        audiofilters_tick_filter_chain(&self->post_filter);
+        if (self->pre_filter.objs_len == 0 && self->post_filter.objs_len == 0) {
+            audioif_freeverb_process_s16_banks(word_buffer,
+                self->sample == NULL ? NULL : sample_src, n, self->combbuffers,
+                self->combbuffersizes, self->combbufferindex, self->combfitlers,
+                self->allpassbuffers, self->allpassbuffersizes,
+                self->allpassbufferindex, roomsize, damp, mix);
+        } else {
+            int16_t damp1, damp2;
+            audiofreeverb_freeverb_get_damp_fixedpoint(damp, &damp1, &damp2);
+            int16_t mix_sample, mix_effect;
+            audiofreeverb_freeverb_get_mix_fixedpoint(mix, &mix_sample, &mix_effect);
+            int16_t feedback = audiofreeverb_freeverb_get_roomsize_fixedpoint(roomsize);
+            for (uint32_t i = 0; i < n; i++) {
+                int32_t sample_word = 0;
+                if (self->sample != NULL) {
+                    sample_word = sample_src[i];
+                }
+                int32_t word, sum;
+                int16_t input, bufout, output;
+                uint32_t channel_comb_offset = 0, channel_allpass_offset = 0;
+                input = (int16_t)audiofilters_process_filter_chain(
+                    &self->pre_filter, self->base.channel_count,
+                    n % self->base.channel_count, sample_word);
+                input = synthio_sat16((int32_t)input * 8738, 17);
+                sum = 0;
+                for (uint32_t j = 0 + channel_comb_offset; j < 8 + channel_comb_offset; j++) {
+                    bufout = self->combbuffers[j][self->combbufferindex[j]];
+                    sum += bufout;
+                    self->combfitlers[j] = synthio_sat16(bufout * damp2 + self->combfitlers[j] * damp1, 15);
+                    self->combbuffers[j][self->combbufferindex[j]] = synthio_sat16(input + synthio_sat16(self->combfitlers[j] * feedback, 15), 0);
+                    if (++self->combbufferindex[j] >= self->combbuffersizes[j]) {
+                        self->combbufferindex[j] = 0;
+                    }
+                }
+                output = synthio_sat16(sum * 31457, 17);
+                for (uint32_t j = 0 + channel_allpass_offset; j < 4 + channel_allpass_offset; j++) {
+                    bufout = self->allpassbuffers[j][self->allpassbufferindex[j]];
+                    self->allpassbuffers[j][self->allpassbufferindex[j]] = output + (bufout >> 1);
+                    output = synthio_sat16(bufout - output, 1);
+                    if (++self->allpassbufferindex[j] >= self->allpassbuffersizes[j]) {
+                        self->allpassbufferindex[j] = 0;
+                    }
+                }
+                output = (int16_t)audiofilters_process_filter_chain(
+                    &self->post_filter, self->base.channel_count,
+                    n % self->base.channel_count, (int32_t)output);
+                word = output * 30;
+                word = synthio_sat16(sample_word * mix_sample, 15) + synthio_sat16(word * mix_effect, 15);
+                word = synthio_mix_down_sample(word, SYNTHIO_MIX_DOWN_SCALE(2));
+                word_buffer[i] = (int16_t)word;
+                if ((self->base.channel_count == 2) && (channel_comb_offset == 0)) {
+                    channel_comb_offset = 8;
+                    channel_allpass_offset = 4;
+                } else {
+                    channel_comb_offset = 0;
+                    channel_allpass_offset = 0;
+                }
+            }
+        }
 
         length -= n;
         word_buffer += n;
@@ -272,10 +351,12 @@ audioio_get_buffer_result_t audiofreeverb_freeverb_get_buffer(audiofreeverb_free
 // --- Python bindings (from shared-bindings/audiofreeverb/Freeverb.c) -----
 
 static mp_obj_t audiofreeverb_freeverb_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    enum { ARG_roomsize, ARG_damp, ARG_mix, ARG_buffer_size, ARG_sample_rate, ARG_bits_per_sample, ARG_samples_signed, ARG_channel_count, };
+    enum { ARG_roomsize, ARG_damp, ARG_pre_filter, ARG_post_filter, ARG_mix, ARG_buffer_size, ARG_sample_rate, ARG_bits_per_sample, ARG_samples_signed, ARG_channel_count, };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_roomsize, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
         { MP_QSTR_damp, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
+        { MP_QSTR_pre_filter, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_ROM_NONE } },
+        { MP_QSTR_post_filter, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_ROM_NONE } },
         { MP_QSTR_mix, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
         { MP_QSTR_buffer_size, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 512} },
         { MP_QSTR_sample_rate, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 8000} },
@@ -298,7 +379,7 @@ static mp_obj_t audiofreeverb_freeverb_make_new(const mp_obj_type_t *type, size_
     }
 
     audiofreeverb_freeverb_obj_t *self = mp_obj_malloc(audiofreeverb_freeverb_obj_t, &audiofreeverb_freeverb_type);
-    common_hal_audiofreeverb_freeverb_construct(self, args[ARG_roomsize].u_obj, args[ARG_damp].u_obj, args[ARG_mix].u_obj,
+    common_hal_audiofreeverb_freeverb_construct(self, args[ARG_roomsize].u_obj, args[ARG_damp].u_obj, args[ARG_pre_filter].u_obj, args[ARG_post_filter].u_obj, args[ARG_mix].u_obj,
         args[ARG_buffer_size].u_int, bits_per_sample, args[ARG_samples_signed].u_bool, channel_count, args[ARG_sample_rate].u_int);
 
     return MP_OBJ_FROM_PTR(self);
@@ -346,6 +427,38 @@ MP_DEFINE_CONST_FUN_OBJ_2(audiofreeverb_freeverb_set_damp_obj, audiofreeverb_fre
 MP_PROPERTY_GETSET(audiofreeverb_freeverb_damp_obj,
     (mp_obj_t)&audiofreeverb_freeverb_get_damp_obj,
     (mp_obj_t)&audiofreeverb_freeverb_set_damp_obj);
+
+static mp_obj_t audiofreeverb_freeverb_obj_get_pre_filter(mp_obj_t self_in) {
+    return common_hal_audiofreeverb_freeverb_get_pre_filter(self_in);
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiofreeverb_freeverb_get_pre_filter_obj, audiofreeverb_freeverb_obj_get_pre_filter);
+
+static mp_obj_t audiofreeverb_freeverb_obj_set_pre_filter(mp_obj_t self_in, mp_obj_t filter_in) {
+    audiofreeverb_freeverb_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    common_hal_audiofreeverb_freeverb_set_pre_filter(self, filter_in);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(audiofreeverb_freeverb_set_pre_filter_obj, audiofreeverb_freeverb_obj_set_pre_filter);
+
+MP_PROPERTY_GETSET(audiofreeverb_freeverb_pre_filter_obj,
+    (mp_obj_t)&audiofreeverb_freeverb_get_pre_filter_obj,
+    (mp_obj_t)&audiofreeverb_freeverb_set_pre_filter_obj);
+
+static mp_obj_t audiofreeverb_freeverb_obj_get_post_filter(mp_obj_t self_in) {
+    return common_hal_audiofreeverb_freeverb_get_post_filter(self_in);
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiofreeverb_freeverb_get_post_filter_obj, audiofreeverb_freeverb_obj_get_post_filter);
+
+static mp_obj_t audiofreeverb_freeverb_obj_set_post_filter(mp_obj_t self_in, mp_obj_t filter_in) {
+    audiofreeverb_freeverb_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    common_hal_audiofreeverb_freeverb_set_post_filter(self, filter_in);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(audiofreeverb_freeverb_set_post_filter_obj, audiofreeverb_freeverb_obj_set_post_filter);
+
+MP_PROPERTY_GETSET(audiofreeverb_freeverb_post_filter_obj,
+    (mp_obj_t)&audiofreeverb_freeverb_get_post_filter_obj,
+    (mp_obj_t)&audiofreeverb_freeverb_set_post_filter_obj);
 
 static mp_obj_t audiofreeverb_freeverb_obj_get_mix(mp_obj_t self_in) {
     return common_hal_audiofreeverb_freeverb_get_mix(self_in);
@@ -408,6 +521,8 @@ static const mp_rom_map_elem_t audiofreeverb_freeverb_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_playing), MP_ROM_PTR(&audiofreeverb_freeverb_playing_obj) },
     { MP_ROM_QSTR(MP_QSTR_roomsize), MP_ROM_PTR(&audiofreeverb_freeverb_roomsize_obj) },
     { MP_ROM_QSTR(MP_QSTR_damp), MP_ROM_PTR(&audiofreeverb_freeverb_damp_obj) },
+    { MP_ROM_QSTR(MP_QSTR_pre_filter), MP_ROM_PTR(&audiofreeverb_freeverb_pre_filter_obj) },
+    { MP_ROM_QSTR(MP_QSTR_post_filter), MP_ROM_PTR(&audiofreeverb_freeverb_post_filter_obj) },
     { MP_ROM_QSTR(MP_QSTR_mix), MP_ROM_PTR(&audiofreeverb_freeverb_mix_obj) },
     AUDIOSAMPLE_FIELDS,
 };

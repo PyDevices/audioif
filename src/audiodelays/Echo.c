@@ -27,7 +27,7 @@
 // --- shared-module (DSP engine) -------------------------------------------
 
 void common_hal_audiodelays_echo_construct(audiodelays_echo_obj_t *self, uint32_t max_delay_ms,
-    mp_obj_t delay_ms, mp_obj_t decay, mp_obj_t mix,
+    mp_obj_t delay_ms, mp_obj_t decay, mp_obj_t filter, mp_obj_t mix,
     uint32_t buffer_size, uint8_t bits_per_sample,
     bool samples_signed, uint8_t channel_count, uint32_t sample_rate, bool freq_shift) {
 
@@ -55,6 +55,8 @@ void common_hal_audiodelays_echo_construct(audiodelays_echo_obj_t *self, uint32_
     self->sample_buffer_length = 0;
     self->loop = false;
     self->more_data = false;
+
+    common_hal_audiodelays_echo_set_filter(self, filter);
 
     if (decay == MP_OBJ_NULL) {
         decay = mp_obj_new_float(MICROPY_FLOAT_CONST(0.7));
@@ -90,6 +92,7 @@ void common_hal_audiodelays_echo_construct(audiodelays_echo_obj_t *self, uint32_
 
 void common_hal_audiodelays_echo_deinit(audiodelays_echo_obj_t *self) {
     audiosample_mark_deinit(&self->base);
+    audiofilters_deinit_filter_chain(&self->filter);
     self->echo_buffer = NULL;
     self->buffer[0] = NULL;
     self->buffer[1] = NULL;
@@ -147,6 +150,14 @@ void common_hal_audiodelays_echo_set_decay(audiodelays_echo_obj_t *self, mp_obj_
     synthio_block_assign_slot(decay, &self->decay, MP_QSTR_decay);
 }
 
+mp_obj_t common_hal_audiodelays_echo_get_filter(audiodelays_echo_obj_t *self) {
+    return self->filter.obj;
+}
+
+void common_hal_audiodelays_echo_set_filter(audiodelays_echo_obj_t *self, mp_obj_t filter_in) {
+    audiofilters_assign_filter_chain(&self->filter, filter_in, self->base.channel_count);
+}
+
 mp_obj_t common_hal_audiodelays_echo_get_mix(audiodelays_echo_obj_t *self) {
     return self->mix.obj;
 }
@@ -180,6 +191,8 @@ void audiodelays_echo_reset_buffer(audiodelays_echo_obj_t *self,
     memset(self->buffer[0], 0, self->buffer_len);
     memset(self->buffer[1], 0, self->buffer_len);
     memset(self->echo_buffer, 0, self->max_echo_buffer_len);
+
+    audiofilters_reset_filter_chain(&self->filter, self->base.channel_count);
 }
 
 bool common_hal_audiodelays_echo_get_playing(audiodelays_echo_obj_t *self) {
@@ -250,6 +263,8 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
             recalculate_delay(self, f_delay_ms);
         }
 
+        audiofilters_tick_filter_chain(&self->filter);
+
         uint32_t echo_buf_len = self->echo_buffer_len / sizeof(uint16_t);
         uint32_t max_echo_buf_len = (self->max_echo_buffer_len >> (self->base.channel_count - 1)) / sizeof(uint16_t);
 
@@ -283,12 +298,14 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
 
                         for (uint32_t j = echo_buffer_pos >> 8; j < next_buffer_pos >> 8; j++) {
                             word = (int16_t)(echo_buffer[(j % echo_buf_len) + echo_buffer_offset] * decay);
-                            echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = word;
+                            echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = (int16_t)audiofilters_process_filter_chain(
+                                &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                         }
                     } else {
                         echo = echo_buffer[echo_buffer_pos + echo_buffer_offset];
                         word = (int16_t)(echo * decay);
-                        echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = word;
+                        echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = (int16_t)audiofilters_process_filter_chain(
+                            &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                     }
 
                     word = (int16_t)(echo * MIN(mix, MICROPY_FLOAT_CONST(1.0)));
@@ -334,7 +351,7 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
                 }
             } else {
                 if (self->base.bits_per_sample == 16 && self->base.samples_signed &&
-                    !single_channel_output) {
+                    !single_channel_output && self->filter.objs_len == 0) {
                     audioif_echo_positions_t positions = {
                         self->echo_buffer_left_pos, self->echo_buffer_right_pos};
                     audioif_echo_process_s16(word_buffer, sample_src, n,
@@ -377,11 +394,13 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
                             for (uint32_t j = echo_buffer_pos >> 8; j < next_buffer_pos >> 8; j++) {
                                 word = (int32_t)(echo_buffer[(j % echo_buf_len) + echo_buffer_offset] * decay + sample_word);
                                 word = synthio_mix_down_sample(word, SYNTHIO_MIX_DOWN_SCALE(2));
-                                echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = (int16_t)word;
+                                echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = (int16_t)audiofilters_process_filter_chain(
+                                    &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                             }
                         } else {
                             word = synthio_mix_down_sample(word, SYNTHIO_MIX_DOWN_SCALE(2));
-                            echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = (int16_t)word;
+                            echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = (int16_t)audiofilters_process_filter_chain(
+                                &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                         }
                     } else {
                         if (self->freq_shift) {
@@ -389,11 +408,13 @@ audioio_get_buffer_result_t audiodelays_echo_get_buffer(audiodelays_echo_obj_t *
                                 word = (int32_t)(echo_buffer[(j % echo_buf_len) + echo_buffer_offset] * decay + sample_word);
                                 // Do not have mix_down for 8 bit so just hard cap samples into 1 byte
                                 word = MIN(MAX(word, -128), 127);
-                                echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = (int8_t)word;
+                                echo_buffer[(j % echo_buf_len) + echo_buffer_offset] = (int8_t)audiofilters_process_filter_chain(
+                                    &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                             }
                         } else {
                             word = MIN(MAX(word, -128), 127);
-                            echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = (int8_t)word;
+                            echo_buffer[echo_buffer_pos++ + echo_buffer_offset] = (int8_t)audiofilters_process_filter_chain(
+                                &self->filter, self->base.channel_count, !!echo_buffer_offset, word);
                         }
                     }
 
@@ -447,11 +468,12 @@ echo_samples_done:
 // --- Python bindings (from shared-bindings/audiodelays/Echo.c) -----------
 
 static mp_obj_t audiodelays_echo_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
-    enum { ARG_max_delay_ms, ARG_delay_ms, ARG_decay, ARG_mix, ARG_buffer_size, ARG_sample_rate, ARG_bits_per_sample, ARG_samples_signed, ARG_channel_count, ARG_freq_shift, };
+    enum { ARG_max_delay_ms, ARG_delay_ms, ARG_decay, ARG_filter, ARG_mix, ARG_buffer_size, ARG_sample_rate, ARG_bits_per_sample, ARG_samples_signed, ARG_channel_count, ARG_freq_shift, };
     static const mp_arg_t allowed_args[] = {
         { MP_QSTR_max_delay_ms, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 500 } },
         { MP_QSTR_delay_ms, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
         { MP_QSTR_decay, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
+        { MP_QSTR_filter, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_ROM_NONE } },
         { MP_QSTR_mix, MP_ARG_OBJ | MP_ARG_KW_ONLY, {.u_obj = MP_OBJ_NULL} },
         { MP_QSTR_buffer_size, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 512} },
         { MP_QSTR_sample_rate, MP_ARG_INT | MP_ARG_KW_ONLY, {.u_int = 8000} },
@@ -474,7 +496,7 @@ static mp_obj_t audiodelays_echo_make_new(const mp_obj_type_t *type, size_t n_ar
     }
 
     audiodelays_echo_obj_t *self = mp_obj_malloc(audiodelays_echo_obj_t, &audiodelays_echo_type);
-    common_hal_audiodelays_echo_construct(self, max_delay_ms, args[ARG_delay_ms].u_obj, args[ARG_decay].u_obj, args[ARG_mix].u_obj, args[ARG_buffer_size].u_int, bits_per_sample, args[ARG_samples_signed].u_bool, channel_count, args[ARG_sample_rate].u_int, args[ARG_freq_shift].u_bool);
+    common_hal_audiodelays_echo_construct(self, max_delay_ms, args[ARG_delay_ms].u_obj, args[ARG_decay].u_obj, args[ARG_filter].u_obj, args[ARG_mix].u_obj, args[ARG_buffer_size].u_int, bits_per_sample, args[ARG_samples_signed].u_bool, channel_count, args[ARG_sample_rate].u_int, args[ARG_freq_shift].u_bool);
 
     return MP_OBJ_FROM_PTR(self);
 }
@@ -521,6 +543,22 @@ MP_DEFINE_CONST_FUN_OBJ_2(audiodelays_echo_set_decay_obj, audiodelays_echo_obj_s
 MP_PROPERTY_GETSET(audiodelays_echo_decay_obj,
     (mp_obj_t)&audiodelays_echo_get_decay_obj,
     (mp_obj_t)&audiodelays_echo_set_decay_obj);
+
+static mp_obj_t audiodelays_echo_obj_get_filter(mp_obj_t self_in) {
+    return common_hal_audiodelays_echo_get_filter(self_in);
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiodelays_echo_get_filter_obj, audiodelays_echo_obj_get_filter);
+
+static mp_obj_t audiodelays_echo_obj_set_filter(mp_obj_t self_in, mp_obj_t filter_in) {
+    audiodelays_echo_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    common_hal_audiodelays_echo_set_filter(self, filter_in);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(audiodelays_echo_set_filter_obj, audiodelays_echo_obj_set_filter);
+
+MP_PROPERTY_GETSET(audiodelays_echo_filter_obj,
+    (mp_obj_t)&audiodelays_echo_get_filter_obj,
+    (mp_obj_t)&audiodelays_echo_set_filter_obj);
 
 static mp_obj_t audiodelays_echo_obj_get_mix(mp_obj_t self_in) {
     return common_hal_audiodelays_echo_get_mix(self_in);
@@ -599,6 +637,7 @@ static const mp_rom_map_elem_t audiodelays_echo_locals_dict_table[] = {
     { MP_ROM_QSTR(MP_QSTR_playing), MP_ROM_PTR(&audiodelays_echo_playing_obj) },
     { MP_ROM_QSTR(MP_QSTR_delay_ms), MP_ROM_PTR(&audiodelays_echo_delay_ms_obj) },
     { MP_ROM_QSTR(MP_QSTR_decay), MP_ROM_PTR(&audiodelays_echo_decay_obj) },
+    { MP_ROM_QSTR(MP_QSTR_filter), MP_ROM_PTR(&audiodelays_echo_filter_obj) },
     { MP_ROM_QSTR(MP_QSTR_mix), MP_ROM_PTR(&audiodelays_echo_mix_obj) },
     { MP_ROM_QSTR(MP_QSTR_freq_shift), MP_ROM_PTR(&audiodelays_echo_freq_shift_obj) },
     AUDIOSAMPLE_FIELDS,
