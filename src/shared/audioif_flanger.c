@@ -51,7 +51,15 @@ void audioif_flanger_process_s16(int16_t *output, const int16_t *input,
         uint32_t r1 = (r0 == 0) ? frames - 1 : r0 - 1;
         int32_t s0 = delay_line[plane + r0];
         int32_t s1 = delay_line[plane + r1];
-        int32_t wet = s0 + (((s1 - s0) * (int32_t)delay_frac) >> 16);
+        // 64-bit for the same reason the span/tri product above is: the
+        // twin computes this in Python, which does not overflow. `s1 - s0`
+        // reaches +/-65535 when adjacent line samples sit at opposite rails,
+        // and 65535 * 65535 is 4.29e9 - past INT32_MAX. In int32 that is
+        // signed overflow, and it is reachable on ordinary material: a
+        // full-scale alternating source diverged from the CPython twin on
+        // every setting tried until this cast.
+        int32_t wet = s0 +
+            (int32_t)((((int64_t)s1 - (int64_t)s0) * (int64_t)delay_frac) >> 16);
         delay_line[plane + write] = audioif_sat16(
             sample + audioif_sat16(wet * feedback, 15), 0);
         state->write_pos[channel] = (write + 1 == frames) ? 0 : write + 1;
