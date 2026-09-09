@@ -94,6 +94,8 @@ MARKER_TAG="audioif-cp begin (apply_cp_patches.sh)"
 
 DRY_RUN=0
 [[ "$MODE" == "--dry-run" ]] && DRY_RUN=1
+# Nonzero if any dry-run check finds something --apply could not do.
+DRY_RC=0
 
 markers_for_file() {
     case "$1" in
@@ -121,8 +123,15 @@ insert_block_after() {
     if [ "$DRY_RUN" = 1 ]; then
         if block_present "$file" "$needle"; then
             echo "  [dry-run] refresh block in ${file#"$CP_DIR"/}"
-        else
+        elif grep -qF "$anchor" "$file" 2>/dev/null; then
             echo "  [dry-run] insert into ${file#"$CP_DIR"/} after: $anchor"
+        else
+            # The apply path raises "anchor not found" here. The dry run used
+            # to print the same line either way, so a moved upstream anchor -
+            # the one thing a pin move must stop on - was invisible until the
+            # apply.
+            echo "  [dry-run] ERROR: anchor not found in ${file#"$CP_DIR"/}: $anchor"
+            DRY_RC=1
         fi
         return 0
     fi
@@ -163,7 +172,12 @@ insert_line_after() {
         return 0
     fi
     if [ "$DRY_RUN" = 1 ]; then
-        echo "  [dry-run] insert into ${file#"$CP_DIR"/}: ${line//$'\t'/}"
+        if grep -qF "$anchor" "$file" 2>/dev/null; then
+            echo "  [dry-run] insert into ${file#"$CP_DIR"/}: ${line//$'\t'/}"
+        else
+            echo "  [dry-run] ERROR: anchor not found in ${file#"$CP_DIR"/}: $anchor"
+            DRY_RC=1
+        fi
         return 0
     fi
     python3 - "$file" "$anchor" "$line" <<'PY'
@@ -465,6 +479,8 @@ echo
 
 if [ "$DRY_RUN" = 1 ]; then
     echo "Dry run complete. Re-run with --apply to write changes."
+    [ "$DRY_RC" = 0 ] || echo "Dry run reported at least one ERROR above."
+    exit "$DRY_RC"
 else
     echo "Patches applied."
     echo
