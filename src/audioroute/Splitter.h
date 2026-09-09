@@ -23,6 +23,10 @@ typedef struct {
     mp_obj_t taps[AUDIOIF_SPLITTER_MAX_TAPS];
     audioif_splitter_state_t state;
     int16_t silence[AUDIOIF_SPLITTER_CHUNK_FRAMES * 2];
+    // This type carries no `audiosample_base_t` -- it is not a sample, it
+    // hands out taps -- so it cannot use audiocore's channel-count-zero
+    // convention for "released" and keeps its own flag.
+    bool deinited;
 } audioroute_splitter_obj_t;
 
 extern const mp_obj_type_t audioroute_splitter_type;

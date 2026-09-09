@@ -23,6 +23,7 @@ drags it forward: that branch skips ahead rather than stalling the graph.
 
 from audiocore import (
     GET_BUFFER_ERROR, GET_BUFFER_MORE_DATA, _AudioSample, get_buffer,
+    raise_deinited_error,
 )
 import _audioif
 
@@ -47,10 +48,16 @@ class SplitterTap(_AudioSample):
         self._deinited = False
 
     def _reset_buffer(self, single_channel_output=False, audio_channel=0):
-        # Deliberately nothing. The cursors belong to the Splitter and the
-        # other taps are still reading against them; rewinding one branch
-        # mid-stream would desynchronise the rest.
-        pass
+        # `_check()` first, then deliberately nothing. The cursors belong to
+        # the Splitter and the other taps are still reading against them;
+        # rewinding one branch mid-stream would desynchronise the rest. But a
+        # *released* tap must refuse rather than quietly succeed: the guard on
+        # this target lives in each `_reset_buffer`/`_get_buffer`, because
+        # `_AudioSample.__getattribute__` lets underscore names through, and
+        # a body of bare `pass` was the one that never asked. On the native
+        # builds `audiosample_reset_buffer` guards this for every type at
+        # once.
+        self._check()
 
     def _get_buffer(self, single_channel_output=False, audio_channel=0):
         self._check()
@@ -84,15 +91,44 @@ class Splitter:
         self._taps = tuple(SplitterTap(self, index, source.sample_rate,
                                        self.channel_count)
                            for index in range(taps))
+        self._deinited = False
 
     def tap(self, index):
+        if self._deinited:
+            raise_deinited_error()
         index = int(index)
         if index < 0 or index >= self._tap_count:
             raise ValueError("tap index out of range")
         return self._taps[index]
 
+    def deinit(self):
+        """Release the branch.
+
+        Not `_AudioSample.deinit`: a Splitter is not a sample, it hands out
+        taps, so it keeps its own flag. It releases the upstream chain by
+        dropping the source, and it releases every tap, because the ring the
+        taps read belongs to this object - a tap outliving it would be
+        reading a ring nothing refills. The ring itself goes when the last
+        reference to this object does; there is no separate allocation to
+        hand back.
+        """
+        if self._deinited:
+            return
+        self._deinited = True
+        for tap in self._taps:
+            tap.deinit()
+        self._taps = ()
+        self._source = None
+        self._ring = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.deinit()
+
     def _pull(self):
-        if self._source is None:
+        if self._deinited or self._source is None:
             return
         result, data = get_buffer(self._source, False, 0)
         if result == GET_BUFFER_ERROR:

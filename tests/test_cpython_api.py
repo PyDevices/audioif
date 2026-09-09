@@ -9,6 +9,7 @@ import audiodelays
 import audiofilters
 import audiofreeverb
 import audiomixer
+import audioroute
 import audiospeed
 import synthio
 
@@ -82,6 +83,40 @@ class AudioifApiTests(unittest.TestCase):
             _ = synth.sample_rate
         with self.assertRaises(RuntimeError):
             _ = synth.pressed
+
+    def test_a_released_splitter_releases_its_taps(self):
+        """`audioroute.Splitter` is not a sample - it hands out taps - so it
+        keeps its own released flag rather than audiocore's channel-count-zero
+        convention. Releasing it must release the taps too: the ring they read
+        belongs to the Splitter, so a tap outliving it would be reading a ring
+        nothing refills (audioif#58)."""
+        sample = audiocore.RawSample(
+            array("h", [0] * 256), sample_rate=48000, channel_count=2)
+        splitter = audioroute.Splitter(sample, taps=2)
+        first, second = splitter.tap(0), splitter.tap(1)
+        self.assertEqual(audiocore.get_buffer(first)[0],
+                         audiocore.GET_BUFFER_MORE_DATA)
+
+        splitter.deinit()
+        splitter.deinit()          # idempotent, as __exit__ makes it
+        with self.assertRaises(RuntimeError):
+            splitter.tap(0)
+        for tap in (first, second):
+            with self.assertRaises(RuntimeError):
+                audiocore.get_buffer(tap)
+            # `SplitterTap._reset_buffer` is deliberately a no-op, and used to
+            # be a bare `pass` that never asked whether the tap was released -
+            # so a rewind of a released tap quietly succeeded.
+            with self.assertRaises(RuntimeError):
+                audiocore.reset_buffer(tap)
+
+    def test_the_splitter_is_a_context_manager(self):
+        sample = audiocore.RawSample(
+            array("h", [0] * 256), sample_rate=48000, channel_count=2)
+        with audioroute.Splitter(sample, taps=2) as splitter:
+            tap = splitter.tap(0)
+        with self.assertRaises(RuntimeError):
+            audiocore.get_buffer(tap)
 
     def test_chained_sources_released_on_deinit_and_gc(self):
         synth = synthio.Synthesizer(sample_rate=8000, channel_count=1)

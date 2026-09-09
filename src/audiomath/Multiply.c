@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include "cp_compat/context_manager_helpers.h"
 #include "py/runtime.h"
 
 static mp_obj_t audiomath_multiply_make_new(const mp_obj_type_t *type,
@@ -208,7 +209,36 @@ static void audiomath_multiply_reset_buffer(mp_obj_t self_in,
     self->pending_modulator_frames = 0;
 }
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, which is what makes every guarded entry point raise
+// afterwards -- `audiosample_get_buffer` and `audiosample_reset_buffer` in
+// audiocore for the audio path, and the three shared properties. The node
+// types audioif ported from CircuitPython have had this since they were
+// ported; the ones audioif wrote itself did not, so no class built on them
+// could release one and Tier 1's "deinit() releases every node the class
+// built" was unmeasurable on a board (audioif#58, #60, #63).
+//
+// The inline buffers go with the object. What is cleared here is what the
+// object holds a *reference* to: the upstream source, so releasing the tail
+// of a chain lets the GC reclaim the rest of it, and every borrowed pointer
+// into a source's buffer, so nothing dangles.
+static mp_obj_t audiomath_multiply_deinit(mp_obj_t self_in) {
+    audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->modulator = mp_const_none;
+    self->pending_source = NULL;
+    self->pending_source_frames = 0;
+    self->pending_modulator = NULL;
+    self->pending_modulator_frames = 0;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiomath_multiply_deinit_obj, audiomath_multiply_deinit);
+
 static const mp_rom_map_elem_t audiomath_multiply_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audiomath_multiply_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiomath_multiply_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_modulate),
       MP_ROM_PTR(&audiomath_multiply_modulate_obj) },

@@ -74,9 +74,24 @@ static audioif_sample_source_t micropython_sample_source(mp_obj_t sample_obj,
     return source;
 }
 
+// The deinitialised guard sits on these two functions and not only on each
+// node's Python methods, because these two are the funnel: every pull and
+// every rewind in the whole palette arrives here, whether it came from
+// `audiocore.get_buffer()`, from an audio output's pump, or from one node
+// fetching from the node behind it. Guarding the Python methods alone left
+// the C protocol entry point open, which is why a released `audiomixer.Mixer`
+// segfaulted on a board while raising cleanly on the CPython shim
+// (audioif#59): `Mixer.deinit()` frees its voice buffers and
+// `audiomixer_mixer_get_buffer` read them.
+//
+// `micropython_sample_source` has already thrown unless the object
+// implements the audiosample protocol, and every type that does begins with
+// an `audiosample_base_t` -- synthio's two through `synthio_synth_t` -- so
+// the cast below is sound and needs no second protocol lookup.
 void audiosample_reset_buffer(mp_obj_t sample_obj, bool single_channel_output, uint8_t audio_channel) {
     micropython_sample_adapter_t adapter;
     audioif_sample_source_t source = micropython_sample_source(sample_obj, &adapter);
+    audiosample_check_for_deinit(MP_OBJ_TO_PTR(sample_obj));
     (void)audioif_sample_reset(&source, single_channel_output, audio_channel);
 }
 
@@ -86,6 +101,7 @@ audioio_get_buffer_result_t audiosample_get_buffer(mp_obj_t sample_obj,
     uint8_t **buffer, uint32_t *buffer_length) {
     micropython_sample_adapter_t adapter;
     audioif_sample_source_t source = micropython_sample_source(sample_obj, &adapter);
+    audiosample_check_for_deinit(MP_OBJ_TO_PTR(sample_obj));
     const uint8_t *shared_buffer = NULL;
     audioif_buffer_result_t result = AUDIOIF_BUFFER_ERROR;
     audioif_status_t status = audioif_sample_get(&source, single_channel_output,

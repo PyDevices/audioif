@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include "cp_compat/context_manager_helpers.h"
 #include "py/runtime.h"
 
 // The options `Ladder(...)` and `set(...)` accept, paired with the shared
@@ -190,7 +191,33 @@ static void audioladder_ladder_reset_buffer(mp_obj_t self_in,
     audioif_ladder_reset(&self->state);
 }
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, which is what makes every guarded entry point raise
+// afterwards -- `audiosample_get_buffer` and `audiosample_reset_buffer` in
+// audiocore for the audio path, and the three shared properties. The node
+// types audioif ported from CircuitPython have had this since they were
+// ported; the ones audioif wrote itself did not, so no class built on them
+// could release one and Tier 1's "deinit() releases every node the class
+// built" was unmeasurable on a board (audioif#58, #60, #63).
+//
+// The inline buffers go with the object. What is cleared here is what the
+// object holds a *reference* to: the upstream source, so releasing the tail
+// of a chain lets the GC reclaim the rest of it, and every borrowed pointer
+// into a source's buffer, so nothing dangles.
+static mp_obj_t audioladder_ladder_deinit(mp_obj_t self_in) {
+    audioladder_ladder_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audioladder_ladder_deinit_obj, audioladder_ladder_deinit);
+
 static const mp_rom_map_elem_t audioladder_ladder_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audioladder_ladder_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audioladder_ladder_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_set), MP_ROM_PTR(&audioladder_ladder_set_obj) },
     { MP_ROM_QSTR(MP_QSTR_clear), MP_ROM_PTR(&audioladder_ladder_clear_obj) },

@@ -5,6 +5,7 @@
 
 #include <string.h>
 
+#include "cp_compat/context_manager_helpers.h"
 #include "py/runtime.h"
 
 static audioio_get_buffer_result_t audioroute_splitter_tap_get_buffer(
@@ -54,7 +55,31 @@ static void audioroute_splitter_tap_reset_buffer(mp_obj_t self_in,
     (void)channel;
 }
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, which is what makes every guarded entry point raise
+// afterwards -- `audiosample_get_buffer` and `audiosample_reset_buffer` in
+// audiocore for the audio path, and the three shared properties. The node
+// types audioif ported from CircuitPython have had this since they were
+// ported; the ones audioif wrote itself did not, so no class built on them
+// could release one and Tier 1's "deinit() releases every node the class
+// built" was unmeasurable on a board (audioif#58, #60, #63).
+//
+// The inline buffers go with the object. What is cleared here is what the
+// object holds a *reference* to: the upstream source, so releasing the tail
+// of a chain lets the GC reclaim the rest of it, and every borrowed pointer
+// into a source's buffer, so nothing dangles.
+static mp_obj_t audioroute_splitter_tap_deinit(mp_obj_t self_in) {
+    audioroute_splitter_tap_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->owner = mp_const_none;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audioroute_splitter_tap_deinit_obj, audioroute_splitter_tap_deinit);
+
 static const mp_rom_map_elem_t audioroute_splitter_tap_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audioroute_splitter_tap_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     AUDIOSAMPLE_FIELDS,
 };
 static MP_DEFINE_CONST_DICT(audioroute_splitter_tap_locals,

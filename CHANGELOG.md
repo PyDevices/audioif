@@ -1,3 +1,10 @@
+## Unreleased
+
+- Every node type releases: `deinit()` on the twelve that had none, and the deinitialised guard on the one funnel every pull goes through
+- `audioroute.Splitter` can be released, and releasing it releases its taps
+- A released `SplitterTap` refuses a rewind on the CPython target instead of quietly succeeding
+- clean-build: MicroPython v1.29.0, and the deinit surface is gated on a real native build
+
 ## v0.3.0 (2026-09-09)
 
 - Give the CPython target CircuitPython 10.3.0's new delay, speed and filter-chain nodes.
