@@ -1,13 +1,19 @@
 """Deterministic Dynamics PCM, from whichever module provides the node.
 
-    dynamics_probe.py audiodynamics     the port
-    dynamics_probe.py vstaudio_oracle   the original, via the oracle build
+    dynamics_probe.py audiodynamics
 
-Both spellings take the same arguments and are driven through the same
-sequence, so any difference in the printed stats is a difference in the DSP.
-Only positional/keyword forms the original accepts are used here - the port's
-additions are unit-tested elsewhere, not gated against an oracle that never
-had them.
+Every interpreter renders this and the outputs must be identical, so any
+difference in the printed stats is a difference in the DSP - a width, a shift,
+a compiler's choice. See docs/correctness-standard.md.
+
+**A legacy worth knowing about.** This file uses only the argument forms
+micropython-vst3's `vstaudio_dsp.c` accepted, because it was written to be run
+against that engine compiled unmodified. That oracle is retired - the engine is
+a consumer of this package now, not a grader of it - so the restriction no
+longer has a reason. It is left in place because widening it is a change to
+what this fixture covers rather than a tidy-up, and the port's own additions are
+already covered by `dynamics_extras_probe.py`, `dynamics_options_probe.py` and
+`tests/test_cpython_audiodynamics.py`.
 """
 
 import sys

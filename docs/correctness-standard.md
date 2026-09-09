@@ -103,10 +103,22 @@ until each line below is struck the old machinery is still present. This list
 is the checklist, not a report.
 
 
-* **The vstaudio oracle**: `tests/parity/vstaudio_oracle/`,
-  `tests/parity/build_vstaudio_oracle.sh`, the pinned `VSTAUDIO_REV`, and the
-  oracle backing of `dynamics_probe.py`, `route_probe.py` and
-  `route_dry_probe.py`.
+* ~~**The vstaudio oracle**~~ — **done.** `tests/parity/vstaudio_oracle/`,
+  `tests/parity/build_vstaudio_oracle.sh` and the pinned `VSTAUDIO_REV` are
+  deleted, along with `golden/dsp_nodes.json`. `verify_dsp.py` is now the
+  comparison itself: it runs every probe on every interpreter given and requires
+  the outputs to be byte-identical, with **no stored digest**, and it **refuses
+  a run with fewer than two interpreters** rather than passing one that cannot
+  fail. A probe that cannot be covered yet is `PENDING` against a named issue -
+  visible and counted, neither silently skipped nor standing red. Proved able to
+  fail: reverting the flanger's 64-bit widening and rebuilding gives
+  `FAIL flanger_probe.py cpython and micropython differ at output byte 1160`.
+
+  The gate moved workflow with its meaning. It needs two interpreters, so it
+  runs in `clean-build.yml`, which builds one. `test-cpython.yml` and the
+  release job keep what a single interpreter *can* say - that every probe runs -
+  across four operating systems and five Pythons, which catches an import
+  error or an arithmetic assumption that only holds on x86_64.
 * **`cmods/bin/circuitpython` as an untouchable artefact.** The rule that it must
   never be rebuilt existed because it was a reference of record. It is not one
   any more: CircuitPython gets built at whatever configuration a comparison

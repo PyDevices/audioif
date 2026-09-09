@@ -1,70 +1,71 @@
 #!/usr/bin/env python3
-"""audiodynamics, audioroute, audiomath, audioecho, audioshaper,
-audioladder, audioconvolve, audiobiquad and audioverb parity: what the
-originals rendered, and what the ports render now.
+"""Every target must render these nodes identically. That is the whole gate.
 
-    verify_dsp.py --capture-old     record the goldens from the original nodes
-    verify_dsp.py                    hold the ports to them
+    verify_dsp.py --micropython PATH [--circuitpython PATH]
 
-The old side is micropython-vst3's own `vstaudio_dsp.c`, compiled unmodified
-into a throwaway interpreter by build_vstaudio_oracle.sh. Nothing else can
-reach it: the usermod that publishes those types is the plugin sidecar, and it
-wants a shared memory mapping a VST host created.
+`docs/correctness-standard.md` is what this implements. There is no stored
+digest and no oracle: the probes are run on every interpreter given, and the
+gate is that their output is byte-identical. A disagreement is the finding.
 
-One hash per probe covers every interpreter, unlike the instrument goldens.
-The arithmetic here is entirely inside shared/audioif_dynamics.c,
-audioif_splitter.c, audioif_midside.c, audioif_multiply.c,
-audioif_suboctave.c, audioif_feedback_delay.c, audioif_shaper.c,
-audioif_ladder.c, audioif_convolve.c and audioif_tank.c -- with audioif_fft.c
-and audioif_trig.c under the convolver -- the same C the CPython extension
-links, so a disagreement between two interpreters would itself be the finding.
+**Two interpreters are the minimum, and fewer is refused rather than passed.**
+A single-interpreter run has nothing to compare and cannot fail, which is worse
+than no gate at all because it reports green. This script used to accept
+`--interpreters cpython` and used to print `skipping micropython (not built
+at ...)` and carry on; both are gone.
 
-Twelve of the fifteen probes are held against no oracle, because there is
-nothing older to hold them to. `audiomath`, `audioecho`, `audioshaper`,
-`audioladder`, `audioconvolve`, `audiobiquad` and `audioverb` are audioif's
-own modules, with no ancestor in CircuitPython or in the engine;
-`audioroute.MidSide` is audioif's own too, added to a module that did come
-from the engine, so it gets its own fixture rather than joining
-route_probe.py; and none of them has `Dynamics`' lookahead and true-peak
-options, nor the twenty-one the effects program added to it -- which is why
-those get fixtures of their own rather than joining dynamics_probe.py, that
-one being held against `vstaudio_dsp.c` compiled unmodified and so restricted
-to forms the original accepts. Their goldens are captured from the port under
-CPython, and what they prove is cross-interpreter agreement and no accidental
-change over time, not fidelity to something older.
+## Why agreement is the right check for these nodes
 
-Two of those carry their own additivity check inside the probe: the first
-case of `dynamics_extras_probe.py` and of `dynamics_options_probe.py` sets
-none of the options it exists to cover, and its numbers are a case of
+All three targets compile the same C - `shared/audioif_dynamics.c`,
+`audioif_splitter.c`, `audioif_midside.c`, `audioif_multiply.c`,
+`audioif_suboctave.c`, `audioif_feedback_delay.c`, `audioif_shaper.c`,
+`audioif_ladder.c`, `audioif_convolve.c`, `audioif_tank.c`,
+`audioif_flanger.c`, `audioif_granular_pitch_shift.c`, with `audioif_fft.c` and
+`audioif_trig.c` under the convolver. The CPython extension links it, the
+MicroPython usermod compiles it, and the patched CircuitPython build compiles it
+again. So a difference between two of them is never a difference of intent: it
+is a width, an undefined shift, a compiler's choice or an architecture. That is
+exactly the class of defect a stored digest cannot see, and it is not
+hypothetical - on 2026-09-09 the MicroPython flanger overflowed `int32_t` in its
+wet interpolation on full-scale material and every stored fixture matched to the
+byte throughout.
+
+**What agreement cannot see, said plainly:** a change to the shared C moves all
+three together and stays green. This gate sees divergence between targets, not
+drift over time. Drift is the traits' job -
+`tests/test_cpython_<module>.py`, one file per module, each opening with its
+trait table and bars.
+
+## Five of these are unusually sensitive, which is most of the reason to run
+## them everywhere
+
+The delay's loop is recursive, so a one-ulp disagreement between two builds
+would not stay one ulp; the waveshaper's half-bands are all-pass recursions
+running at up to eight times the sample rate; the ladder's loop is recursive AND
+solved, so a difference has the solver's seed to grow through as well, and
+several of its fixtures sit where the loop sustains a tone of its own and
+nothing damps a difference at all; every convolver output sample is a sum of
+hundreds of float products through two transforms; and the tank is ten
+recirculating lines feeding each other in float, which is the delay's problem
+again with the loop closed twice over.
+
+## Why some nodes have two probes rather than one appended case
+
+One comparison covers a probe's whole output, so a case appended to
+`feedback_delay_probe.py` would move the very numbers that say `wow_shape`,
+`delay_slew`, `wow_am_depth` and `loop_semitones` changed nothing. Those live in
+`feedback_delay_options_probe.py`, whose first two cases render exactly what
+that file's `plain` renders. `dynamics_extras_probe.py` and
+`dynamics_options_probe.py` carry the same additivity check: the first case of
+each sets none of the options it exists to cover, and its numbers are a case of
 `dynamics_probe.py` line for line.
 
-`audiobiquad` is the one whose probe also prints invariants rather than only
-PCM -- the block at which a tail reaches exact zero, and the depth of a null
-at zero feedback -- because those two are the reason the module was added and
-a hash over PCM alone would not say whether either still held.
-
-`audioecho` is split the same way and for the same reason, even though both
-halves are the port's: one hash covers a probe's whole output, so a case
-appended to feedback_delay_probe.py would move the very number that says
-`wow_shape`, `delay_slew`, `wow_am_depth` and `loop_semitones` changed
-nothing. They live in feedback_delay_options_probe.py, whose first two cases
-render exactly what that file's `plain` renders.
-
-Five of those twelve are unusually sensitive, which is most of the reason for
-running them on every interpreter. The delay's loop is recursive, so a one-ulp
-disagreement between two builds would not stay one ulp; the waveshaper's
-half-bands are all-pass recursions running at up to eight times the sample
-rate; the ladder's loop is recursive AND solved, so a difference has the
-solver's seed to grow through as well, and several of its fixtures sit where
-the loop sustains a tone of its own and nothing damps a difference at all;
-every convolver output sample is a sum of hundreds of float products through
-two transforms; and the tank is ten recirculating lines feeding each other in
-float, which is the delay's problem again with the loop closed twice over.
+`filter_f32_probe.py` also prints invariants rather than only PCM - the block at
+which a tail reaches exact zero, and the depth of a null at zero feedback -
+because those two are why `audiobiquad` was added, and PCM alone would not say
+whether either still held.
 """
 
 import argparse
-import hashlib
-import json
 import os
 from pathlib import Path
 import subprocess
@@ -73,41 +74,47 @@ import sys
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 WORKSPACE = ROOT.parent
-GOLDEN = HERE / "golden" / "dsp_nodes.json"
 
-#: (probe, module the port provides it as, module the oracle provides it as
-#:  or None where there is no oracle, {interpreter: why it is skipped there})
+#: (probe, the module the port provides it as, {interpreter: why it is skipped
+#:  there}, pending). A skip is a stated exception for an interpreter that
+#: cannot run that probe for a named reason - never a missing binary.
+#:
+#: `pending` is the third state, and it exists so an uncoverable probe is
+#: *visible* rather than either silently passing or standing red forever. It
+#: must name an issue. A pending probe is not run and is not counted as a
+#: comparison; the summary prints how many there are, because that number
+#: going up is a regression in coverage even when nothing is failing.
 PROBES = (
-    ("dynamics_probe.py", "audiodynamics", "vstaudio_oracle", {}),
-    ("route_probe.py", "audioroute", "vstaudio_oracle", {}),
-    ("route_dry_probe.py", "audioroute", "vstaudio_oracle",
-     {"circuitpython": "its coverage variant does not compile audiospeed"}),
-    ("midside_probe.py", "audioroute", None, {}),
-    ("multiply_probe.py", "audiomath", None, {}),
-    ("suboctave_probe.py", "audiomath", None, {}),
-    ("feedback_delay_probe.py", "audioecho", None, {}),
-    ("feedback_delay_options_probe.py", "audioecho", None, {}),
-    ("ladder_probe.py", "audioladder", None, {}),
-    ("dynamics_extras_probe.py", "audiodynamics", None, {}),
-    ("dynamics_options_probe.py", "audiodynamics", None, {}),
-    ("waveshaper_probe.py", "audioshaper", None, {}),
-    ("convolve_probe.py", "audioconvolve", None, {}),
-    ("filter_f32_probe.py", "audiobiquad", None, {}),
-    ("tank_probe.py", "audioverb", None, {}),
-    ("flanger_probe.py", "audiodelays", None, {}),
-    ("granular_pitch_shift_probe.py", "audiodelays", None, {}),
-    ("resampler_probe.py", "audiospeed", None, {}),
-    ("echo_filter_probe.py", "audiodelays", None, {}),
-    ("freeverb_filter_probe.py", "audiofreeverb", None, {}),
+    ("dynamics_probe.py", "audiodynamics", {}, None),
+    ("route_probe.py", "audioroute", {}, None),
+    ("route_dry_probe.py", "audioroute",
+     {"circuitpython": "its coverage variant does not compile audiospeed"},
+     None),
+    ("midside_probe.py", "audioroute", {}, None),
+    ("multiply_probe.py", "audiomath", {}, None),
+    ("suboctave_probe.py", "audiomath", {}, None),
+    ("feedback_delay_probe.py", "audioecho", {}, None),
+    ("feedback_delay_options_probe.py", "audioecho", {}, None),
+    ("ladder_probe.py", "audioladder", {}, None),
+    ("dynamics_extras_probe.py", "audiodynamics", {}, None),
+    ("dynamics_options_probe.py", "audiodynamics", {}, None),
+    ("waveshaper_probe.py", "audioshaper", {}, None),
+    ("convolve_probe.py", "audioconvolve", {}, None),
+    ("filter_f32_probe.py", "audiobiquad", {}, None),
+    ("tank_probe.py", "audioverb", {}, None),
+    ("flanger_probe.py", "audiodelays", {}, None),
+    ("granular_pitch_shift_probe.py", "audiodelays", {}, None),
+    ("resampler_probe.py", "audiospeed", {}, None),
+    ("echo_filter_probe.py", "audiodelays", {},
+     "audioif#74: audiodelays.Echo.filter exists on the CPython target and in "
+     "CircuitPython 10.3.0, and not in the MicroPython usermod"),
+    ("freeverb_filter_probe.py", "audiofreeverb", {},
+     "audioif#74: audiofreeverb.Freeverb.pre_filter/post_filter, same gap"),
 )
-
-DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"
-DEFAULT_CIRCUITPYTHON = WORKSPACE / "bin" / "circuitpython"
-DEFAULT_ORACLE = (WORKSPACE / "micropython" / "ports" / "unix" /
-                  "build-vstaudio-oracle" / "micropython")
 
 
 def run_probe(argv_prefix, probe, module):
+    """A probe's stdout, newline-normalised. Raises if it does not run."""
     environment = os.environ.copy()
     # CPython imports audioif from the installed package. MicroPython and
     # CircuitPython take these modules from their own firmware, so MICROPYPATH
@@ -120,88 +127,88 @@ def run_probe(argv_prefix, probe, module):
         sys.stderr.buffer.write(result.stdout)
         sys.stderr.buffer.write(result.stderr)
         raise SystemExit("probe failed: %s %s" % (probe, module))
-    return hashlib.sha256(
-        result.stdout.replace(b"\r\n", b"\n")).hexdigest()
+    return result.stdout.replace(b"\r\n", b"\n")
+
+
+def first_difference(left, right):
+    for index in range(min(len(left), len(right))):
+        if left[index] != right[index]:
+            return index
+    if len(left) != len(right):
+        return min(len(left), len(right))
+    return None
 
 
 def interpreter_table(args):
-    found = {}
-    if "cpython" in args.interpreters:
-        found["cpython"] = [sys.executable]
+    """`{name: argv prefix}`. A named interpreter that is not built is an
+    error, not a skip: the whole point is the comparison."""
+    found = {"cpython": [sys.executable]}
     for name, path in (("micropython", args.micropython),
                        ("circuitpython", args.circuitpython)):
-        if name not in args.interpreters:
+        if not path:
             continue
-        if path and Path(path).exists():
-            found[name] = [str(path)]
-        else:
-            print("skipping %s (not built at %s)" % (name, path))
+        if not Path(path).exists():
+            raise SystemExit("%s was named but is not built at %s"
+                             % (name, path))
+        found[name] = [str(path)]
     return found
 
 
-def capture(args):
-    oracle = Path(args.oracle)
-    if not oracle.exists() and any(old for _, _, old, _ in PROBES):
-        raise SystemExit(
-            "the oracle interpreter is not built at %s\n"
-            "build it with tests/parity/build_vstaudio_oracle.sh" % oracle)
-    fixture = {
-        "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, "
-                  "compiled unmodified (see build_vstaudio_oracle.sh)",
-        "no_oracle": "audiomath, audioecho, audioshaper, audioladder, "
-                     "audioconvolve, audiobiquad, audioverb and "
-                     "audioroute.MidSide are audioif's own; their probes "
-                     "are captured from the port under CPython",
-        "probes": {},
-    }
-    for probe, module, old_module, _skips in PROBES:
-        if old_module is None:
-            digest = run_probe([sys.executable], probe, module)
-        else:
-            digest = run_probe([str(oracle)], probe, old_module)
-        fixture["probes"][probe] = digest
-        print("captured %-20s %s" % (probe, digest[:16]))
-    GOLDEN.parent.mkdir(exist_ok=True)
-    GOLDEN.write_text(json.dumps(fixture, indent=2, sort_keys=True) + "\n")
-    print("wrote %s" % GOLDEN)
-
-
 def verify(args):
-    if not GOLDEN.exists():
-        raise SystemExit("nothing captured yet: run with --capture-old")
-    fixture = json.loads(GOLDEN.read_text())
     interpreters = interpreter_table(args)
-    if not interpreters:
-        raise SystemExit("no interpreters available")
+    if len(interpreters) < 2:
+        raise SystemExit(
+            "this gate compares interpreters against each other, so it needs "
+            "at least two. Pass --micropython PATH (and --circuitpython PATH "
+            "where the build has these modules). One interpreter cannot "
+            "disagree with itself, and a run that cannot fail is worse than "
+            "no run: it reports green.")
     print("interpreters: %s\n" % ", ".join(sorted(interpreters)))
+
     failures = []
-    checked = 0
-    for probe, module, _old, skips in PROBES:
-        expected = fixture["probes"].get(probe)
-        if expected is None:
-            failures.append("%s: nothing captured for it" % probe)
+    compared = 0
+    pending = []
+    for probe, module, skips, blocked_by in PROBES:
+        if blocked_by:
+            pending.append((probe, blocked_by))
+            print("PENDING  %-30s %s" % (probe, blocked_by))
             continue
-        for name, prefix in sorted(interpreters.items()):
-            if name in skips:
-                print("skipping %-20s %-14s (%s)"
+        names = [name for name in sorted(interpreters) if name not in skips]
+        for name in sorted(skips):
+            if name in interpreters:
+                print("skipping %-30s %-14s (%s)"
                       % (probe, name, skips[name]))
+        if len(names) < 2:
+            failures.append("%s: fewer than two interpreters left after its "
+                            "stated skips, so nothing was compared" % probe)
+            continue
+
+        rendered = {}
+        for name in names:
+            rendered[name] = run_probe(interpreters[name], probe, module)
+
+        reference = names[0]
+        agreed = True
+        for name in names[1:]:
+            compared += 1
+            if rendered[name] == rendered[reference]:
                 continue
-            actual = run_probe(prefix, probe, module)
-            checked += 1
-            if actual == expected:
-                print("ok       %-20s %-14s %s"
-                      % (probe, name, actual[:16]))
-            else:
-                # Full digests, not the 16-char prefix the ok lines use: a
-                # difference in the tail printed as two identical-looking
-                # strings, in the very report a named-cause ledger row is
-                # written from (found in the pin move's step-0 rehearsal).
-                print("FAIL     %-20s %-14s\n"
-                      "             got      %s\n"
-                      "             expected %s"
-                      % (probe, name, actual, expected))
-                failures.append("%s on %s" % (probe, name))
-    print("\n%d comparisons, %d failures" % (checked, len(failures)))
+            agreed = False
+            offset = first_difference(rendered[reference], rendered[name])
+            print("FAIL     %-30s %s and %s differ at output byte %s"
+                  % (probe, reference, name, offset))
+            print("             %-14s %d bytes" % (reference,
+                                                   len(rendered[reference])))
+            print("             %-14s %d bytes" % (name, len(rendered[name])))
+            failures.append("%s: %s and %s" % (probe, reference, name))
+        if agreed:
+            print("ok       %-30s %s agree (%d bytes)"
+                  % (probe, " = ".join(names), len(rendered[reference])))
+
+    print("\n%d comparisons, %d failures, %d pending"
+          % (compared, len(failures), len(pending)))
+    for probe, blocked_by in pending:
+        print("  pending  %-30s %s" % (probe, blocked_by))
     if failures:
         for line in failures:
             print("  %s" % line)
@@ -210,18 +217,11 @@ def verify(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--capture-old", action="store_true")
-    parser.add_argument("--interpreters", default="cpython,micropython")
-    parser.add_argument("--micropython", default=str(DEFAULT_MICROPYTHON))
-    parser.add_argument("--circuitpython", default=str(DEFAULT_CIRCUITPYTHON))
-    parser.add_argument("--oracle", default=str(DEFAULT_ORACLE))
-    args = parser.parse_args()
-    args.interpreters = [s.strip()
-                         for s in args.interpreters.split(",") if s.strip()]
-    if args.capture_old:
-        capture(args)
-    else:
-        verify(args)
+    parser.add_argument("--micropython", default=None,
+                        help="a MicroPython binary with the audioif usermod")
+    parser.add_argument("--circuitpython", default=None,
+                        help="a patched CircuitPython build")
+    verify(parser.parse_args())
 
 
 main()

@@ -1,15 +1,15 @@
 """What a Splitter does once its source runs out.
 
     route_dry_probe.py audioroute        the port
-    route_dry_probe.py vstaudio_oracle   the original, via the oracle build
 
 Separate from route_probe.py because it needs a source that finishes, and the
 only one available to all of these interpreters is `audiospeed.SpeedChanger`
 over a short RawSample - a RawSample on its own hands out its whole buffer
 forever. CircuitPython 10.2.1 ships audiospeed but its unix `coverage` variant
-does not compile it, so this probe is not part of that interpreter's gate; the
-same shared C runs there either way, and enabling a module the oracle leaves
-out to suit a test would be the wrong trade.
+does not compile it, so this probe is not part of that interpreter's gate - a
+stated skip in `verify_dsp`'s table rather than a silent one. The same shared C
+runs there either way, and enabling a module a build leaves out to suit a test
+would be the wrong trade.
 """
 
 import sys

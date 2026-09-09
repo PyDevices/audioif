@@ -1,11 +1,10 @@
 """Deterministic Splitter PCM, from whichever module provides the node.
 
     route_probe.py audioroute        the port
-    route_probe.py vstaudio_oracle   the original, via the oracle build
 
-Only the positional `Splitter(source, taps)` form is used: the port also
-accepts `taps` as a keyword, which the original never did, so that belongs in
-the unit tests rather than in a comparison against it.
+Only the positional `Splitter(source, taps)` form is used here; the keyword
+form belongs in the unit tests. The oracle invocation this file used to
+carry is gone with the oracle itself - see docs/correctness-standard.md.
 
 The source is a double-buffered RawSample, which hands out 300 frames at a
 time - enough to walk the ring past its 8192-frame wrap, and short enough that

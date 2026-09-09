@@ -67,23 +67,31 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   `tests/parity/` runs unchanged against this port and `bin/circuitpython`,
   rendering PCM and diffing byte-for-byte (or documenting the exact,
   bounded exception in `docs/upstream-diff.md`).
-- One tier has a different oracle, because CircuitPython is not where it
-  came from. It is the micropython-vst3 sibling checkout, and the gate never
-  touches it:
-  `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/bin/micropython \
-  --circuitpython ../cmods/bin/circuitpython \
-  --oracle ../cmods/micropython/ports/unix/build-vstaudio-oracle/micropython`
-  holds `audiodynamics` and `audioroute` to `vstaudio_dsp.c` compiled
-  unmodified by `MP_UNIX=../cmods/micropython/ports/unix
-  ULAB_DIR=../cmods/ulab tests/parity/build_vstaudio_oracle.sh`. One hash
-  covers every interpreter here: the arithmetic is all in `src/shared/`, so
-  two interpreters disagreeing would itself be the finding. `audiomath`,
-  `audioecho`, `audioconvolve` and `audiobiquad` ride along in the same file
-  with no oracle at all — captured from the port, they pin cross-interpreter
-  agreement rather than fidelity to something older. `audiobiquad`'s probe
-  also prints two invariants as integers beside its PCM (the block at which
-  a tail reaches exact zero, and the null depth at each feedback value),
-  because a hash over PCM alone would not say whether either still held.
+- The nine modules that are **ours** have no oracle, by decision
+  ([docs/correctness-standard.md](docs/correctness-standard.md), 2026-09-09).
+  Upstream CircuitPython has no counterpart to them, so they are held to two
+  things: every target renders them identically, and their numeric traits hold.
+  `.venv/bin/python tests/parity/verify_dsp.py --micropython ../cmods/micropython/ports/unix/build-standard/micropython`
+  is the first. There is **no stored digest** — the gate is the comparison, and
+  it **refuses a run with fewer than two interpreters** rather than passing one
+  that cannot fail. Add `--circuitpython ../cmods/bin/circuitpython-effects-10.3.0`
+  for the three-way. The arithmetic is all in `src/shared/`, so two
+  interpreters disagreeing is never a difference of intent: it is a width, an
+  undefined shift, a compiler's choice or an architecture.
+- The traits are the other half, one file per module —
+  `tests/test_cpython_<module>.py`, each opening with its trait table and the
+  bar for every row. Agreement cannot see a change that moves all three targets
+  together; the traits can, because they are measured against arithmetic rather
+  than against our own last answer. `audiobiquad`'s probe also prints two
+  invariants as integers beside its PCM (the block at which a tail reaches
+  exact zero, and the null depth at each feedback value), because a comparison
+  over PCM alone would not say whether either still held.
+- **The vstaudio oracle is retired.** `audiodynamics` and `audioroute` came
+  from micropython-vst3's engine and used to be held to `vstaudio_dsp.c`
+  compiled unmodified. That file was deleted from micropython-vst3 in `6ea60d3`
+  and the plug-in links audioif now: the relationship reversed, so the engine is
+  a consumer of this package rather than a grader of it. The build script, the
+  usermod and `golden/dsp_nodes.json` are gone.
 - The instruments parity gate — `run_instruments_parity.py`, its two probes,
   `instrument_sequences.py` and the `instruments_*.json` digests — lives in
   [audiocomponents](https://github.com/PyDevices/audiocomponents) now, under
@@ -91,10 +99,7 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   name there records a sound changed **on purpose**, and adding one is
   Brad's call, never an agent's) is documented in that repository's
   AGENTS.md. It is not run from here.
-- That oracle is `vstaudio_dsp.c`, which micropython-vst3 no longer carries
-  — it imports audioif now. It is read out of that checkout's git history,
-  so it stays fixed no matter what the checkout does next. What covers the
-  cutover itself is `python3 tests/parity/capture_render_reference.py
+- What covers the micropython-vst3 cutover is `python3 tests/parity/capture_render_reference.py
   --verify`: it renders the plug-in's six soundtrack pieces and compares
   them with what they sounded like beforehand. The interpreter it renders
   with needs `audioinstruments` and `audioeffects` installed from
@@ -116,10 +121,12 @@ Both are expected as siblings in the parent workspace (`cmods/` in
   scripts' zero-argument defaults no longer point into `cmods/`** — a
   standalone user should not be steered into a directory only this
   workspace has — so in *this* workspace every parity command needs the
-  explicit `--micropython`/`--circuitpython`/`--oracle` (or `CP_DIR`,
-  `MP_UNIX`, `ULAB_DIR`) override shown above. Run one bare and it does not
-  fail loudly: `verify_dsp.py` prints `skipping micropython (not built at
-  ...)` and carries on with whatever is left. That is not a pass. What CI
+  explicit `--micropython`/`--circuitpython` (or `CP_DIR`, `MP_UNIX`,
+  `ULAB_DIR`) override shown above. `verify_dsp.py` used to print `skipping
+  micropython (not built at ...)` and carry on with whatever was left, which
+  was not a pass; it now **refuses** a run with fewer than two interpreters,
+  because one interpreter cannot disagree with itself and a run that cannot
+  fail is worse than no run. What CI
   covers instead is what needs only the wheel: the CPython fixture tests in
   `tests/test_cpython_*.py` and the five in-repo parity gates
   (`verify_acceptance`, `verify_effects`, `verify_streaming`,

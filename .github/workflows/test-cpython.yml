@@ -56,17 +56,23 @@ jobs:
       - run: python tests/parity/verify_streaming.py
       - run: python tests/parity/verify_biquad.py
       - run: python tests/parity/verify_mixdown_knee.py
-      # verify_dsp ran in NO workflow until 2026-09-09, so the whole Phase 1
-      # palette and the five CircuitPython 10.3.0 twins reached a green v0.3.0
-      # release with their goldens ungated (audioif#71).
+      # The DSP nodes' real gate is cross-interpreter agreement and it needs
+      # two interpreters, so it lives in clean-build.yml where a MicroPython
+      # binary is built. A one-interpreter run cannot fail and verify_dsp now
+      # refuses one (docs/correctness-standard.md).
       #
-      # x86_64 Linux only, deliberately. golden/dsp_nodes.json has no
-      # per-architecture entries the way effects_component.json does, and every
-      # digest in it is an x86_64 fact; aarch64 is known to differ by up to
-      # 1 LSB on interpolating nodes. Widening this to ubuntu-24.04-arm needs
-      # accepted per-arch digests first, exactly as verify_effects has.
-      - if: matrix.os == 'ubuntu-latest'
-        run: python tests/parity/verify_dsp.py --interpreters cpython
+      # What this matrix can say is worth having and is not a comparison: every
+      # probe RUNS, on four operating systems and five Pythons. That catches an
+      # import error, a crash, or an arithmetic assumption that only holds on
+      # x86_64 - none of which the Linux-only agreement run would see.
+      - name: Every DSP probe runs under this interpreter
+        shell: bash
+        run: |
+          set -e
+          for probe in tests/parity/*_probe.py; do
+            python "$probe" >/dev/null || { echo "probe failed: $probe" >&2; exit 1; }
+          done
+          echo "every probe ran"
 
   # Non-publishing proof of the macOS wheel claim: run the same cibuildwheel
   # the release path uses (pypa/cibuildwheel, [tool.cibuildwheel] in
