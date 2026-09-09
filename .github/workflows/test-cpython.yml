@@ -99,3 +99,44 @@ jobs:
       - name: Build Linux aarch64 wheels (no publish)
         uses: pypa/cibuildwheel@v4.2.0
       - run: ls -l wheelhouse/
+
+  # The `[render]` extra, which no other job installs (audioif#35). The test
+  # job above installs numpy by hand *before* the wheel, so a typo in the
+  # extra's name - or a future edit that drops it - would go unnoticed while
+  # every test stayed green.
+  #
+  # Both directions are asserted, because only the pair is evidence. A bare
+  # install must NOT bring numpy, or "numpy is importable" says nothing about
+  # the extra; and `pip install wheel[misspelled]` *succeeds* with only a
+  # warning, so the extra's work is proved by numpy arriving, not by pip's
+  # exit code. Fresh venvs, since this runner's Python has numpy in it.
+  render-extra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    name: the [render] extra
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: python -m pip install build
+      - run: python -m build
+      - name: A bare install brings no numpy
+        shell: bash
+        run: |
+          python -m venv bare
+          ./bare/bin/python -m pip install dist/*.whl
+          if ./bare/bin/python -c "import numpy" 2>/dev/null; then
+            echo "a bare install pulled numpy in, so the [render] check below proves nothing" >&2
+            exit 1
+          fi
+          ./bare/bin/python -c "import audiocore, synthio; print('bare install imports the nodes')"
+      - name: The [render] install brings numpy and audiorender
+        shell: bash
+        run: |
+          python -m venv render
+          ./render/bin/python -m pip install "$(echo dist/*.whl)[render]"
+          ./render/bin/python -c "
+          import numpy, audiorender
+          from audiorender import events, tempo, wav
+          print('[render] extra OK: numpy', numpy.__version__)"

@@ -97,3 +97,47 @@ jobs:
             exit 1
           fi
           MICROPYPATH=audioif "$MP" "$PROBE"
+
+  # Scenario S2: the *CMake* half of the standalone contract. Until this job
+  # existed nothing in CI ran CMake at all - clean-build built through
+  # micropython.mk only - so an edit to micropython.cmake, or to the README's
+  # CMake recipe, could break the standalone CMake path exactly as it had been
+  # broken before, and every workflow would stay green (audioif#35).
+  #
+  # Configure only: no compiler, no firmware, seconds to run. The harness in
+  # tests/cmake drives MicroPython's own py/usermod.cmake the way a port does
+  # and then asserts what that must have produced - both usermod targets, the
+  # link into `usermod`, every named source present on disk, and the voice
+  # ceiling defined.
+  cmake-configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: cmake configure (standalone)
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: audioif
+      # ulab is not optional here: `usermod_ulab` is the target that had
+      # actually broken once, so the harness treats its absence as a failure.
+      - name: Fetch pinned dependencies
+        working-directory: audioif
+        run: |
+          ./scripts/fetch_deps.sh
+          ./scripts/fetch_deps.sh --check
+      - name: Check out upstream MicroPython v1.29.0
+        uses: actions/checkout@v7
+        with:
+          repository: micropython/micropython
+          ref: v1.29.0
+          path: micropython
+      - name: Configure the usermod through CMake
+        run: |
+          cmake -S audioif/tests/cmake -B cmake-build \
+                -DMICROPY_DIR="$GITHUB_WORKSPACE/micropython" \
+                -DUSER_C_MODULES="$GITHUB_WORKSPACE/audioif"
+      # The three definitions of CIRCUITPY_SYNTHIO_MAX_CHANNELS - the header
+      # default, the Make path and the CMake path - must agree. micropython
+      # .cmake's own note on that line said no gate anywhere exercised it.
+      - name: The voice ceiling agrees across all three build paths
+        working-directory: audioif
+        run: python3 scripts/check_voice_ceiling.py

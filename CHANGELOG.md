@@ -1,5 +1,9 @@
 ## Unreleased
 
+- CI configures the standalone CMake path, which no workflow had ever run
+- CI installs the `[render]` extra, and proves a bare install does not bring numpy
+- The voice ceiling is held to one number across the header, the Make path and the CMake path
+- `scripts/test_testpypi_install.py` follows the release beside it and its smoke code runs
 - Every node type releases: `deinit()` on the twelve that had none, and the deinitialised guard on the one funnel every pull goes through
 - `audioroute.Splitter` can be released, and releasing it releases its taps
 - A released `SplitterTap` refuses a rewind on the CPython target instead of quietly succeeding
