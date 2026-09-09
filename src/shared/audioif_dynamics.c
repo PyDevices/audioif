@@ -664,6 +664,26 @@ void audioif_dynamics_process_s16_key(const audioif_dynamics_config_t *config,
                     (level > state->slow_env ? slow_att : slow_rel)
                     * (level - state->slow_env);
             }
+            // `+1e-5f` on each envelope, and it is a *measured* optimum
+            // rather than an arbitrary guard -- audioif#57 asks for it to be
+            // smaller or replaced by a floor on the ratio, and both are worse.
+            // The pedestal is added before the log, so the level only cancels
+            // while both envelopes are well above it; but it also damps the
+            // int16 quantisation noise that a bare ratio amplifies. Swept, as
+            // the worst departure of one shape's gain trace from the same
+            // shape 54 dB louder (the property a thresholdless design
+            // promises), at -30 / -40 / -50 / -60 dBFS:
+            //
+            //   1e-3   0.3690  1.1117  4.4914  7.4214
+            //   1e-4   0.0361  0.1185  0.3671  1.0456
+            //   1e-5   0.0022  0.0066  0.0208  0.0448   <- this
+            //   1e-6   0.0043  0.0133  0.0387  0.1000
+            //   0      0.0045  0.0141  0.0412  0.1103   (exact ratio)
+            //
+            // Non-monotonic, with the minimum here. Larger pedestals distort,
+            // which is what #57 saw; smaller ones and the exact ratio expose
+            // quantisation. Do not "improve" this number without re-running
+            // that sweep.
             const float diff =
                 audioif_dynamics_gain_to_db(state->fast_env + 1e-5f) -
                 audioif_dynamics_gain_to_db(state->slow_env + 1e-5f);
