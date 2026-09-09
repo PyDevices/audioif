@@ -382,11 +382,7 @@ CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1
 CIRCUITPY_AUDIOBIQUAD = 1
 CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=1
 CIRCUITPY_AUDIOVERB = 1
-CFLAGS += -DCIRCUITPY_AUDIOVERB=1
-CIRCUITPY_AUDIOSPEED = 1
-CFLAGS += -DCIRCUITPY_AUDIOSPEED=1
-CIRCUITPY_AUDIOFILEWRITER = 1
-CFLAGS += -DCIRCUITPY_AUDIOFILEWRITER=1"
+CFLAGS += -DCIRCUITPY_AUDIOVERB=1"
 echo
 
 echo "==> Unix variant: source list"
@@ -400,20 +396,19 @@ MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
 # and a WAV writer for unix probes; their defaults in py/circuitpy_mpconfig.mk
 # stay 0, so no board gains them by accident. Their -D flags come from upstream
 # CFLAGS, so they need no mpconfigvariant.h guards the way our own modules do.
-for _f in shared-bindings/audiospeed/__init__.c \
-          shared-bindings/audiospeed/Resampler.c \
-          shared-bindings/audiospeed/SpeedChanger.c \
-          shared-bindings/audiofilewriter/__init__.c \
-          shared-bindings/audiofilewriter/AudioFileWriter.c; do
-    insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\t'"$_f"$' \\'
-done
-for _f in shared-module/audiospeed/__init__.c \
-          shared-module/audiospeed/Resampler.c \
-          shared-module/audiospeed/SpeedChanger.c \
-          shared-module/audiofilewriter/__init__.c \
-          shared-module/audiofilewriter/AudioFileWriter.c; do
-    insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\t'"$_f"$' \\'
-done
+# NEITHER audiospeed NOR audiofilewriter is enabled on this variant. Both were
+# tried against CircuitPython 10.3.0 and both fail, for different reasons:
+#   * audiospeed does not COMPILE under -Werror=float-conversion.
+#     shared-module/audiospeed/__init__.c calls
+#     mp_arg_validate_obj_float_range(rate_obj, 0.001, 1000.0, ...) whose
+#     bounds are mp_int_t, so 0.001 truncates to 0 - an upstream bug, and the
+#     reason its documented minimum rate is not enforced at all.
+#   * audiofilewriter compiles but does not LINK: it calls
+#     background_callback_prevent/allow, and the unix coverage variant builds
+#     no supervisor/ at all. Supplying them means pulling supervisor/port.h,
+#     supervisor/shared/tick.h and shared-bindings/microcontroller into a test
+#     build - a port-level change, not a source-list line.
+# Established by building, 2026-09-09. See the pin-move evidence file.
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/MidSide.c \\'
