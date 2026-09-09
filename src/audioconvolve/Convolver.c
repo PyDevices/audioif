@@ -239,8 +239,14 @@ static MP_PROPERTY_GETTER(audioconvolve_convolver_taps_obj,
     (mp_obj_t)&audioconvolve_convolver_get_taps_obj);
 
 static mp_obj_t audioconvolve_convolver_get_latency(mp_obj_t self_in) {
-    (void)self_in;
-    return MP_OBJ_NEW_SMALL_INT(AUDIOIF_CONVOLVE_FRAMES);
+    // The loaded state, not a constant. A convolver with nothing loaded
+    // passes its input through (`shared/audioif_convolve.h`), so it adds no
+    // latency at all, and reporting a whole partition of it told any class
+    // that compensates to compensate for a delay that was not there
+    // (audioif#44's class-side clause, the half that costs no kernel change).
+    audioconvolve_convolver_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return MP_OBJ_NEW_SMALL_INT(
+        self->state.loaded != 0 ? AUDIOIF_CONVOLVE_FRAMES : 0);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audioconvolve_convolver_get_latency_obj,
     audioconvolve_convolver_get_latency);

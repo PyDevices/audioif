@@ -69,10 +69,14 @@ foreach(source ${sources})
 endforeach()
 message(STATUS "audioif cmake check: ${source_count} sources, all present")
 
-# 4. The voice ceiling. Its own comment in `micropython.cmake` says "no gate
-#    anywhere exercises this constant: nothing in .github/ or tools/ invokes
-#    CMake" - so this prints it, and `scripts/check_voice_ceiling.py` holds
-#    the header, the Make path and this one to the same number.
+# 4. The voice ceiling, printed rather than compared. `micropython.cmake`'s
+#    own comment on that line says "no gate anywhere exercises this constant:
+#    nothing in .github/ or tools/ invokes CMake", and that is now half true -
+#    nothing invokes CMake before this job, but the *value* has been held
+#    across all five of its sites by `tests/test_voice_ceiling_consistency.py`
+#    since before this harness existed. That test is the authority; this only
+#    asserts the CMake path defines it at all, so a deleted line fails here
+#    rather than silently falling back to the header default.
 get_target_property(definitions usermod_mpaudio INTERFACE_COMPILE_DEFINITIONS)
 set(ceiling "")
 foreach(definition ${definitions})

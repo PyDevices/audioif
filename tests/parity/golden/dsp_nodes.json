@@ -2,7 +2,7 @@
   "no_oracle": "audiomath, audioecho, audioshaper, audioladder, audioconvolve, audiobiquad, audioverb and audioroute.MidSide are audioif's own; their probes are captured from the port under CPython",
   "oracle": "micropython-vst3 usermods/vstaudio/vstaudio_dsp.c, compiled unmodified (see build_vstaudio_oracle.sh)",
   "probes": {
-    "convolve_probe.py": "01bcfa5ba4ca884d3ee64e4e170fe64e9ff5c40b43d901fc23f03057e6f776c1",
+    "convolve_probe.py": "96aa1f32dfa88a8f823d1da3b97ee173404f8c456613e08cea0e9a8c37c882c4",
     "dynamics_extras_probe.py": "6ecf79ce2342a635a7b1fdd3ce29e8d15240a55511722439734c6f3edf364cd6",
     "dynamics_options_probe.py": "1b646bfcc756298bb6dda4b45302fb3d62343d1d0d5d68534e185d176b62872a",
     "dynamics_probe.py": "3e5462291e2a38ed8e3061c43c22d312ff0d967b803e7e2a39d08a45595efc7d",

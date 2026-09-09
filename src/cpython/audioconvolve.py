@@ -154,8 +154,12 @@ class Convolver(_AudioSample):
 
     @property
     def latency(self):
-        """Frames the output trails the input by, once an impulse is loaded."""
-        return FRAMES
+        """Frames the output trails the input by: one partition once an
+        impulse is loaded, and **zero when none is**, because an unloaded
+        convolver passes its input through. It used to answer one partition
+        either way, which told a class that compensates to compensate for a
+        delay that was not there (audioif#44)."""
+        return FRAMES if self._state.taps() else 0
 
     @property
     def playing(self):

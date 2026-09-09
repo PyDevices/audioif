@@ -135,9 +135,3 @@ jobs:
           cmake -S audioif/tests/cmake -B cmake-build \
                 -DMICROPY_DIR="$GITHUB_WORKSPACE/micropython" \
                 -DUSER_C_MODULES="$GITHUB_WORKSPACE/audioif"
-      # The three definitions of CIRCUITPY_SYNTHIO_MAX_CHANNELS - the header
-      # default, the Make path and the CMake path - must agree. micropython
-      # .cmake's own note on that line said no gate anywhere exercised it.
-      - name: The voice ceiling agrees across all three build paths
-        working-directory: audioif
-        run: python3 scripts/check_voice_ceiling.py
