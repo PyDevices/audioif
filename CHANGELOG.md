@@ -3,6 +3,7 @@
 - CI configures the standalone CMake path, which no workflow had ever run
 - CI installs the `[render]` extra, and proves a bare install does not bring numpy
 - `scripts/test_testpypi_install.py` follows the release beside it and its smoke code runs
+- audiodynamics gains `feedback_gain_corrected`, so a feedback loop lands on its ratio (default off)
 - audiodynamics gains `gain_smooth_ms`, a one-pole on the computed gain (default off)
 - audiospeed.Resampler on the MicroPython side, so all three targets have it
 - audioconvolve.Convolver.latency reports 0 when nothing is loaded

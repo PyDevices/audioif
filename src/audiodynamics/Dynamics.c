@@ -60,6 +60,8 @@ static const dynamics_option_name_t dynamics_option_names[] = {
       AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_RELEASE_MS },
     { MP_QSTR_slow_hold_ms, AUDIOIF_DYNAMICS_OPT_SLOW_HOLD_MS },
     { MP_QSTR_gain_smooth_ms, AUDIOIF_DYNAMICS_OPT_GAIN_SMOOTH_MS },
+    { MP_QSTR_feedback_gain_corrected,
+      AUDIOIF_DYNAMICS_OPT_FEEDBACK_GAIN_CORRECTED },
 };
 
 // The lookahead buffer is allocated only once someone asks for one, and only

@@ -56,6 +56,7 @@ void audioif_dynamics_config_init(audioif_dynamics_config_t *config, int mode,
     config->rms_coef = 0.0f;
     config->gain_smooth_coef = 1.0f;   // off
     config->feedback_detector = false;
+    config->feedback_gain_corrected = false;
     config->relative_threshold = false;
     config->program_attack = false;
     config->sidechain_lp_coef = 0.0f;
@@ -165,6 +166,9 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
             break;
         case AUDIOIF_DYNAMICS_OPT_FEEDBACK_DETECTOR:
             config->feedback_detector = value != 0.0f;
+            break;
+        case AUDIOIF_DYNAMICS_OPT_FEEDBACK_GAIN_CORRECTED:
+            config->feedback_gain_corrected = value != 0.0f;
             break;
         case AUDIOIF_DYNAMICS_OPT_SIDECHAIN_LP_HZ:
             config->sidechain_lp_coef = value <= 0.0f ? 0.0f
@@ -401,7 +405,31 @@ static float dynamics_gain_db(const audioif_dynamics_config_t *config,
         case AUDIOIF_DYNAMICS_COMPRESS:
         default: {
             const float half_knee = config->knee_db * 0.5f;
-            const float slope = 1.0f - 1.0f / config->ratio;
+            // Which slope the detector's reading needs depends on what the
+            // detector is reading. Feed-forward reads the input, so a ratio R
+            // wants (1 - 1/R). A gain-corrected feedback detector reads the
+            // OUTPUT, and the slope that makes the loop settle on that same
+            // static curve is (R - 1):
+            //
+            //     g = -(R-1)(y - T)  and  y = x + g
+            //  => g(1 + R - 1) = -(R-1)(x - T)
+            //  => g = -(1 - 1/R)(x - T)
+            //
+            // which is the feed-forward law, arrived at with the detector
+            // still following the output -- so the loop keeps its own
+            // dynamics and stops settling at 2:1 whatever the knob says
+            // (audioif#62).
+            //
+            // This is the inversion, and it is deliberately not the other
+            // thing that reaches the same steady state: dividing the fed-back
+            // sample by the gain that produced it recovers the input exactly
+            // and so cancels the loop, which measured feed-forward to within
+            // 0.026 dB over a whole step response. That would have been an
+            // option nobody has a reason to switch on.
+            const float slope = (config->feedback_detector &&
+                                 config->feedback_gain_corrected)
+                ? config->ratio - 1.0f
+                : 1.0f - 1.0f / config->ratio;
             if (over <= -half_knee) {
                 return 0.0f;
             }

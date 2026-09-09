@@ -300,4 +300,57 @@ for rate in (22050, 96000):
     node.play(source())
     emit("smooth-rate-%d" % rate, node, 2)
 
+# `feedback_gain_corrected` (audioif#62). Off, a feedback detector reads the
+# reduced output, so the loop reduces its own detector input and settles at its
+# own fixed point: against a 20 dB overshoot, 4:1 through 20:1 all land between
+# 8.57 and 9.74 dB of reduction -- about 2:1 whatever the knob says. On, the
+# gain computer's slope becomes (R - 1) rather than (1 - 1/R), which is what
+# makes an output-referred detector settle on the input-referred curve: the
+# same four ratios then read 14.999 / 17.499 / 18.332 / 18.999 against the
+# algebra's 15.000 / 17.500 / 18.333 / 19.000.
+#
+# The raw case is captured beside it because it is what the three
+# `feedback_detector=1` fixtures above were captured under, and because the
+# pair is the evidence: the two must differ, or the option does nothing.
+FB_BASE = {"threshold_db": -40.0, "knee_db": 0.0, "attack_ms": 5.0,
+           "release_ms": 80.0}
+for ratio in (4.0, 8.0, 20.0):
+    for corrected in (0, 1):
+        node = dynamics.Dynamics(0, sample_rate=SAMPLE_RATE,
+                                 **options(FB_BASE, ratio=ratio,
+                                           feedback_detector=1,
+                                           feedback_gain_corrected=corrected))
+        node.play(source())
+        emit("fbcorr-%g-%d" % (ratio, corrected), node, 3)
+
+# It is COMPRESS-only, deliberately: the limiter's law has no ratio to invert
+# and the gate's slope is a fixed 8. Captured so that stays true rather than
+# being assumed - these must match the same builds without the keyword.
+for name, mode, extra in (("limit", 1, {"threshold_db": -26.0}),
+                          ("gate", 3, GATE),
+                          ("transient", 4, SHAPE)):
+    node = dynamics.Dynamics(mode, sample_rate=SAMPLE_RATE,
+                             feedback_detector=1, feedback_gain_corrected=1,
+                             **extra)
+    node.play(source())
+    emit("fbcorr-%s" % name, node, 2)
+
+# Set mid-stream: the slope changes under a loop that already has state in it.
+node = dynamics.Dynamics(0, sample_rate=SAMPLE_RATE,
+                         **options(FB_BASE, ratio=8.0, feedback_detector=1))
+node.play(source())
+emit("fbcorr-late-a", node, 2)
+node.set(feedback_gain_corrected=1)
+emit("fbcorr-late-b", node, 2)
+node.set(feedback_gain_corrected=0)
+emit("fbcorr-late-c", node, 2)
+
+# On without the feedback detector must be inert: the flag is only read inside
+# the feedback branch, and a fixture says so.
+node = dynamics.Dynamics(0, sample_rate=SAMPLE_RATE,
+                         **options(FB_BASE, ratio=8.0,
+                                   feedback_gain_corrected=1))
+node.play(source())
+emit("fbcorr-no-feedback", node, 2)
+
 print("done dynamics options")

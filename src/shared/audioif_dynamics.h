@@ -95,6 +95,7 @@ typedef enum {
     AUDIOIF_DYNAMICS_OPT_SUSTAIN_SLOW_RELEASE_MS,
     AUDIOIF_DYNAMICS_OPT_SLOW_HOLD_MS,
     AUDIOIF_DYNAMICS_OPT_GAIN_SMOOTH_MS,
+    AUDIOIF_DYNAMICS_OPT_FEEDBACK_GAIN_CORRECTED,
     //: One past the last option, for a binding that range-checks.
     AUDIOIF_DYNAMICS_OPT_COUNT,
 } audioif_dynamics_option_t;
@@ -192,6 +193,16 @@ typedef struct {
     //: downstream of this node can remove that ripple without also removing
     //: the compression, which is why it belongs here.
     float gain_smooth_coef;
+    //: Only meaningful with `feedback_detector`, and only in COMPRESS mode.
+    //: Off, the detector reads the reduced output, so the loop reduces its own
+    //: input and settles at its own fixed point rather than at the ratio asked
+    //: for: measured against a 20 dB overshoot, 4:1 through 20:1 all land
+    //: between 8.6 and 9.7 dB of reduction, i.e. about 2:1 whatever the knob
+    //: says. On, the gain computer's slope becomes (R - 1) rather than
+    //: (1 - 1/R), which is the algebra that makes an output-referred detector
+    //: settle on the input-referred curve -- so the loop keeps its own
+    //: dynamics and lands where it was told to (audioif#62).
+    bool feedback_gain_corrected;
 } audioif_dynamics_config_t;
 
 //: What the detector remembers between blocks.
