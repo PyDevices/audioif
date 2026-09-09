@@ -382,7 +382,11 @@ CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1
 CIRCUITPY_AUDIOBIQUAD = 1
 CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=1
 CIRCUITPY_AUDIOVERB = 1
-CFLAGS += -DCIRCUITPY_AUDIOVERB=1"
+CFLAGS += -DCIRCUITPY_AUDIOVERB=1
+CIRCUITPY_AUDIOSPEED = 1
+CFLAGS += -DCIRCUITPY_AUDIOSPEED=1
+CIRCUITPY_AUDIOFILEWRITER = 1
+CFLAGS += -DCIRCUITPY_AUDIOFILEWRITER=1"
 echo
 
 echo "==> Unix variant: source list"
@@ -390,6 +394,26 @@ echo "==> Unix variant: source list"
 # so these lines are what actually gets the modules compiled here.
 BINDING_ANCHOR=$'\tshared-bindings/audiofilters/__init__.c \\'
 MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
+# Upstream modules, not ours: audiospeed and audiofilewriter ship in 10.3.0
+# with CIRCUITPY_* defaults of 0 and no coverage source lines. Enabling them
+# gives the effects programme a stock resampler/speed-changer to compose with
+# and a WAV writer for unix probes; their defaults in py/circuitpy_mpconfig.mk
+# stay 0, so no board gains them by accident. Their -D flags come from upstream
+# CFLAGS, so they need no mpconfigvariant.h guards the way our own modules do.
+for _f in shared-bindings/audiospeed/__init__.c \
+          shared-bindings/audiospeed/Resampler.c \
+          shared-bindings/audiospeed/SpeedChanger.c \
+          shared-bindings/audiofilewriter/__init__.c \
+          shared-bindings/audiofilewriter/AudioFileWriter.c; do
+    insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\t'"$_f"$' \\'
+done
+for _f in shared-module/audiospeed/__init__.c \
+          shared-module/audiospeed/Resampler.c \
+          shared-module/audiospeed/SpeedChanger.c \
+          shared-module/audiofilewriter/__init__.c \
+          shared-module/audiofilewriter/AudioFileWriter.c; do
+    insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\t'"$_f"$' \\'
+done
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/MidSide.c \\'
