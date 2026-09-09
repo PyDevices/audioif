@@ -7,6 +7,16 @@ say which slot:
     src/shared/audioif_dynamics.h   the C enum -- the authority
     src/audiodynamics/Dynamics.c    MicroPython, name -> enum constant
     src/cpython/audiodynamics.py    the CPython twin, name -> a LITERAL INTEGER
+    src/circuitpython_spike/shared-bindings/audiodynamics/Dynamics.c
+                                    the CircuitPython binding, name -> constant
+
+**There are four, and this file first said three.** The fourth was found by the
+three-way `verify_dsp` run on 2026-09-09: `gain_smooth_ms` and
+`feedback_gain_corrected` had been added to the enum, to MicroPython and to the
+CPython twin, and the patched CircuitPython build refused both with
+`TypeError: unknown Dynamics option`. Exactly what a third target is for, and
+exactly the drift this file exists to prevent - it just did not know where to
+look yet.
 
 Only the middle one is safe. It names the enum constants, so a typo is a
 compile error and a reordered enum moves with it. The CPython twin writes the
@@ -30,6 +40,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 HEADER = ROOT / "src" / "shared" / "audioif_dynamics.h"
 BINDING = ROOT / "src" / "audiodynamics" / "Dynamics.c"
+SPIKE = (ROOT / "src" / "circuitpython_spike" / "shared-bindings"
+         / "audiodynamics" / "Dynamics.c")
 TWIN = ROOT / "src" / "cpython" / "audiodynamics.py"
 
 PREFIX = "AUDIOIF_DYNAMICS_OPT_"
@@ -52,12 +64,21 @@ def enum_order():
     return names[:-1]
 
 
-def binding_pairs():
-    """`{python name: enum name}` out of the MicroPython table."""
-    text = BINDING.read_text()
+def table_pairs(path):
+    """`{python name: enum name}` out of a C binding's option table."""
     found = re.findall(r"\{\s*MP_QSTR_([A-Za-z0-9_]+)\s*,\s*("
-                       + PREFIX + r"[A-Z0-9_]+)\s*\}", text)
+                       + PREFIX + r"[A-Z0-9_]+)\s*\}", path.read_text())
     return dict(found)
+
+
+def binding_pairs():
+    """The MicroPython table."""
+    return table_pairs(BINDING)
+
+
+def spike_pairs():
+    """The CircuitPython table."""
+    return table_pairs(SPIKE)
 
 
 def twin_numbers():
@@ -121,11 +142,30 @@ class TheThreeOptionTablesAgree(unittest.TestCase):
         earlier draft of this file, which passed it - comparing the two
         bindings to *each other* says nothing when both are missing the same
         name."""
-        exposed = set(binding_pairs().values())
+        exposed = set(binding_pairs().values()) | set(spike_pairs().values())
         missing = [name for name in self.enum if name not in exposed]
         self.assertEqual(
             missing, [],
             "in the C enum and reachable from no target: %s" % (missing,))
+
+    def test_the_circuitpython_binding_exposes_the_same_names(self):
+        """The fourth table, and the one that was silently behind. A patched
+        CircuitPython build refusing an option the other two accept is not a
+        build problem: it is this table."""
+        micropython = set(binding_pairs())
+        circuitpython = set(spike_pairs())
+        self.assertGreater(len(circuitpython), 25)
+        self.assertEqual(
+            micropython, circuitpython,
+            "an option reachable on MicroPython and not on CircuitPython, or "
+            "the reverse: MicroPython only %s, CircuitPython only %s"
+            % (sorted(micropython - circuitpython),
+               sorted(circuitpython - micropython)))
+
+    def test_the_circuitpython_names_match_their_enum_members(self):
+        for name, enum_name in sorted(spike_pairs().items()):
+            with self.subTest(option=name):
+                self.assertEqual(enum_name, PREFIX + name.upper())
 
     def test_the_names_match_their_enum_members(self):
         """`sidechain_hz` must be `..._OPT_SIDECHAIN_HZ`, not some other

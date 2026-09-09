@@ -169,6 +169,7 @@ SRC_USERMOD_C += \
 
 # --- tier 4: effects (audiofilters) ---
 SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audiofilters/__init__.c \
     $(MPAUDIO_SRC_DIR)/audiofilters/Filter.c \
     $(MPAUDIO_SRC_DIR)/audiofilters/Distortion.c \
     $(MPAUDIO_SRC_DIR)/audiofilters/Phaser.c \

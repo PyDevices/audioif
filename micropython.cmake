@@ -69,6 +69,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiospeed/module.c
     ${MPAUDIO_SRC_DIR}/audiofreeverb/Freeverb.c
     ${MPAUDIO_SRC_DIR}/audiofreeverb/module.c
+    ${MPAUDIO_SRC_DIR}/audiofilters/__init__.c
     ${MPAUDIO_SRC_DIR}/audiofilters/Filter.c
     ${MPAUDIO_SRC_DIR}/audiofilters/Distortion.c
     ${MPAUDIO_SRC_DIR}/audiofilters/Phaser.c
