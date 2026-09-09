@@ -101,3 +101,33 @@ emit("clamped", node, 4)
 # No source: silence, never a short block, never finished.
 node = echo.FeedbackDelay(sample_rate=SAMPLE_RATE, max_delay_ms=40.0)
 emit("starved", node, 2)
+
+
+def mono_source(frames=100, level=14000):
+    """Mono, and **shorter than one DSP chunk** (AUDIOIF_FEEDBACK_DELAY_FRAMES
+    is 256), so `get_buffer`'s inner loop runs more than once and `produced`
+    is non-zero on a later pass.
+
+    Both conditions are load-bearing. Every case above is stereo and every
+    one of them hands out 1600 frames, and on that material the MicroPython
+    binding advanced its destination by `produced * 2` while the DSP wrote
+    `channel_count` samples per frame - correct on stereo by coincidence, and
+    correct on mono only while one chunk covers the whole pull. So the bug in
+    audioif#54 rendered different bytes on MicroPython from the CPython
+    extension and the patched CircuitPython build, and no fixture in this
+    file could see it: measured before the fix, this case summed 176601 on
+    MicroPython against 206555 on the CPython target.
+    """
+    values = array("h")
+    for frame in range(frames):
+        shape = ((frame * 97) % 2001) - 1000
+        values.append(shape * level // 1000)
+    return audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                               channel_count=1)
+
+
+node = echo.FeedbackDelay(sample_rate=SAMPLE_RATE, max_delay_ms=10.0,
+                          delay_ms=6.0, feedback=0.7, mix=1.0,
+                          channel_count=1)
+node.play(mono_source())
+emit("mono-short", node, 4)
