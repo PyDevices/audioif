@@ -119,14 +119,28 @@ is the checklist, not a report.
   release job keep what a single interpreter *can* say - that every probe runs -
   across four operating systems and five Pythons, which catches an import
   error or an arithmetic assumption that only holds on x86_64.
-* **`cmods/bin/circuitpython` as an untouchable artefact.** The rule that it must
-  never be rebuilt existed because it was a reference of record. It is not one
-  any more: CircuitPython gets built at whatever configuration a comparison
-  needs. Keep a copy if it is convenient; stop treating it as evidence.
+* **`cmods/bin/circuitpython` as an untouchable artefact** — *not yet done.* The
+  rule that it must never be rebuilt existed because it was a reference of
+  record for `audiodynamics` and `audioroute`. It is not one any more, and
+  CircuitPython should be built at whatever configuration a comparison needs.
+  What stands in the way is mechanical: the unix `coverage` variant hardcodes
+  `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14` into CFLAGS instead of taking the make
+  variable, and `build_cp.sh` has no passthrough for extra make arguments. **The
+  never-rebuild rule stays in force until that is done and the CP-shared gates
+  are re-read against the new binary** — the binary is still the reference for
+  every node CircuitPython does have.
 * **The 14 → 64 voice-ceiling deviation** recorded in `docs/upstream-diff.md`
-  earlier the same day. It only existed because the two sides were built at
-  different ceilings. Build them the same and there is no deviation to record.
-* **Stored digests as a reference of record.** Probes stay — they are how a
+  earlier the same day — *not yet done*, and blocked on the same rebuild. It
+  only exists because the two sides are built at different ceilings. Build them
+  the same and there is no deviation to record; that section says so and stands
+  until then.
+* ~~**Stored digests as a reference of record**~~ — **done** for the DSP nodes:
+  `golden/dsp_nodes.json` is deleted and `verify_dsp` compares interpreters
+  against each other. The CP-shared gates (`verify_acceptance`,
+  `verify_effects`, `verify_streaming`, `verify_biquad`, `verify_mixdown_knee`)
+  still carry stored files, and those are a different case: they hold this port
+  to *CircuitPython's* answer, which is the rule, not to our own past. Probes
+  stay — they are how a
   render is made reproducible and comparable. What goes is treating the stored
   value as the thing that must be matched, rather than as a convenience for
   running the comparison.

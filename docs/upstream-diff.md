@@ -266,7 +266,17 @@ reconstructing an equivalent synth, four `BasslineSynth` steps with
 glide, `all_notes_off()`/`voice.stop()` tail-drain, and final `Mixer`
 state) is identical after the `CIRCUITPY_SYNTHIO_MAX_CHANNELS` fix.
 
-### The ceiling later moved 14 → 64, which gives up that alignment above the knee (audioif#31, recorded 2026-09-09)
+### The ceiling later moved 14 → 64, which gives up that alignment above the knee (audioif#31, recorded 2026-09-09; resolution decided, not yet applied)
+
+**Status.** Under `docs/correctness-standard.md` this deviation should not
+exist: a node CircuitPython also has is compared with CircuitPython *at the same
+compile-time configuration*, so the comparison build gets whatever ceiling we
+ship. Applying that retires this section outright. It has not been applied yet —
+the pinned CircuitPython is built at 14, and its unix `coverage` variant
+hardcodes `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14` into CFLAGS rather than taking
+the `?=` make variable the way `ports/raspberrypi/mpconfigport.mk` does, so
+overriding it is a change to the build path and not a flag. Until then the
+divergence below is real and stands as written.
 
 The paragraph above set the ceiling to 14 **because the oracle is built at
 14** — "matching the oracle's own build choice so voice-stealing arithmetic
