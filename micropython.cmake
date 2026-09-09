@@ -62,6 +62,7 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiomixer/Mixer.c
     ${MPAUDIO_SRC_DIR}/audiomixer/MixerVoice.c
     ${MPAUDIO_SRC_DIR}/audiomixer/module.c
+    ${MPAUDIO_SRC_DIR}/audiospeed/Resampler.c
     ${MPAUDIO_SRC_DIR}/audiospeed/SpeedChanger.c
     ${MPAUDIO_SRC_DIR}/audiospeed/module.c
     ${MPAUDIO_SRC_DIR}/audiofreeverb/Freeverb.c

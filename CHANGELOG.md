@@ -3,6 +3,8 @@
 - CI configures the standalone CMake path, which no workflow had ever run
 - CI installs the `[render]` extra, and proves a bare install does not bring numpy
 - `scripts/test_testpypi_install.py` follows the release beside it and its smoke code runs
+- audiospeed.Resampler on the MicroPython side, so all three targets have it
+- audioconvolve.Convolver.latency reports 0 when nothing is loaded
 - audioecho.FeedbackDelay renders mono correctly when a source block is short
 - Every node type releases: `deinit()` on the twelve that had none, and the deinitialised guard on the one funnel every pull goes through
 - `audioroute.Splitter` can be released, and releasing it releases its taps

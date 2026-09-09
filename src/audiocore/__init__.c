@@ -21,6 +21,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "audiocore/__init__.h"
+#include "audiospeed/Resampler.h"
 #include "cp_compat/argcheck.h"
 #include "cp_compat/objproperty.h"
 #include "cp_compat/util.h"
@@ -284,7 +285,14 @@ void audiosample_convert_s16s_u8s(uint8_t *buffer_out, const int16_t *buffer_in,
 
 void audiosample_must_match(audiosample_base_t *self, mp_obj_t other_in, bool allow_mono_to_stereo) {
     const audiosample_base_t *other = audiosample_check(other_in);
-    if (other->sample_rate != self->sample_rate) {
+    audiosample_check_for_deinit(other);
+    // A Resampler is exempt from the rate check, because a rate it does not
+    // match is the entire reason to use one: it is handed the destination's
+    // rate at the bottom of this function and resamples to it. Upstream does
+    // exactly this, gated on CIRCUITPY_AUDIOSPEED; audioif always builds
+    // audiospeed, so there is nothing to gate on.
+    if (other->sample_rate != self->sample_rate &&
+        !mp_obj_is_type(other_in, &audiospeed_resampler_type)) {
         mp_raise_ValueError_varg(MP_ERROR_TEXT("The sample's %q does not match"), MP_QSTR_sample_rate);
     }
     if ((!allow_mono_to_stereo || (allow_mono_to_stereo && self->channel_count != 2)) && other->channel_count != self->channel_count) {
@@ -295,6 +303,15 @@ void audiosample_must_match(audiosample_base_t *self, mp_obj_t other_in, bool al
     }
     if (other->samples_signed != self->samples_signed) {
         mp_raise_ValueError_varg(MP_ERROR_TEXT("The sample's %q does not match"), MP_QSTR_signedness);
+    }
+
+    // Bind the destination rate onto a Resampler. This is the one place it
+    // happens, and it covers the whole palette because every node's `play()`
+    // comes through here -- which is why upstream put it here too, rather
+    // than in each node.
+    if (mp_obj_is_type(other_in, &audiospeed_resampler_type)) {
+        audiospeed_resampler_set_sample_rate(MP_OBJ_TO_PTR(other_in),
+            self->sample_rate);
     }
 }
 

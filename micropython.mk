@@ -156,6 +156,7 @@ SRC_USERMOD_C += \
 
 # --- tier 4: effects (audiospeed) ---
 SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/audiospeed/Resampler.c \
     $(MPAUDIO_SRC_DIR)/audiospeed/SpeedChanger.c \
     $(MPAUDIO_SRC_DIR)/audiospeed/module.c
 

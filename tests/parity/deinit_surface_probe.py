@@ -60,7 +60,9 @@ def source():
 
 #: (name, builder). Every type in the palette that can be built without a
 #: file on disk; `audiocore.WaveFile` and `audiomp3.MP3Decoder` need one and
-#: are covered by their own tests.
+#: are covered by their own tests. A node added to the palette belongs here
+#: the same day: the probe's claim is *every* type, and a list that quietly
+#: falls behind the module tables makes that claim false.
 NODES = (
     ("audiobiquad.AllPass", lambda: audiobiquad.AllPass(
         frequency=1000.0, stages=2, **PCM)),
@@ -95,6 +97,7 @@ NODES = (
         source(), taps=2).tap(0)),
     ("audioshaper.Waveshaper", lambda: audioshaper.Waveshaper(
         curve=_CURVE, **PCM)),
+    ("audiospeed.Resampler", lambda: audiospeed.Resampler(source())),
     ("audiospeed.SpeedChanger", lambda: audiospeed.SpeedChanger(source())),
     ("audioverb.Tank", lambda: audioverb.Tank(**PCM)),
     ("synthio.Synthesizer", lambda: synthio.Synthesizer(

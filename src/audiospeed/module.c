@@ -3,12 +3,14 @@
 //
 // SPDX-License-Identifier: MIT
 
+#include "audiospeed/Resampler.h"
 #include "audiospeed/SpeedChanger.h"
 
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audiospeed_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiospeed) },
+    { MP_ROM_QSTR(MP_QSTR_Resampler), MP_ROM_PTR(&audiospeed_resampler_type) },
     { MP_ROM_QSTR(MP_QSTR_SpeedChanger), MP_ROM_PTR(&audiospeed_speedchanger_type) },
 };
 static MP_DEFINE_CONST_DICT(audiospeed_module_globals, audiospeed_module_globals_table);
