@@ -86,10 +86,14 @@ jobs:
       # `--fault` is run first and must FAIL: a probe whose failing mode is
       # never exercised is not a gate.
       - name: The deinit surface, and proof the probe can fail
+        # Paths are workspace-root relative here, not repo-root: this job
+        # checks the repo out to `audioif/` and puts upstream MicroPython
+        # beside it.
         run: |
           MP=./micropython/ports/unix/build-standard/micropython
-          if MICROPYPATH=. "$MP" tests/parity/deinit_surface_probe.py --fault; then
+          PROBE=audioif/tests/parity/deinit_surface_probe.py
+          if MICROPYPATH=audioif "$MP" "$PROBE" --fault; then
             echo "the planted fault passed, so this probe proves nothing" >&2
             exit 1
           fi
-          MICROPYPATH=. "$MP" tests/parity/deinit_surface_probe.py
+          MICROPYPATH=audioif "$MP" "$PROBE"
