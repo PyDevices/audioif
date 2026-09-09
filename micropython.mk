@@ -34,6 +34,8 @@ SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_biquad.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_echo.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_phaser.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_chorus.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_flanger.c
+SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_granular_pitch_shift.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_multitap.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_pitchshift.c
 SRC_USERMOD_C += $(MPAUDIO_SRC_DIR)/shared/audioif_freeverb.c
@@ -176,6 +178,8 @@ SRC_USERMOD_C += \
 SRC_USERMOD_C += \
     $(MPAUDIO_SRC_DIR)/audiodelays/Chorus.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/Echo.c \
+    $(MPAUDIO_SRC_DIR)/audiodelays/Flanger.c \
+    $(MPAUDIO_SRC_DIR)/audiodelays/GranularPitchShift.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/MultiTapDelay.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/PitchShift.c \
     $(MPAUDIO_SRC_DIR)/audiodelays/module.c

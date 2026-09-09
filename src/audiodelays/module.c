@@ -6,6 +6,8 @@
 
 #include "audiodelays/Chorus.h"
 #include "audiodelays/Echo.h"
+#include "audiodelays/Flanger.h"
+#include "audiodelays/GranularPitchShift.h"
 #include "audiodelays/MultiTapDelay.h"
 #include "audiodelays/PitchShift.h"
 
@@ -15,6 +17,8 @@ static const mp_rom_map_elem_t audiodelays_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiodelays) },
     { MP_ROM_QSTR(MP_QSTR_Echo), MP_ROM_PTR(&audiodelays_echo_type) },
     { MP_ROM_QSTR(MP_QSTR_Chorus), MP_ROM_PTR(&audiodelays_chorus_type) },
+    { MP_ROM_QSTR(MP_QSTR_Flanger), MP_ROM_PTR(&audiodelays_flanger_type) },
+    { MP_ROM_QSTR(MP_QSTR_GranularPitchShift), MP_ROM_PTR(&audiodelays_granular_pitch_shift_type) },
     { MP_ROM_QSTR(MP_QSTR_PitchShift), MP_ROM_PTR(&audiodelays_pitch_shift_type) },
     { MP_ROM_QSTR(MP_QSTR_MultiTapDelay), MP_ROM_PTR(&audiodelays_multi_tap_delay_type) },
 };

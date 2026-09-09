@@ -31,6 +31,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/shared/audioif_echo.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_phaser.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_chorus.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_flanger.c
+    ${MPAUDIO_SRC_DIR}/shared/audioif_granular_pitch_shift.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_multitap.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_pitchshift.c
     ${MPAUDIO_SRC_DIR}/shared/audioif_freeverb.c
@@ -73,6 +75,8 @@ target_sources(usermod_mpaudio INTERFACE
     ${MPAUDIO_SRC_DIR}/audiofilters/module.c
     ${MPAUDIO_SRC_DIR}/audiodelays/Chorus.c
     ${MPAUDIO_SRC_DIR}/audiodelays/Echo.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/Flanger.c
+    ${MPAUDIO_SRC_DIR}/audiodelays/GranularPitchShift.c
     ${MPAUDIO_SRC_DIR}/audiodelays/MultiTapDelay.c
     ${MPAUDIO_SRC_DIR}/audiodelays/PitchShift.c
     ${MPAUDIO_SRC_DIR}/audiodelays/module.c
