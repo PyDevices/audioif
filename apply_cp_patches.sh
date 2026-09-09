@@ -235,13 +235,18 @@ echo "mode:          $MODE"
 echo
 
 if [[ "$MODE" == "--status" ]]; then
+    # Anything not in the state --apply would leave behind makes --status exit
+    # nonzero. It used to report the defect and exit 0, so a caller that
+    # checked $? read a broken tree as a good one - found by planting a fault
+    # in the pin move's step-0 rehearsal, 2026-09-09.
+    STATUS_RC=0
     for file in "$VARIANT_MK" "$VARIANT_H" "$DEFNS_MK" "$MPCONFIG_MK"; do
         if [ ! -e "$file" ]; then
-            echo "missing  ${file#"$CP_DIR"/}"
+            echo "missing  ${file#"$CP_DIR"/}"; STATUS_RC=1
         elif block_present "$file"; then
             echo "patched  ${file#"$CP_DIR"/}"
         else
-            echo "pending  ${file#"$CP_DIR"/}"
+            echo "pending  ${file#"$CP_DIR"/}"; STATUS_RC=1
         fi
     done
     for file in shared-bindings/audiodynamics/__init__.c \
@@ -262,10 +267,14 @@ if [[ "$MODE" == "--status" ]]; then
                 shared/audioif_trig.c shared/audioif_fft.c \
                 shared/audioif_convolve.c shared/audioif_filter_f32.c \
                 shared/audioif_tank.c; do
-        [ -e "$CP_DIR/$file" ] && echo "ok       $file" || echo "missing  $file"
+        if [ -e "$CP_DIR/$file" ]; then
+            echo "ok       $file"
+        else
+            echo "missing  $file"; STATUS_RC=1
+        fi
     done
-    python3 "$REPLACEMENTS" "$CP_DIR" status
-    exit 0
+    python3 "$REPLACEMENTS" "$CP_DIR" status || STATUS_RC=1
+    exit $STATUS_RC
 fi
 
 echo "==> Copy modules and shared DSP"

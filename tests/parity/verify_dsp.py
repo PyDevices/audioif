@@ -187,8 +187,14 @@ def verify(args):
                 print("ok       %-20s %-14s %s"
                       % (probe, name, actual[:16]))
             else:
-                print("FAIL     %-20s %-14s %s != %s"
-                      % (probe, name, actual[:16], expected[:16]))
+                # Full digests, not the 16-char prefix the ok lines use: a
+                # difference in the tail printed as two identical-looking
+                # strings, in the very report a named-cause ledger row is
+                # written from (found in the pin move's step-0 rehearsal).
+                print("FAIL     %-20s %-14s\n"
+                      "             got      %s\n"
+                      "             expected %s"
+                      % (probe, name, actual, expected))
                 failures.append("%s on %s" % (probe, name))
     print("\n%d comparisons, %d failures" % (checked, len(failures)))
     if failures:
