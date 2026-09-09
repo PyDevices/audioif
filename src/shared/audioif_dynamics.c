@@ -239,30 +239,53 @@ void audioif_dynamics_set_lookahead(audioif_dynamics_state_t *state,
     }
 }
 
-void audioif_dynamics_state_init(audioif_dynamics_state_t *state) {
-    state->channel_count = 2;
+// Everything the detector remembers, and nothing that is configuration.
+// `state_init` and `reset` both go through here so the two cannot drift: a
+// reset that left behind something a fresh build clears is a reset that does
+// not mean what it says, and that is exactly what audioif#56 was -- measured,
+// a fresh node under a quiet tone gated it to 0 LSB and the same node after a
+// loud pass and a reset passed it at 32.
+void audioif_dynamics_clear_detector(audioif_dynamics_state_t *state) {
+    // The side-chain filter memory. It used to survive a reset, on the
+    // grounds that the original engine keeps its filter memory across one --
+    // but the original's reset was never held to returning the node to its
+    // built state, and a gate that opens on the difference between silence
+    // and a stale high-pass is not carrying fidelity, it is carrying the
+    // previous take.
     state->sidechain_lp[0] = 0.0f;
     state->sidechain_lp[1] = 0.0f;
-    state->envelope = 0.0f;
-    state->fast_env = 0.0f;
-    state->slow_env = 0.0f;
-    state->gain_reduction_db = 0.0f;
-    state->lookahead = NULL;
-    state->lookahead_capacity = 0;
-    state->lookahead_write = 0;
-    memset(state->peak_history, 0, sizeof(state->peak_history));
-    audioif_dynamics_clear_extras(state);
     state->sidechain_hp2[0] = 0.0f;
     state->sidechain_hp2[1] = 0.0f;
     state->sidechain_low[0] = 0.0f;
     state->sidechain_low[1] = 0.0f;
     state->sidechain_low2[0] = 0.0f;
     state->sidechain_low2[1] = 0.0f;
+    state->envelope = 0.0f;
+    state->fast_env = 0.0f;
+    state->slow_env = 0.0f;
+    // A fresh node reports no gain reduction; so does a reset one now.
+    state->gain_reduction_db = 0.0f;
+    // The gain smoother's memory, and the flag that says it has one. Added
+    // after this helper was, and it belongs here for the helper's whole
+    // reason: whatever a fresh build clears, a reset clears.
+    state->smoothed_gain = 0.0f;
+    state->gain_smooth_primed = false;
+    memset(state->peak_history, 0, sizeof(state->peak_history));
+    audioif_dynamics_clear_extras(state);
 }
 
-// Everything the additions remember that a reset drops. The side-chain
-// filters are not in here, deliberately: they are filter memory, and the
-// original keeps that across a reset.
+void audioif_dynamics_state_init(audioif_dynamics_state_t *state) {
+    state->channel_count = 2;
+    state->lookahead = NULL;
+    state->lookahead_capacity = 0;
+    state->lookahead_write = 0;
+    audioif_dynamics_clear_detector(state);
+}
+
+// Everything the additions remember. The side-chain filters are not in here
+// because they are not an addition -- `sidechain_lp` is the original's own,
+// and all four are cleared by audioif_dynamics_clear_detector above, which is
+// the single door both state_init and reset go through.
 void audioif_dynamics_clear_extras(audioif_dynamics_state_t *state) {
     state->rms_env[0] = 0.0f;
     state->rms_env[1] = 0.0f;
@@ -291,23 +314,18 @@ void audioif_dynamics_set_channel_count(
 }
 
 void audioif_dynamics_reset(audioif_dynamics_state_t *state) {
-    state->envelope = 0.0f;
-    state->fast_env = 0.0f;
-    state->slow_env = 0.0f;
-    // The sidechain filter's memory and the last reported gain reduction
-    // deliberately survive, matching the original. What is in the lookahead
-    // buffer does not: that is audio in flight, and a chain restarted with
-    // the previous take still queued would play it.
+    // A reset means "as if this node had just been built", so it clears
+    // exactly what a fresh build clears and keeps only the configuration --
+    // the channel count and the lookahead storage the bindings own. The
+    // lookahead *contents* go: that is audio in flight, and a chain
+    // restarted with the previous take still queued would play it.
+    audioif_dynamics_clear_detector(state);
     if (state->lookahead != NULL && state->lookahead_capacity != 0) {
         memset(state->lookahead, 0,
             (size_t)state->lookahead_capacity * state->channel_count *
             sizeof(int16_t));
         state->lookahead_write = 0;
     }
-    state->smoothed_gain = 0.0f;
-    state->gain_smooth_primed = false;
-    memset(state->peak_history, 0, sizeof(state->peak_history));
-    audioif_dynamics_clear_extras(state);
 }
 
 // The peak between two samples, which is where a limiter's overshoot lives:

@@ -281,10 +281,16 @@ void audioif_dynamics_configure(audioif_dynamics_config_t *config,
 
 void audioif_dynamics_state_init(audioif_dynamics_state_t *state);
 
-// Clear only what the additive options remember. Called by state_init and by
-// reset; the side-chain filters are deliberately not in it, because the
-// original keeps its filter memory across a reset.
+// Clear only what the additive options remember. Called by
+// audioif_dynamics_clear_detector, which is the one both state_init and reset
+// go through.
 void audioif_dynamics_clear_extras(audioif_dynamics_state_t *state);
+
+// Everything the detector remembers, and nothing that is configuration: the
+// side-chain filter memory, the envelopes, the reported gain reduction, the
+// peak history and the extras. state_init and reset both call it, so a reset
+// cannot come to mean less than a fresh build (audioif#56).
+void audioif_dynamics_clear_detector(audioif_dynamics_state_t *state);
 
 // Select mono or stereo processing before configuring lookahead storage.
 void audioif_dynamics_set_channel_count(

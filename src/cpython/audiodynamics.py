@@ -211,8 +211,11 @@ class Dynamics(_AudioSample):
         self._check()
         self._pending = b""
         self._key_pending = b""
-        # The sidechain filter's memory and the last reported gain reduction
-        # deliberately survive; only the detector envelopes are dropped.
+        # `_state.reset()` is `audioif_dynamics_reset` in the shared C, so
+        # this target and the two native ones drop the same things: every
+        # thing the detector remembers, including the side-chain filter
+        # memory and the reported gain reduction, which used to survive
+        # (audioif#56). What is kept is configuration.
         self._state.reset()
 
     def _take_key(self, wanted):

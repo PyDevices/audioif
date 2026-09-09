@@ -27,9 +27,17 @@ never to a previous version of its own output.
 | D10 | A corrected loop is still a feedback design | > 1 dB from feed-forward |
 | D11 | The corrected slope does not ring | 0.01 dB held, 0.25 dB overshoot |
 | D12 | The correction is inert outside COMPRESS and without the detector | exact |
+| D13 | `reset()` leaves the node as a freshly built one | exact, 0 LSB |
 
 D8 through D12 arrived with audioif#61 and audioif#62 and were written the same
 day; D1 through D6 were here before the traits had names.
+
+**D13 is why the traits exist at all.** It is audioif#56: `reset()` used to keep
+the side-chain filter memory, so a reset node was not a fresh one - measured, a
+fresh node gated a quiet tone to 0 LSB and the same node after a loud pass and a
+reset passed it at 32. The fix is in the shared C, so it moved all three targets
+*together* and `verify_dsp` stayed green through it - agreement cannot see a
+change that moves every target at once. This trait is what that gate cannot say.
 """
 
 import math
@@ -427,3 +435,80 @@ class ItsScopeIsNarrow(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResetTest(unittest.TestCase):
+    """D13 - audioif#56. A reset that leaves anything behind is a reset that
+    does not mean what it says."""
+
+    THRESHOLD_DB = -39.7
+    QUIET_DBFS = -60.0
+
+    def _gate(self):
+        node = audiodynamics.Dynamics(audiodynamics.DYN_GATE,
+                                      sample_rate=SAMPLE_RATE,
+                                      channel_count=CHANNELS)
+        node.set(threshold_db=self.THRESHOLD_DB, attack_ms=0.01,
+                 release_ms=100.0, depth_db=-80.0, sidechain_hz=120.0)
+        return node
+
+    def _tone(self, dbfs, frames=1024):
+        amplitude = 32767.0 * (10.0 ** (dbfs / 20.0))
+        values = array("h")
+        for frame in range(frames):
+            sample = int(amplitude * math.sin(2.0 * math.pi * 440.0 * frame
+                                              / SAMPLE_RATE))
+            values.append(sample)
+            values.append(sample)
+        return audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                   channel_count=CHANNELS)
+
+    def _first_peak(self, node):
+        data = bytes(audiocore.get_buffer(node)[1])
+        top = 0
+        for position in range(0, len(data), 2):
+            word = data[position] | (data[position + 1] << 8)
+            if word >= 32768:
+                word -= 65536
+            top = max(top, abs(word))
+        return top
+
+    def test_a_reset_node_gates_a_quiet_tone_like_a_fresh_one(self):
+        """D13. The gate's own condition: a tone 20 dB under the threshold
+        should be shut out. It was, on a fresh node, and was passed at full
+        level on a reset one - the stale high-pass state kept the detector's
+        level up and held the gate open."""
+        fresh = self._gate()
+        fresh.play(self._tone(self.QUIET_DBFS))
+        self.assertEqual(self._first_peak(fresh), 0)
+
+        used = self._gate()
+        used.play(self._tone(0.0))
+        for _block in range(8):
+            audiocore.get_buffer(used)
+        audiocore.reset_buffer(used)
+        used.play(self._tone(self.QUIET_DBFS))
+        self.assertEqual(self._first_peak(used), 0)
+
+    def test_D13_reads_a_gate_that_can_open(self):
+        """D13's control. "The output was zero" is also true of a gate that
+        never opens for anything, so the same node on a loud tone must pass
+        it."""
+        node = self._gate()
+        node.play(self._tone(0.0))
+        self.assertGreater(self._first_peak(node), 1000)
+
+    def test_the_reported_gain_reduction_resets_too(self):
+        """D13's other half: a fresh node reports no reduction, so a reset one
+        must not still be reporting the last one it made."""
+        node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
+                                      sample_rate=SAMPLE_RATE,
+                                      channel_count=CHANNELS)
+        node.set(threshold_db=-40.0, ratio=8.0, knee_db=0.0, attack_ms=1.0,
+                 release_ms=50.0)
+        node.play(self._tone(-6.0))
+        for _block in range(8):
+            audiocore.get_buffer(node)
+        self.assertLess(node.gain_reduction_db(), -1.0)
+        audiocore.reset_buffer(node)
+        self.assertEqual(node.gain_reduction_db(), 0.0)
