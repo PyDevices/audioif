@@ -5,7 +5,7 @@
 #include "shared-module/audioroute/Splitter.h"
 
 void audioroute_splitter_pull(audioroute_splitter_obj_t *self) {
-    if (self->source == MP_OBJ_NULL) {
+    if (self->deinited || self->source == MP_OBJ_NULL) {
         return;
     }
     uint8_t *raw = NULL;

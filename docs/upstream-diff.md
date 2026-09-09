@@ -1,5 +1,37 @@
 # Deltas from upstream CircuitPython
 
+## `audiodelays.Flanger`: we do not reproduce upstream's int32 overflow (audioif#76)
+
+CircuitPython 10.3.0's `shared-module/audiodelays/Flanger.c:365` computes the
+wet tap's interpolation in `int32_t`:
+
+```c
+int32_t wet = s0 + (((s1 - s0) * (int32_t)delay_frac) >> 16);
+```
+
+With the delay line holding adjacent samples at opposite rails, `s1 - s0`
+reaches 65535 and `delay_frac` reaches 65535, so the product is 4.29e9 - past
+INT32_MAX. Signed overflow, reachable on ordinary full-scale material.
+Upstream used the widening cast eighteen lines earlier, at `:347`, for the
+span times the triangle; it is absent here.
+
+**This port widens it**, `src/shared/audioif_flanger.c`. So above about
+±26000 alternating, our MicroPython build and CircuitPython 10.3.0 render
+different bytes, and ours is the arithmetically correct one. Found by the
+three-way `verify_dsp` run of 2026-09-09: 18 of 54 probe lines differed and
+they were exactly the `rails` cases, every other case agreeing to the byte -
+the signature of an overflow that only bites at the extremes.
+
+`verify_dsp` carries a stated skip for `flanger_probe.py` on circuitpython
+naming that issue, so the three-way is not red on a defect that is not ours.
+An upstream report is drafted and held, per the rule that none goes out until
+our own house is clean.
+
+**Our CPython twin was never wrong**, and that is worth knowing rather than
+comforting: it is written in Python, which has no int32 to overflow. A twin in
+a language without fixed-width arithmetic cannot surface this class of defect,
+so it is not evidence about it either way.
+
 Running log of every place this port's behavior deliberately differs from
 CircuitPython's, or needed a workspace-side fix that isn't a plain port.
 Goal: keep this list short. Python-level API and behavior match CP unless

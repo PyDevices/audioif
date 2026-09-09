@@ -7,6 +7,10 @@
 #include "shared-bindings/audioroute/Splitter.h"
 #include "shared-bindings/audioroute/SplitterTap.h"
 
+#include "shared/runtime/context_manager_helpers.h"
+#include "shared-bindings/audiocore/__init__.h"
+#include "shared-bindings/audioroute/SplitterTap.h"
+#include "shared-bindings/util.h"
 #include "py/runtime.h"
 
 //| class Splitter:
@@ -48,6 +52,7 @@ static mp_obj_t audioroute_splitter_make_new(const mp_obj_type_t *type,
 
     audioroute_splitter_obj_t *self =
         mp_obj_malloc(audioroute_splitter_obj_t, type);
+    self->deinited = false;
     self->source = source;
     audioif_splitter_init(&self->state, (uint32_t)taps);
     if (sample->channel_count < 1 || sample->channel_count > 2) {
@@ -83,6 +88,9 @@ static mp_obj_t audioroute_splitter_make_new(const mp_obj_type_t *type,
 //|
 static mp_obj_t audioroute_splitter_tap(mp_obj_t self_in, mp_obj_t index_in) {
     audioroute_splitter_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    if (self->deinited) {
+        raise_deinited_error();
+    }
     const mp_int_t index = mp_obj_get_int(index_in);
     if (index < 0 || (uint32_t)index >= self->state.tap_count) {
         mp_raise_ValueError(MP_ERROR_TEXT("tap index out of range"));
@@ -92,7 +100,38 @@ static mp_obj_t audioroute_splitter_tap(mp_obj_t self_in, mp_obj_t index_in) {
 MP_DEFINE_CONST_FUN_OBJ_2(audioroute_splitter_tap_obj,
     audioroute_splitter_tap);
 
+// `deinit()` releases the branch: it drops the upstream chain and releases every
+// tap, because the ring the taps read belongs to this object and a tap outliving
+// it would be reading a ring nothing refills. The ring itself is inline here, so
+// it goes when the last reference to the object does. Mirrors the MicroPython
+// binding, which gained this on 2026-09-09 (audioif#58); this copy did not, and
+// that gap is audioif#75.
+static mp_obj_t audioroute_splitter_deinit(mp_obj_t self_in) {
+    audioroute_splitter_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    if (self->deinited) {
+        return mp_const_none;
+    }
+    self->deinited = true;
+    for (uint32_t index = 0; index < AUDIOIF_SPLITTER_MAX_TAPS; ++index) {
+        if (self->taps[index] != MP_OBJ_NULL) {
+            audioroute_splitter_tap_obj_t *tap =
+                MP_OBJ_TO_PTR(self->taps[index]);
+            audiosample_mark_deinit(&tap->base);
+            tap->owner = mp_const_none;
+            self->taps[index] = MP_OBJ_NULL;
+        }
+    }
+    self->source = MP_OBJ_NULL;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audioroute_splitter_deinit_obj,
+    audioroute_splitter_deinit);
+
 static const mp_rom_map_elem_t audioroute_splitter_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit),
+      MP_ROM_PTR(&audioroute_splitter_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_tap), MP_ROM_PTR(&audioroute_splitter_tap_obj) },
 };
 static MP_DEFINE_CONST_DICT(audioroute_splitter_locals_dict,

@@ -8,6 +8,7 @@
 #include "shared-bindings/audiocore/__init__.h"
 
 #include "py/objproperty.h"
+#include "shared/runtime/context_manager_helpers.h"
 #include "py/runtime.h"
 
 //| class Multiply:
@@ -163,7 +164,28 @@ static mp_obj_t audiomath_multiply_set(size_t n_args, const mp_obj_t *args,
 MP_DEFINE_CONST_FUN_OBJ_KW(audiomath_multiply_set_obj, 1,
     audiomath_multiply_set);
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, so the guarded getters raise afterwards. The MicroPython
+// binding of this same type gained it on 2026-09-09 (audioif#58, #60, #63) and
+// this copy did not, which is audioif#75: the two bindings are hand-written and
+// nothing held them to each other. Same fields, same order, deliberately.
+static mp_obj_t audiomath_multiply_deinit(mp_obj_t self_in) {
+    audiomath_multiply_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->modulator = mp_const_none;
+    self->pending_source = NULL;
+    self->pending_source_frames = 0;
+    self->pending_modulator = NULL;
+    self->pending_modulator_frames = 0;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiomath_multiply_deinit_obj, audiomath_multiply_deinit);
+
 static const mp_rom_map_elem_t audiomath_multiply_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audiomath_multiply_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiomath_multiply_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_modulate),
       MP_ROM_PTR(&audiomath_multiply_modulate_obj) },

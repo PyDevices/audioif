@@ -108,12 +108,34 @@ NODES = (
 
 
 def guard_fired(call):
-    """Whether `call()` raised. The type is deliberately not read."""
+    """Whether the released node refused, by either of the two conventions.
+
+    audioif's own builds **raise**: `audiosample_get_buffer` calls
+    `audiosample_check_for_deinit`, which throws. Upstream CircuitPython
+    **returns an error** instead - `shared-module/audiocore/__init__.c:37`
+    checks `audiosample_deinited()` and hands back `GET_BUFFER_ERROR` with a
+    NULL buffer, and its `reset_buffer` returns without doing anything. Both
+    are guards; neither reads freed memory. The difference is a convention, not
+    a defect, and this probe accepts both on purpose.
+
+    An earlier version counted only exceptions, and so reported every node on
+    the patched CircuitPython build as unguarded - which was wrong, and was
+    written into audioif#59 before the measurement was taken. What a released
+    node must not do is hand back data.
+    """
     try:
-        call()
+        result = call()
     except Exception:
         return True
-    return False
+    if result is None:
+        return True                      # reset_buffer: nothing handed back
+    try:
+        code, data = result
+    except (TypeError, ValueError):
+        return False                     # a value that is not a (code, buffer)
+    #: `GET_BUFFER_ERROR` is 2 in both runtimes; CircuitPython does not export
+    #: the name from `audiocore`, so the number is used rather than imported.
+    return code == 2 or data is None or len(data) == 0
 
 
 def check_node(name, build, deinit):

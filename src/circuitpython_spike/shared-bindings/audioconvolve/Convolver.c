@@ -9,6 +9,7 @@
 #include "shared-bindings/audiocore/__init__.h"
 
 #include "py/objproperty.h"
+#include "shared/runtime/context_manager_helpers.h"
 #include "py/runtime.h"
 
 //| class Convolver:
@@ -328,15 +329,40 @@ MP_PROPERTY_GETTER(audioconvolve_convolver_taps_obj,
 //|
 //|
 static mp_obj_t audioconvolve_convolver_get_latency(mp_obj_t self_in) {
-    (void)self_in;
-    return MP_OBJ_NEW_SMALL_INT(AUDIOIF_CONVOLVE_FRAMES);
+    // The loaded state, not a constant: an unloaded convolver passes its input
+    // through and adds no latency, so reporting a whole partition told a class
+    // that compensates to compensate for a delay that was not there
+    // (audioif#44). The MicroPython binding was fixed on 2026-09-09 and this
+    // copy was not, which is audioif#75.
+    audioconvolve_convolver_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    return MP_OBJ_NEW_SMALL_INT(
+        self->state.loaded != 0 ? AUDIOIF_CONVOLVE_FRAMES : 0);
 }
 MP_DEFINE_CONST_FUN_OBJ_1(audioconvolve_convolver_get_latency_obj,
     audioconvolve_convolver_get_latency);
 MP_PROPERTY_GETTER(audioconvolve_convolver_latency_obj,
     (mp_obj_t)&audioconvolve_convolver_get_latency_obj);
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, so the guarded getters raise afterwards. The MicroPython
+// binding of this same type gained it on 2026-09-09 (audioif#58, #60, #63) and
+// this copy did not, which is audioif#75: the two bindings are hand-written and
+// nothing held them to each other. Same fields, same order, deliberately.
+static mp_obj_t audioconvolve_convolver_deinit(mp_obj_t self_in) {
+    audioconvolve_convolver_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    self->storage = NULL;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audioconvolve_convolver_deinit_obj, audioconvolve_convolver_deinit);
+
 static const mp_rom_map_elem_t audioconvolve_convolver_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audioconvolve_convolver_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play),
       MP_ROM_PTR(&audioconvolve_convolver_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_set),

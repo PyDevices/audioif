@@ -8,6 +8,7 @@
 #include "shared-bindings/audiocore/__init__.h"
 
 #include "py/objproperty.h"
+#include "shared/runtime/context_manager_helpers.h"
 #include "py/runtime.h"
 
 //| class Dynamics:
@@ -319,7 +320,28 @@ static mp_obj_t audiodynamics_dynamics_gain_reduction_db(mp_obj_t self_in) {
 MP_DEFINE_CONST_FUN_OBJ_1(audiodynamics_dynamics_gain_reduction_db_obj,
     audiodynamics_dynamics_gain_reduction_db);
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, so the guarded getters raise afterwards. The MicroPython
+// binding of this same type gained it on 2026-09-09 (audioif#58, #60, #63) and
+// this copy did not, which is audioif#75: the two bindings are hand-written and
+// nothing held them to each other. Same fields, same order, deliberately.
+static mp_obj_t audiodynamics_dynamics_deinit(mp_obj_t self_in) {
+    audiodynamics_dynamics_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    self->key_source = mp_const_none;
+    self->key_pending = NULL;
+    self->key_pending_frames = 0;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiodynamics_dynamics_deinit_obj, audiodynamics_dynamics_deinit);
+
 static const mp_rom_map_elem_t audiodynamics_dynamics_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audiodynamics_dynamics_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiodynamics_dynamics_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_key), MP_ROM_PTR(&audiodynamics_dynamics_key_obj) },
     { MP_ROM_QSTR(MP_QSTR_set), MP_ROM_PTR(&audiodynamics_dynamics_set_obj) },

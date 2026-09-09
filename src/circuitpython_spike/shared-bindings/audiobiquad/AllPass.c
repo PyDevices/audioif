@@ -9,6 +9,7 @@
 #include "shared-bindings/audiocore/__init__.h"
 
 #include "py/objproperty.h"
+#include "shared/runtime/context_manager_helpers.h"
 #include "py/runtime.h"
 
 //| class AllPass:
@@ -211,7 +212,25 @@ MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_get_coefficient_obj,
 MP_PROPERTY_GETTER(audiobiquad_allpass_coefficient_obj,
     (mp_obj_t)&audiobiquad_allpass_get_coefficient_obj);
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, so the guarded getters raise afterwards. The MicroPython
+// binding of this same type gained it on 2026-09-09 (audioif#58, #60, #63) and
+// this copy did not, which is audioif#75: the two bindings are hand-written and
+// nothing held them to each other. Same fields, same order, deliberately.
+static mp_obj_t audiobiquad_allpass_deinit(mp_obj_t self_in) {
+    audiobiquad_allpass_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiobiquad_allpass_deinit_obj, audiobiquad_allpass_deinit);
+
 static const mp_rom_map_elem_t audiobiquad_allpass_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audiobiquad_allpass_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiobiquad_allpass_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&audiobiquad_allpass_stop_obj) },
     { MP_ROM_QSTR(MP_QSTR_clear),

@@ -8,6 +8,7 @@
 #include "shared-bindings/audiocore/__init__.h"
 
 #include "py/objproperty.h"
+#include "shared/runtime/context_manager_helpers.h"
 #include "py/runtime.h"
 
 //| class SubOctave:
@@ -202,7 +203,25 @@ static mp_obj_t audiomath_suboctave_clear(mp_obj_t self_in) {
 MP_DEFINE_CONST_FUN_OBJ_1(audiomath_suboctave_clear_obj,
     audiomath_suboctave_clear);
 
+// `deinit()` releases what this binding holds and marks the node
+// deinitialised, so the guarded getters raise afterwards. The MicroPython
+// binding of this same type gained it on 2026-09-09 (audioif#58, #60, #63) and
+// this copy did not, which is audioif#75: the two bindings are hand-written and
+// nothing held them to each other. Same fields, same order, deliberately.
+static mp_obj_t audiomath_suboctave_deinit(mp_obj_t self_in) {
+    audiomath_suboctave_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiosample_mark_deinit(&self->base);
+    self->source = mp_const_none;
+    self->pending = NULL;
+    self->pending_frames = 0;
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(audiomath_suboctave_deinit_obj, audiomath_suboctave_deinit);
+
 static const mp_rom_map_elem_t audiomath_suboctave_locals_dict_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_deinit), MP_ROM_PTR(&audiomath_suboctave_deinit_obj) },
+    { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&default___enter___obj) },
+    { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&default___exit___obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiomath_suboctave_play_obj) },
     { MP_ROM_QSTR(MP_QSTR_set), MP_ROM_PTR(&audiomath_suboctave_set_obj) },
     { MP_ROM_QSTR(MP_QSTR_clear),
