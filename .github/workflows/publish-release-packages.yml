@@ -34,6 +34,11 @@ jobs:
       - run: python tests/parity/verify_streaming.py
       - run: python tests/parity/verify_biquad.py
       - run: python tests/parity/verify_mixdown_knee.py
+      # See the note in test-cpython.yml: this gate was missing everywhere, so
+      # v0.3.0 shipped the palette and the 10.3.0 twins with their goldens
+      # unchecked by CI (audioif#71). This job runs on x86_64 Linux, which is
+      # the architecture golden/dsp_nodes.json was captured on.
+      - run: python tests/parity/verify_dsp.py --interpreters cpython
 
   credentials:
     runs-on: ubuntu-latest
