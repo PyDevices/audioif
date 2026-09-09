@@ -266,6 +266,55 @@ reconstructing an equivalent synth, four `BasslineSynth` steps with
 glide, `all_notes_off()`/`voice.stop()` tail-drain, and final `Mixer`
 state) is identical after the `CIRCUITPY_SYNTHIO_MAX_CHANNELS` fix.
 
+### The ceiling later moved 14 → 64, which gives up that alignment above the knee (audioif#31, recorded 2026-09-09)
+
+The paragraph above set the ceiling to 14 **because the oracle is built at
+14** — "matching the oracle's own build choice so voice-stealing arithmetic
+lines up exactly, not just 'enough channels'". That reason no longer holds
+everywhere, and this is the deviation it produced.
+
+`CIRCUITPY_SYNTHIO_MAX_CHANNELS` is now **64** on every build path (audioif#31:
+14 fits the drum kits, 64 fits a ten-finger chord on the melodic library,
+whose instruments press up to 9 `Note`s per key). The pinned oracle is still
+14 and must never be rebuilt. The ceiling is not just an admission limit — it
+divides every sample through the mix-down limiter:
+
+```
+SYNTHIO_MIX_DOWN_SCALE(x) = 0xfffffff / (32768 * x - 28000)
+
+    ceiling 14  ->  scale 623      the oracle
+    ceiling 64  ->  scale 129      this port
+```
+
+So **no material that crosses the ±28000 knee can be both above the knee and
+oracle-identical.** Below the knee the two are byte-identical, measured on all
+three runtimes (2026-09-06); above it they cannot agree, and that difference is
+the ceiling and nothing else. Anything describing an above-knee fixture as
+oracle-enforced is wrong.
+
+What that costs and what covers it:
+
+* `tests/parity/verify_mixdown_knee.py` is the only gate whose material
+  crosses the knee, so it is the only one that can see a ceiling change at
+  all — the other four are byte-identical at any ceiling. Its `stdout` field
+  is **this port's** output, deliberately, for the reason above; its
+  `circuitpython_stdout` field holds the oracle's answer and is enforced only
+  over the below-knee lines.
+* Its check (b) is the anti-launder tripwire: the ceiling the interpreter
+  reports must equal `port_max_polyphony` in the golden, so re-capturing
+  `stdout` under a changed ceiling re-greens check (a) and turns (b) red.
+  Measured: with the ceiling at 24 and `stdout` re-captured, (a) passed and
+  (b) failed.
+* `tests/test_voice_ceiling_consistency.py` holds all five sites of the
+  constant to one number, which is the other failure — a ceiling applied to
+  three of five places would otherwise ship green.
+
+Recorded here because `verify_mixdown_knee.py` says in as many words that it
+was not: *"That divergence is the ceiling and nothing else; it is not yet
+written down in docs/upstream-diff.md."* Writing it down is not a new decision
+— the ceiling was moved deliberately in audioif#31 — it is the one that was
+made having a record.
+
 ## Tier 5 audiomp3: license
 
 CircuitPython's `lib/mp3` (upstream `adafruit/Adafruit_MP3`, cloned as a
