@@ -69,4 +69,21 @@ class SpeedChanger(_AudioSample):
         return result, memoryview(bytes(output))
 
 
-__all__ = ("SpeedChanger",)
+class Resampler(SpeedChanger):
+    def __init__(self, source):
+        super().__init__(source)
+        self._destination_rate = 0
+
+    @property
+    def rate(self):
+        return self._rate_fp / 65536.0
+
+    def _bind_sample_rate(self, sample_rate):
+        self._destination_rate = sample_rate
+        if self.source is not None and sample_rate:
+            self._rate_fp = int(self.sample_rate / sample_rate * 65536) & 0xffffffff
+        else:
+            self._rate_fp = 1 << 16
+
+
+__all__ = ("SpeedChanger", "Resampler")

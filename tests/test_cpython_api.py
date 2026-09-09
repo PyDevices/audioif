@@ -134,7 +134,8 @@ class AudioifApiTests(unittest.TestCase):
         types = (
             audiofilters.Distortion, audiofilters.Phaser, audiodelays.Echo,
             audiodelays.Chorus, audiodelays.MultiTapDelay,
-            audiodelays.PitchShift, audiofreeverb.Freeverb,
+            audiodelays.PitchShift, audiodelays.Flanger,
+            audiodelays.GranularPitchShift, audiofreeverb.Freeverb,
         )
         for effect_type in types:
             for channel_count in (1, 2):

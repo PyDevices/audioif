@@ -67,6 +67,13 @@ class Mixer(_AudioSample):
 
     def _check_sample(self, sample):
         self._check()
+        from audiospeed import Resampler
+        if isinstance(sample, Resampler):
+            for name in ("channel_count", "bits_per_sample", "samples_signed"):
+                if getattr(sample, name) != getattr(self, name):
+                    raise ValueError("The sample's %s does not match" % name)
+            sample._bind_sample_rate(self.sample_rate)
+            return
         for name in ("sample_rate", "channel_count", "bits_per_sample", "samples_signed"):
             if getattr(sample, name) != getattr(self, name):
                 raise ValueError("The sample's %s does not match" % name)

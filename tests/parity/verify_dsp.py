@@ -94,6 +94,11 @@ PROBES = (
     ("convolve_probe.py", "audioconvolve", None, {}),
     ("filter_f32_probe.py", "audiobiquad", None, {}),
     ("tank_probe.py", "audioverb", None, {}),
+    ("flanger_probe.py", "audiodelays", None, {}),
+    ("granular_pitch_shift_probe.py", "audiodelays", None, {}),
+    ("resampler_probe.py", "audiospeed", None, {}),
+    ("echo_filter_probe.py", "audiodelays", None, {}),
+    ("freeverb_filter_probe.py", "audiofreeverb", None, {}),
 )
 
 DEFAULT_MICROPYTHON = WORKSPACE / "bin" / "micropython"

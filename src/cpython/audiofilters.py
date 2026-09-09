@@ -2,6 +2,8 @@
 
 from array import array
 from enum import Enum
+import math
+import struct
 from audiocore import GET_BUFFER_MORE_DATA, _AudioSample, get_buffer, reset_buffer
 import _audioif
 
@@ -47,8 +49,14 @@ class _Effect(_AudioSample):
     def playing(self): return self._sample is not None
     def play(self, sample, *, loop=False):
         self._check()
-        for name in ("sample_rate", "channel_count", "bits_per_sample", "samples_signed"):
-            if getattr(sample, name) != getattr(self, name): raise ValueError("The sample's %s does not match" % name)
+        from audiospeed import Resampler
+        if isinstance(sample, Resampler):
+            for name in ("channel_count", "bits_per_sample", "samples_signed"):
+                if getattr(sample, name) != getattr(self, name): raise ValueError("The sample's %s does not match" % name)
+            sample._bind_sample_rate(self.sample_rate)
+        else:
+            for name in ("sample_rate", "channel_count", "bits_per_sample", "samples_signed"):
+                if getattr(sample, name) != getattr(self, name): raise ValueError("The sample's %s does not match" % name)
         self._sample, self._loop = sample, bool(loop); reset_buffer(sample)
         result, data = get_buffer(sample)
         self._remaining = bytes(data)
@@ -256,6 +264,159 @@ class Phaser(_Effect):
             out = self._mixdown(sample + self._sat16(word * mix, 15)) & 0xff
             result.append(out if self.samples_signed else out ^ 0x80)
         return bytes(result)
+
+
+# CircuitPython 10.3.0's audiofilters_process_filter_chain: Q15 coefficients
+# from the same fast_sincos / Q_rsqrt tick as shared-module/synthio/Biquad.c,
+# then synthio_sat16 of the five-product sum. audioif_biquad is a different
+# arithmetic (wider shift) and is not this helper.
+_PAIR_SCALE = 0xfffffff // (32768 * 2 - 28000)
+
+
+def _sat16(value, shift=0):
+    value = int(value)
+    if value < 0 and shift:
+        value += (1 << shift) - 1
+    if shift:
+        value >>= shift
+    if value > 32767:
+        return 32767
+    if value < -32768:
+        return -32768
+    return value
+
+
+def _mix_down(value, scale=_PAIR_SCALE):
+    value = int(value)
+    if value < -28000:
+        value = (((value + 28000) * scale) >> 16) - 28000
+    elif value > 28000:
+        value = (((value - 28000) * scale) >> 16) + 28000
+    return ((value + 32768) & 0xffff) - 32768
+
+
+def _q_rsqrt(number):
+    bits = struct.unpack("I", struct.pack("f", float(number)))[0]
+    bits = (0x5f3759df - (bits >> 1)) & 0xffffffff
+    estimate = struct.unpack("f", struct.pack("I", bits))[0]
+    return estimate * (1.5 - (float(number) * 0.5 * estimate * estimate))
+
+
+def _fast_sincos(theta):
+    x = (theta * (4.0 / math.pi)) - 1.0
+    x2 = x * x
+    x3 = x2 * x
+    x4 = x2 * x2
+    x5 = x2 * x3
+    evens = 0.0109 * x4 + -0.21798592 * x2 + 0.70708592
+    odds = -0.00171961 * x5 + 0.05707685 * x3 + -0.55535724 * x
+    return evens - odds, evens + odds
+
+
+def _c_round(value):
+    return int(math.copysign(math.floor(abs(value) + 0.5), value))
+
+
+def _cp_biquad_coeffs(biquad, w_scale):
+    sine, cosine = _fast_sincos(_value(biquad.frequency) * w_scale)
+    quality = _value(biquad.Q)
+    mode = biquad.mode.value
+    gain = 0.0
+    if mode >= 4 and biquad.A is not None:
+        gain = _value(biquad.A)
+    alpha = sine / (2.0 * quality)
+    if mode < 4:
+        a0, a1, a2 = 1.0 + alpha, -2.0 * cosine, 1.0 - alpha
+        if mode == 0:
+            b0 = b2 = (1.0 - cosine) * 0.5
+            b1 = 1.0 - cosine
+        elif mode == 1:
+            b0 = b2 = (1.0 + cosine) * 0.5
+            b1 = -(1.0 + cosine)
+        elif mode == 2:
+            b0, b1, b2 = alpha, 0.0, -alpha
+        else:
+            b0, b1, b2 = 1.0, -2.0 * cosine, 1.0
+    elif mode == 4:
+        b0, b1, b2 = 1.0 + alpha * gain, -2.0 * cosine, 1.0 + alpha * gain
+        a0, a1, a2 = 1.0 + alpha / gain, -2.0 * cosine, 1.0 - alpha / gain
+    else:
+        root = gain * _q_rsqrt(gain) if gain else 0.0
+        if mode == 5:
+            b0 = gain * ((gain + 1) - (gain - 1) * cosine + 2 * root * alpha)
+            b1 = 2 * gain * ((gain - 1) - (gain + 1) * cosine)
+            b2 = gain * ((gain + 1) - (gain - 1) * cosine - 2 * root * alpha)
+            a0 = (gain + 1) + (gain - 1) * cosine + 2 * root * alpha
+            a1 = -2 * ((gain - 1) + (gain + 1) * cosine)
+            a2 = (gain + 1) + (gain - 1) * cosine - 2 * root * alpha
+        else:
+            b0 = gain * ((gain + 1) + (gain - 1) * cosine + 2 * root * alpha)
+            b1 = -2 * gain * ((gain - 1) + (gain + 1) * cosine)
+            b2 = gain * ((gain + 1) + (gain - 1) * cosine - 2 * root * alpha)
+            a0 = (gain + 1) - (gain - 1) * cosine + 2 * root * alpha
+            a1 = 2 * ((gain - 1) - (gain + 1) * cosine)
+            a2 = (gain + 1) - (gain - 1) * cosine - 2 * root * alpha
+    reciprocal = 1.0 / a0
+    return (
+        _c_round(math.ldexp(a1 * reciprocal, 15)),
+        _c_round(math.ldexp(a2 * reciprocal, 15)),
+        _c_round(math.ldexp(b0 * reciprocal, 15)),
+        _c_round(math.ldexp(b1 * reciprocal, 15)),
+        _c_round(math.ldexp(b2 * reciprocal, 15)),
+    )
+
+
+def _cp_biquad_sample(coeffs, state, word):
+    a1, a2, b0, b1, b2 = coeffs
+    x0, x1, y0, y1 = state
+    output = _sat16(
+        b0 * word + b1 * x0 + b2 * x1 - a1 * y0 - a2 * y1 + (1 << 14), 15)
+    state[1], state[0], state[3], state[2] = x0, word, y0, output
+    return output
+
+
+class _FilterChain:
+    def __init__(self, filter_in, channel_count):
+        from synthio import Biquad
+        if filter_in is None:
+            items = ()
+        elif isinstance(filter_in, (tuple, list)):
+            items = tuple(filter_in)
+            for item in items:
+                if not isinstance(item, Biquad):
+                    raise TypeError(
+                        "object in filter must be of type Biquad, not %s"
+                        % type(item).__name__)
+        else:
+            if not isinstance(filter_in, Biquad):
+                raise TypeError(
+                    "filter must be of type Biquad or tuple, not %s"
+                    % type(filter_in).__name__)
+            items = (filter_in,)
+        self.obj = filter_in
+        self.objs = items
+        self.channel_count = channel_count
+        self.states = [[0, 0, 0, 0] for _ in range(len(items) * channel_count)]
+        self.coeffs = [(0, 0, 0, 0, 0) for _ in items]
+
+    def __bool__(self):
+        return bool(self.objs)
+
+    def reset(self):
+        for state in self.states:
+            state[:] = [0, 0, 0, 0]
+
+    def tick(self, sample_rate):
+        w_scale = (2.0 * math.pi) / sample_rate
+        self.coeffs = [_cp_biquad_coeffs(biquad, w_scale)
+                       for biquad in self.objs]
+
+    def process(self, channel, word):
+        for index, coeffs in enumerate(self.coeffs):
+            word = _cp_biquad_sample(
+                coeffs, self.states[index * self.channel_count + channel],
+                word)
+        return word
 
 
 __all__ = ("Filter", "Distortion", "Phaser", "DistortionMode")
