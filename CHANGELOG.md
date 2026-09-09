@@ -1,3 +1,65 @@
+## v0.3.0 (2026-09-09)
+
+- Give the CPython target CircuitPython 10.3.0's new delay, speed and filter-chain nodes.
+- Enable audiospeed on coverage, with the warning downgraded for its objects only
+- Neither audiospeed nor audiofilewriter can be reached on unix coverage
+- Compile audiospeed and audiofilewriter into the unix coverage build
+- --dry-run now checks the anchors it claims it would insert after
+- --status exits nonzero when the tree is not in the applied state
+- apply_cp_patches: the mid/side kernel is listed in the CircuitPython variant Makefile too
+- flake8: .deps on its own line
+- parity: the mid/side probe runs on MicroPython too, and flake8 skips the vendored ulab
+- build: every merged source block in micropython.mk opens its own SRC_USERMOD_C list
+- build: the ladder's sources get their own SRC_USERMOD_C block again
+- mpaudio_modules: the own-module roll call names all six, not four
+- Effects Phase 1 integration: re-capture the DSP golden with the oracle
+- Smoke audioshaper in the clean-build workflow, and name it in the porting plan
+- Record audioshaper: what the palette could not do, and what the node measures
+- apply_cp_patches.sh carries audioshaper into a CircuitPython tree
+- porting-plan: the palette lacked a frequency divider, not just a stream multiply
+- The hysteresis half-width is a coercivity, not a post-gain number
+- Cover MidSide's surface where Dynamics' and Splitter's is covered
+- Give audiomath an analog octave divider, so a sub-octave is not a pitch shift
+- Reading a coefficient should not move an LFO along
+- Record MidSide where the other four own nodes are recorded
+- Give audioroute a mid/side matrix, so a drive can work on the middle of an image
+- Write down what audiobiquad is for, and where the numbers came from
+- A parity probe and a golden for audioshaper.Waveshaper
+- Cite the Freeverb kernel by line, and say precisely where its all-passes sit
+- audiobiquad reaches CircuitPython too, additively
+- The tilt converts dB through expf, not powf, and the plan names tier 7's sixth
+- audioshaper.Waveshaper: the curve arrives as data, and the shaping happens above the sample rate
+- Record audioverb in upstream-diff, README and the module lists, and test it
+- audiobiquad on MicroPython: the same two kernels, the same block reads
+- Golden the ladder, and assert in numbers that the bytes are a ladder
+- audioverb reaches CircuitPython too, through the additive path
+- audioverb.Tank: a reverberation tank whose network comes from Python
+- Give the palette a filter whose tail actually reaches zero
+- audioladder on the other three targets: MicroPython, and the CP tree
+- A transistor ladder, solved rather than delayed, on the CPython target
+- audiodynamics: record the twenty-one options as a deviation, with the measurements
+- audiodynamics: a parity probe for the twenty-one options, and its golden
+- audiodynamics: the new options on all four targets, and an external key input
+- audiodynamics: twenty-one additive options on the shared dynamics kernel
+- Say what the loop shift costs in repeat time, in all three places it is documented
+- Record the four FeedbackDelay options: what they were asked for, what they measure
+- A parity probe and a golden for the four new FeedbackDelay options
+- Four options on audioecho.FeedbackDelay, all off by default
+- upstream-diff: the audible half of the ceiling raise is refused voices, not the knee
+- upstream-diff: the voice ceiling is 64 where CircuitPython builds 14
+- Re-pin the CircuitPython oracle to the bytes it has, with the provenance the relink never recorded
+- Clean the single-precision narrowing, so the float CI cell can run at -Werror
+- A fifth parity gate whose material crosses the mix-down knee
+- build: micropython.cmake finds ulab in .deps/ or a sibling, so the standalone claim holds on CMake ports
+- packaging: numpy is the [render] extra, so a bare install is honest about audiorender
+- Move the attribution out of LICENSE so GitHub can detect MIT
+- PR #11289: the reply is posted
+- PR #11289: draft reply to relic-se, with the measurement behind it
+- synthio: raise the voice ceiling from 14 to 64
+- tests: assert the five voice-ceiling sites agree, and pin the oracle's bytes
+- parity: re-capture the vst3 render reference against audiocomponents at the v0.2.0 core
+- lib: delete audioinstruments and audioeffects -- they live in audiocomponents
+
 ## Unreleased
 
 - audiodynamics: twenty-one additive options and an external key input, for the effects program (#38)
