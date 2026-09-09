@@ -512,3 +512,74 @@ class ResetTest(unittest.TestCase):
         self.assertLess(node.gain_reduction_db(), -1.0)
         audiocore.reset_buffer(node)
         self.assertEqual(node.gain_reduction_db(), 0.0)
+
+
+class UniversalTraitTest(unittest.TestCase):
+    """D14 and D15 - the traits every audioif-own node carries."""
+
+    def _alternating(self, frames=4096, level=32767):
+        values = array("h")
+        for frame in range(frames):
+            for _channel in range(CHANNELS):
+                values.append(level if frame % 2 else -level)
+        return audiocore.RawSample(values, sample_rate=SAMPLE_RATE,
+                                   channel_count=CHANNELS)
+
+    def _alternating_words(self, count, level=32767):
+        return [level if (index // CHANNELS) % 2 else -level
+                for index in range(count)]
+
+    def _words(self, node, blocks):
+        out = []
+        for _block in range(blocks):
+            data = bytes(audiocore.get_buffer(node)[1])
+            for position in range(0, len(data), 2):
+                word = data[position] | (data[position + 1] << 8)
+                out.append(word - 65536 if word >= 32768 else word)
+        return out
+
+    def test_a_threshold_above_the_signal_is_unity_gain(self):
+        """D14, this module's form of the identity trait.
+
+        Nothing crosses the threshold, so the gain computer returns 0 dB and the
+        node must hand back exactly what it was given - through the detector,
+        the envelope and the multiply, at +/-32767, which is where an
+        arithmetic width error shows and a range check does not.
+        """
+        for mode in (audiodynamics.DYN_COMPRESS, audiodynamics.DYN_LIMIT):
+            with self.subTest(mode=mode):
+                node = audiodynamics.Dynamics(mode, sample_rate=SAMPLE_RATE,
+                                              channel_count=CHANNELS)
+                node.set(threshold_db=0.0, ratio=4.0, knee_db=0.0,
+                         attack_ms=0.01, release_ms=1.0)
+                node.play(self._alternating())
+                rendered = self._words(node, 6)
+                self.assertEqual(rendered,
+                                 self._alternating_words(len(rendered)))
+
+    def test_D14_discriminates(self):
+        """D14's control: a threshold *under* the signal must not satisfy it."""
+        node = audiodynamics.Dynamics(audiodynamics.DYN_COMPRESS,
+                                      sample_rate=SAMPLE_RATE,
+                                      channel_count=CHANNELS)
+        node.set(threshold_db=-40.0, ratio=8.0, knee_db=0.0, attack_ms=0.01,
+                 release_ms=1.0)
+        node.play(self._alternating())
+        rendered = self._words(node, 6)
+        self.assertNotEqual(rendered, self._alternating_words(len(rendered)))
+
+    def test_silence_in_is_exactly_zero_out_in_every_mode(self):
+        """D15. A gate at its floor still outputs zero on zero, and a
+        transient shaper has no transient to find in silence."""
+        for mode in (audiodynamics.DYN_COMPRESS, audiodynamics.DYN_LIMIT,
+                     audiodynamics.DYN_EXPAND, audiodynamics.DYN_GATE,
+                     audiodynamics.DYN_TRANSIENT):
+            with self.subTest(mode=mode):
+                node = audiodynamics.Dynamics(mode, sample_rate=SAMPLE_RATE,
+                                              channel_count=CHANNELS)
+                node.play(audiocore.RawSample(
+                    array("h", bytes(4096 * CHANNELS * 2)),
+                    sample_rate=SAMPLE_RATE, channel_count=CHANNELS))
+                for _block in range(6):
+                    data = bytes(audiocore.get_buffer(node)[1])
+                    self.assertEqual(data, bytes(len(data)))

@@ -189,3 +189,63 @@ class SurfaceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UniversalTraitTest(unittest.TestCase):
+    """M11 - the identity trait, at the rails.
+
+    There is no `clear()` trait here on purpose. `test_set_does_not_restart_the_count_but_clear_does`
+    above already has it, and has it *better*: it clears mid-stream on a
+    continuing tone, where the divider's flip-flop shows in the sub-octave's
+    phase. A version that replays a source instead cannot fail - measured, a
+    cleared and an uncleared SubOctave render identically that way - so adding
+    one would have been a second, weaker test of something already covered.
+    """
+
+    RATE = 8000
+    CHANNELS = 2
+
+    def _alternating(self, frames=4096, level=32767):
+        values = array("h")
+        for frame in range(frames):
+            for _channel in range(self.CHANNELS):
+                values.append(level if frame % 2 else -level)
+        return audiocore.RawSample(values, sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS)
+
+    def _alternating_words(self, count, level=32767):
+        return [level if (index // self.CHANNELS) % 2 else -level
+                for index in range(count)]
+
+    def _silence(self, frames=4096):
+        return audiocore.RawSample(
+            array("h", bytes(frames * self.CHANNELS * 2)),
+            sample_rate=self.RATE, channel_count=self.CHANNELS)
+
+    def _words(self, node, blocks):
+        out = []
+        for _block in range(blocks):
+            data = bytes(audiocore.get_buffer(node)[1])
+            for position in range(0, len(data), 2):
+                word = data[position] | (data[position + 1] << 8)
+                out.append(word - 65536 if word >= 32768 else word)
+        return out
+
+    def test_the_neutral_setting_is_exact_at_the_rails(self):
+        """M11, this module's form of the identity trait. `mix=0` is already
+        covered elsewhere in this file on ordinary material; what is new here is
+        **at +/-32767**, which is where an arithmetic width error shows and a
+        range check does not. Measured 0 LSB."""
+        node = audiomath.SubOctave(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=0.0)
+        node.play(self._alternating())
+        rendered = self._words(node, 6)
+        self.assertEqual(rendered, self._alternating_words(len(rendered)))
+
+    def test_the_identity_trait_discriminates(self):
+        """Its control: the same node wet must not satisfy it."""
+        node = audiomath.SubOctave(sample_rate=self.RATE,
+                                  channel_count=self.CHANNELS, mix=1.0)
+        node.play(self._alternating())
+        rendered = self._words(node, 6)
+        self.assertNotEqual(rendered, self._alternating_words(len(rendered)))

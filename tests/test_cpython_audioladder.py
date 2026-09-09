@@ -238,3 +238,106 @@ class SurfaceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UniversalTraitTest(unittest.TestCase):
+    """L11-L14 - the traits every audioif-own node carries."""
+
+    RATE = 12000
+    CHANNELS = 2
+
+    def _alternating(self, frames=4096, level=32767):
+        values = array("h")
+        for frame in range(frames):
+            for _channel in range(self.CHANNELS):
+                values.append(level if frame % 2 else -level)
+        return audiocore.RawSample(values, sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS)
+
+    def _alternating_words(self, count, level=32767):
+        return [level if (index // self.CHANNELS) % 2 else -level
+                for index in range(count)]
+
+    def _silence(self, frames=4096):
+        return audiocore.RawSample(
+            array("h", bytes(frames * self.CHANNELS * 2)),
+            sample_rate=self.RATE, channel_count=self.CHANNELS)
+
+    def _words(self, node, blocks):
+        out = []
+        for _block in range(blocks):
+            data = bytes(audiocore.get_buffer(node)[1])
+            for position in range(0, len(data), 2):
+                word = data[position] | (data[position + 1] << 8)
+                out.append(word - 65536 if word >= 32768 else word)
+        return out
+
+    def test_the_neutral_setting_is_exact_at_the_rails(self):
+        """L11, this module's form of the identity trait. `mix=0` is already
+        covered elsewhere in this file on ordinary material; what is new here is
+        **at +/-32767**, which is where an arithmetic width error shows and a
+        range check does not. Measured 0 LSB."""
+        node = audioladder.Ladder(sample_rate=self.RATE,
+                                    channel_count=self.CHANNELS, mix=0.0)
+        node.play(self._alternating())
+        rendered = self._words(node, 6)
+        self.assertEqual(rendered, self._alternating_words(len(rendered)))
+
+    def test_the_identity_trait_discriminates(self):
+        """Its control: the same node wet must not satisfy it."""
+        node = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        node.play(self._alternating())
+        rendered = self._words(node, 6)
+        self.assertNotEqual(rendered, self._alternating_words(len(rendered)))
+
+    def test_silence_in_is_exactly_zero_out(self):
+        """L12. Measured exact."""
+        node = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        node.play(self._silence())
+        for _block in range(6):
+            data = bytes(audiocore.get_buffer(node)[1])
+            self.assertEqual(data, bytes(len(data)))
+
+    def test_clear_leaves_the_node_as_a_freshly_built_one(self):
+        """L13. Not the same claim as "clear() stops it": this is that a
+        cleared node and a node that never played render the same bytes."""
+        used = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        used.play(self._alternating())
+        for _block in range(4):
+            audiocore.get_buffer(used)
+        used.clear()
+        used.play(self._silence())
+
+        fresh = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        fresh.play(self._silence())
+        for _block in range(6):
+            self.assertEqual(bytes(audiocore.get_buffer(used)[1]),
+                             bytes(audiocore.get_buffer(fresh)[1]))
+
+    def test_the_clear_trait_discriminates(self):
+        """Its control: without the clear the two must differ."""
+        used = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        used.play(self._alternating())
+        for _block in range(4):
+            audiocore.get_buffer(used)
+        used.play(self._silence())               # deliberately not cleared
+
+        fresh = audioladder.Ladder(sample_rate=self.RATE,
+                                   channel_count=self.CHANNELS, mix=1.0,
+                                   cutoff_hz=800.0, resonance=3.0)
+        fresh.play(self._silence())
+        differed = any(bytes(audiocore.get_buffer(used)[1])
+                       != bytes(audiocore.get_buffer(fresh)[1])
+                       for _block in range(6))
+        self.assertTrue(differed, "an uncleared node already matches a fresh "
+                        "one, so the clear trait cannot fail")
