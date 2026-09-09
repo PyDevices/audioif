@@ -60,8 +60,6 @@
 - parity: re-capture the vst3 render reference against audiocomponents at the v0.2.0 core
 - lib: delete audioinstruments and audioeffects -- they live in audiocomponents
 
-## Unreleased
-
 - audiodynamics: twenty-one additive options and an external key input, for the effects program (#38)
 - audioroute: MidSide, a zero-latency mid/side matrix, exact identity at width=1
 - audioshaper: a new audioif-own module -- a table waveshaper, oversampled x2/x4/x8, with an off-by-default hysteresis option
