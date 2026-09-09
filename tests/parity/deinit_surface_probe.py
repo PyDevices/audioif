@@ -11,7 +11,7 @@ CircuitPython's `ValueError` and the CPython target raises `RuntimeError`
 (audioif#73); this probe is not the place to settle that, so it records only
 that the guard fired.
 
-**The fault this exists to catch.** Twelve of the twenty-five node types --
+**The fault this exists to catch.** Twelve of the node types --
 every one audioif wrote rather than ported from CircuitPython -- had no
 `deinit()` at all, so no class built on them could release one and Tier 1's
 "deinit() releases every node the class built" was unmeasurable on a board
@@ -74,6 +74,8 @@ NODES = (
     ("audiodelays.Chorus", lambda: audiodelays.Chorus(
         max_delay_ms=50, **PCM)),
     ("audiodelays.Echo", lambda: audiodelays.Echo(max_delay_ms=50, **PCM)),
+    ("audiodelays.Flanger", lambda: audiodelays.Flanger(max_delay_ms=10, **PCM)),
+    ("audiodelays.GranularPitchShift", lambda: audiodelays.GranularPitchShift(**PCM)),
     ("audiodelays.MultiTapDelay", lambda: audiodelays.MultiTapDelay(
         max_delay_ms=50, **PCM)),
     ("audiodelays.PitchShift", lambda: audiodelays.PitchShift(**PCM)),
