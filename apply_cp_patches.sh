@@ -382,7 +382,20 @@ CFLAGS += -DCIRCUITPY_AUDIOCONVOLVE=1
 CIRCUITPY_AUDIOBIQUAD = 1
 CFLAGS += -DCIRCUITPY_AUDIOBIQUAD=1
 CIRCUITPY_AUDIOVERB = 1
-CFLAGS += -DCIRCUITPY_AUDIOVERB=1"
+CFLAGS += -DCIRCUITPY_AUDIOVERB=1
+CIRCUITPY_AUDIOSPEED = 1
+CFLAGS += -DCIRCUITPY_AUDIOSPEED=1
+
+# audiospeed's rate validator is called with fractional bounds -
+# mp_arg_validate_obj_float_range(rate_obj, 0.001, 1000.0, ...) - whose
+# parameters are mp_int_t, so 0.001 truncates to 0. ports/unix/Makefile is the
+# only port compiling with -Werror -Wfloat-conversion and raspberrypi is the
+# only port enabling audiospeed, so upstream never builds this combination.
+# Their unix port is unsupported, so this is ours to absorb, not a PR. Downgrade
+# the warning for these objects ONLY, never for the build: audioif's own float
+# cell keeps its -Werror (audioif#4).
+\$(BUILD)/shared-module/audiospeed/__init__.o: CFLAGS += -Wno-error=float-conversion
+\$(BUILD)/shared-bindings/audiospeed/__init__.o: CFLAGS += -Wno-error=float-conversion"
 echo
 
 echo "==> Unix variant: source list"
@@ -390,25 +403,28 @@ echo "==> Unix variant: source list"
 # so these lines are what actually gets the modules compiled here.
 BINDING_ANCHOR=$'\tshared-bindings/audiofilters/__init__.c \\'
 MODULE_ANCHOR=$'\tshared-module/audiofilters/__init__.c \\'
-# Upstream modules, not ours: audiospeed and audiofilewriter ship in 10.3.0
-# with CIRCUITPY_* defaults of 0 and no coverage source lines. Enabling them
-# gives the effects programme a stock resampler/speed-changer to compose with
-# and a WAV writer for unix probes; their defaults in py/circuitpy_mpconfig.mk
-# stay 0, so no board gains them by accident. Their -D flags come from upstream
-# CFLAGS, so they need no mpconfigvariant.h guards the way our own modules do.
-# NEITHER audiospeed NOR audiofilewriter is enabled on this variant. Both were
-# tried against CircuitPython 10.3.0 and both fail, for different reasons:
-#   * audiospeed does not COMPILE under -Werror=float-conversion.
-#     shared-module/audiospeed/__init__.c calls
-#     mp_arg_validate_obj_float_range(rate_obj, 0.001, 1000.0, ...) whose
-#     bounds are mp_int_t, so 0.001 truncates to 0 - an upstream bug, and the
-#     reason its documented minimum rate is not enforced at all.
-#   * audiofilewriter compiles but does not LINK: it calls
-#     background_callback_prevent/allow, and the unix coverage variant builds
-#     no supervisor/ at all. Supplying them means pulling supervisor/port.h,
-#     supervisor/shared/tick.h and shared-bindings/microcontroller into a test
-#     build - a port-level change, not a source-list line.
-# Established by building, 2026-09-09. See the pin-move evidence file.
+# audiospeed is an UPSTREAM module, enabled here for the effects programme's
+# stock resampler/speed-changer. Its default in py/circuitpy_mpconfig.mk stays
+# 0, so no board gains it by accident, and its -D flag comes from upstream
+# CFLAGS, so it needs no mpconfigvariant.h guard the way our own modules do.
+# It needs the warning downgrade in the enable block above; see the note there.
+#
+# audiofilewriter is deliberately NOT enabled: it compiles but does not LINK on
+# this variant, calling background_callback_prevent/allow while coverage builds
+# no supervisor/ at all. Supplying them pulls supervisor/port.h,
+# supervisor/shared/tick.h and shared-bindings/microcontroller into a test
+# build - a port change, not a source-list line. Established by building,
+# 2026-09-09; see the pin-move evidence file.
+for _f in shared-bindings/audiospeed/__init__.c \
+          shared-bindings/audiospeed/Resampler.c \
+          shared-bindings/audiospeed/SpeedChanger.c; do
+    insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\t'"$_f"$' \\'
+done
+for _f in shared-module/audiospeed/__init__.c \
+          shared-module/audiospeed/Resampler.c \
+          shared-module/audiospeed/SpeedChanger.c; do
+    insert_line_after "$VARIANT_MK" "$MODULE_ANCHOR" $'\t'"$_f"$' \\'
+done
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/Dynamics.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audiodynamics/__init__.c \\'
 insert_line_after "$VARIANT_MK" "$BINDING_ANCHOR" $'\tshared-bindings/audioroute/MidSide.c \\'
