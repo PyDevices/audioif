@@ -185,6 +185,7 @@ def verify(args):
     failures = []
     compared = 0
     pending = []
+    agreements = []
     for probe, module, skips, blocked_by in PROBES:
         if blocked_by:
             pending.append((probe, blocked_by))
@@ -219,6 +220,7 @@ def verify(args):
             print("             %-14s %d bytes" % (name, len(rendered[name])))
             failures.append("%s: %s and %s" % (probe, reference, name))
         if agreed:
+            agreements.append(probe)
             print("ok       %-30s %s agree (%d bytes)"
                   % (probe, " = ".join(names), len(rendered[reference])))
 
@@ -226,6 +228,34 @@ def verify(args):
           % (compared, len(failures), len(pending)))
     for probe, blocked_by in pending:
         print("  pending  %-30s %s" % (probe, blocked_by))
+
+    # --known-divergent narrows the gate to the divergences we have already
+    # filed, WITHOUT blinding it. Three things still fail the run:
+    #   * a probe that diverges and is not on the list      (a new defect)
+    #   * a probe on the list that now agrees               (the list is stale)
+    #   * anything that was never about agreement at all    (build, smoke)
+    # That last property is the point. A blanket continue-on-error would report
+    # green for all three, and this file's own argument is that a gate which
+    # cannot fail is worse than no gate.
+    expected = set(args.known_divergent or [])
+    if expected:
+        diverged = {line.split(":", 1)[0] for line in failures}
+        unexpected = sorted(diverged - expected)
+        stale = sorted(expected & set(agreements))
+
+        for probe in sorted(diverged & expected):
+            print("  XFAIL    %-30s diverges as expected" % probe)
+        for probe in stale:
+            print("  UNEXPECTED PASS  %-22s agrees now -- drop it from "
+                  "--known-divergent" % probe)
+
+        if not unexpected and not stale:
+            print("\n%d expected divergence(s), none new. Gate satisfied."
+                  % len(diverged & expected))
+            return
+        failures = ["%s: diverged and is not expected" % p for p in unexpected]
+        failures += ["%s: no longer diverges" % p for p in stale]
+
     if failures:
         for line in failures:
             print("  %s" % line)
@@ -238,6 +268,10 @@ def main():
                         help="a MicroPython binary with the audioif usermod")
     parser.add_argument("--circuitpython", default=None,
                         help="a patched CircuitPython build")
+    parser.add_argument("--known-divergent", action="append", metavar="PROBE",
+                        help="a probe whose divergence is already filed; the "
+                             "run still fails on any OTHER divergence, and "
+                             "fails if this probe starts agreeing")
     verify(parser.parse_args())
 
 
