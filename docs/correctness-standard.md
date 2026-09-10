@@ -9,10 +9,10 @@ allowed to rebuild — and nobody could state it in a sentence.
 
 **A node that CircuitPython also has must render the same bytes CircuitPython
 renders, under the same conditions.** Same sample rate, same channel count,
-same options, and the same compile-time configuration — if the CircuitPython
-build we compare against has `CIRCUITPY_SYNTHIO_MAX_CHANNELS=14`, then the
-MicroPython build and the CPython extension are built at 14 for the comparison
-too. Differences in configuration are not findings; they are setup errors.
+same options, and the same compile-time configuration — this port ships
+`CIRCUITPY_SYNTHIO_MAX_CHANNELS=64`, so the CircuitPython build we compare
+against is built at 64 as well, and the comparison is only meaningful because it
+is. Differences in configuration are not findings; they are setup errors.
 
 **A node that is ours alone has no such reference, so it is held to two things
 instead:** that all three of our targets render it identically, and that its
