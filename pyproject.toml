@@ -7,12 +7,11 @@ name = "pydevices-audioif"
 dynamic = ["version"]
 description = "CircuitPython-compatible audio synthesis and effects for PyDevices"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [{name = "PyDevices contributors"}]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
