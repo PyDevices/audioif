@@ -34,6 +34,9 @@
 #ifndef AUDIOIF_VERSION
 #define AUDIOIF_VERSION "0.0.0+unknown"
 #endif
+#ifndef AUDIOIF_REVISION
+#define AUDIOIF_REVISION "unknown"
+#endif
 
 typedef struct {
     PyObject *error;
@@ -2808,6 +2811,11 @@ static int audioif_exec(PyObject *module) {
         AUDIOIF_TANK_MAX_TAPS) < 0) return -1;
     if (PyModule_AddStringConstant(module, "__version__",
     AUDIOIF_VERSION) < 0) return -1;
+    // The commit this was built from, so the CPython target answers the same
+    // question a board does. audioif#55; see src/cp_compat/audioif_build.h for
+    // why "unknown" is a real answer and not a failure.
+    if (PyModule_AddStringConstant(module, "__revision__",
+        AUDIOIF_REVISION) < 0) return -1;
     if (PyModule_AddIntConstant(module, "ABI_VERSION", 1) < 0) return -1;
     return 0;
 }

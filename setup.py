@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,6 +17,18 @@ MACOS_COMPILE_ARGS = ["-ffp-contract=off"] if sys.platform == "darwin" else []
 # _audioif.__version__ used to be a literal in the C, and drifted from VERSION
 # the first time VERSION moved. There is one version here, and it is this file.
 VERSION = Path(__file__).parent.joinpath("VERSION").read_text().strip()
+
+# The commit this wheel was built from, for `_audioif.__revision__`. The board
+# builds compute the same thing in micropython.mk / micropython.cmake; see
+# src/cp_compat/audioif_build.h for why it is computed and never stored, and why
+# "unknown" is the honest answer outside a checkout rather than an error.
+try:
+    REVISION = subprocess.run(
+        ["git", "-C", str(Path(__file__).parent), "describe", "--always",
+         "--dirty", "--abbrev=7"],
+        capture_output=True, text=True, check=True).stdout.strip() or "unknown"
+except (OSError, subprocess.CalledProcessError):
+    REVISION = "unknown"
 
 setup(
     ext_modules=[
@@ -50,7 +63,8 @@ setup(
                 "src/shared/audioif_tank.c",
             ],
             include_dirs=["src"],
-            define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION)],
+            define_macros=[("AUDIOIF_VERSION", '"%s"' % VERSION),
+                           ("AUDIOIF_REVISION", '"%s"' % REVISION)],
             extra_compile_args=MACOS_COMPILE_ARGS,
         )
     ]

@@ -79,6 +79,12 @@ from audiocore import (
 )
 import _audioif
 
+
+#: The audioif this was built from, the same pair the native builds put
+#: on this module (src/cp_compat/audioif_build.h). audioif#55.
+__version__ = _audioif.__version__
+__revision__ = _audioif.__revision__
+
 FRAMES = _audioif.FEEDBACK_DELAY_FRAMES
 
 #: Option name -> the native configure() slot. Kept in the order

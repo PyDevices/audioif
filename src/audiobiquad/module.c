@@ -18,6 +18,8 @@
 #include "audiobiquad/AllPass.h"
 #include "audiobiquad/Biquad.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 #include "shared/audioif_filter_f32.h"
 
@@ -39,6 +41,7 @@ static const mp_rom_obj_tuple_t audiobiquad_modes_tuple = {
 
 static const mp_rom_map_elem_t audiobiquad_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiobiquad) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Biquad), MP_ROM_PTR(&audiobiquad_biquad_type) },
     { MP_ROM_QSTR(MP_QSTR_AllPass), MP_ROM_PTR(&audiobiquad_allpass_type) },
     { MP_ROM_QSTR(MP_QSTR_LOW_PASS),

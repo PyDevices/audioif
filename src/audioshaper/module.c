@@ -12,10 +12,13 @@
 
 #include "audioshaper/Waveshaper.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audioshaper_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioshaper) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Waveshaper),
       MP_ROM_PTR(&audioshaper_waveshaper_type) },
 };

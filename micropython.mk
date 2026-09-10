@@ -10,11 +10,29 @@ MPAUDIO_SRC_DIR := $(MPAUDIO_MOD_DIR)/src
 
 CFLAGS_USERMOD += -I$(MPAUDIO_SRC_DIR)
 
+# --- which audioif this firmware was built from -----------------------------
+#
+# audioif#55. `os.uname().version` answers for MicroPython and says nothing
+# about us, so a board digest that moves cannot be attributed to a revision.
+# Computed HERE, from the directory the build is actually reading, because that
+# is the only place that knows: on 2026-09-09 a firmware had been built from a
+# throwaway source tree during a pin move, and the commit was not recoverable
+# from the working tree or from the .bin files left on disk.
+#
+# `--always --dirty` so a tree with uncommitted changes says so. Both default
+# to "unknown" rather than guessing if git is absent or this is a tarball --
+# see src/cp_compat/audioif_build.c.
+MPAUDIO_VERSION := $(shell cat $(MPAUDIO_MOD_DIR)/VERSION 2>/dev/null || echo 0.0.0+unknown)
+MPAUDIO_REVISION := $(shell git -C $(MPAUDIO_MOD_DIR) describe --always --dirty --abbrev=7 2>/dev/null || echo unknown)
+CFLAGS_USERMOD += -DAUDIOIF_VERSION='"$(MPAUDIO_VERSION)"'
+CFLAGS_USERMOD += -DAUDIOIF_REVISION='"$(MPAUDIO_REVISION)"'
+
 # --- cp_compat: small shims for CircuitPython-only helpers (mp_arg_validate_*,
 #     cp_enum, MP_PROPERTY_GETTER/GETSET, default___enter__/__exit__) that the
 #     ported CircuitPython audio/synthio sources call directly. See
 #     docs/porting-plan.md tier 0 and src/cp_compat/*.h for provenance.
 SRC_USERMOD_C += \
+    $(MPAUDIO_SRC_DIR)/cp_compat/audioif_build.c \
     $(MPAUDIO_SRC_DIR)/cp_compat/argcheck.c \
     $(MPAUDIO_SRC_DIR)/cp_compat/enum.c \
     $(MPAUDIO_SRC_DIR)/cp_compat/context_manager_helpers.c \

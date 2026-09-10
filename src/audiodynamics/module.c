@@ -9,10 +9,13 @@
 
 #include "audiodynamics/Dynamics.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audiodynamics_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiodynamics) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Dynamics), MP_ROM_PTR(&audiodynamics_dynamics_type) },
 
     { MP_ROM_QSTR(MP_QSTR_DYN_COMPRESS),

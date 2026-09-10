@@ -35,6 +35,9 @@ as a name of its own: a binding that dropped it would lose `sample_rate`,
 import glob
 import os
 import re
+
+import _audioif
+import importlib
 import pathlib
 import unittest
 
@@ -134,6 +137,67 @@ class TheTwoBindingsExposeTheSameSurface(unittest.TestCase):
                         self.assertIn("deinit", keys)
                         self.assertIn("__enter__", keys)
                         self.assertIn("__exit__", keys)
+
+
+class EveryModuleSaysWhichAudioifItIs(unittest.TestCase):
+    """audioif#55: a firmware has to be able to name the audioif it was built
+    from, and `os.uname().version` answers for MicroPython only.
+
+    The point of testing it here rather than trusting nine edits: a module added
+    later, or one whose globals table is rewritten, fails this instead of
+    shipping unmarked. That was the actual failure mode -- on 2026-09-09 a
+    firmware built from a throwaway source tree during a pin move could not be
+    attributed to any commit, because nothing in it recorded one.
+
+    Upstream's modules are deliberately NOT checked: adding a dunder to
+    `audiocore` or `synthio` would deviate from CircuitPython's surface, and any
+    of our nine answers the question (Brad, 2026-09-09).
+
+    **The CircuitPython spike bindings are also excluded, on purpose.** They
+    have the same globals-table shape and could carry the marker, but the CP
+    build has no `-DAUDIOIF_*` plumbing and does not need any: that binary is a
+    local comparison artifact, not shipped firmware, and its exact bytes are
+    already pinned with written provenance in
+    `tests/test_voice_ceiling_consistency.py`. This is a scope decision and not
+    an instance of the drift audioif#75 is about -- that issue is about
+    functional surface (a method or an option present on one binding and not the
+    other), and build metadata is not that.
+    """
+
+    #: The one line each module.c carries; see src/cp_compat/audioif_build.h.
+    MARKER = "AUDIOIF_BUILD_GLOBALS"
+
+    def test_every_one_of_our_modules_carries_the_marker(self):
+        for module in MODULES:
+            with self.subTest(module=module):
+                source = (ROOT / "src" / module / "module.c").read_text()
+                self.assertIn(
+                    self.MARKER, source,
+                    "%s/module.c does not expose __version__/__revision__, so a "
+                    "firmware built with it cannot be attributed" % module)
+
+    def test_the_python_twins_answer_the_same_way(self):
+        for module in MODULES:
+            with self.subTest(module=module):
+                twin = importlib.import_module(module)
+                self.assertEqual(twin.__version__, _audioif.__version__)
+                self.assertEqual(twin.__revision__, _audioif.__revision__)
+
+    def test_upstream_modules_are_left_alone(self):
+        """The control: this suite must not pass by marking everything."""
+        for module in ("audiocore", "audiodelays", "audiofilters", "audiomixer"):
+            with self.subTest(module=module):
+                source = (ROOT / "src" / module / "module.c").read_text()
+                self.assertNotIn(self.MARKER, source)
+
+    def test_the_revision_is_not_a_placeholder_in_this_checkout(self):
+        """`unknown` is a real answer outside a checkout -- but not in one.
+
+        Without this the whole mechanism could ship reporting `unknown` from
+        every target and every test above would still pass.
+        """
+        self.assertNotEqual(_audioif.__revision__, "unknown")
+        self.assertNotEqual(_audioif.__version__, "0.0.0+unknown")
 
 
 if __name__ == "__main__":

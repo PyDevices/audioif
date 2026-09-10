@@ -10,10 +10,13 @@
 #include "audiomath/Multiply.h"
 #include "audiomath/SubOctave.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audiomath_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiomath) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Multiply), MP_ROM_PTR(&audiomath_multiply_type) },
     { MP_ROM_QSTR(MP_QSTR_SubOctave),
       MP_ROM_PTR(&audiomath_suboctave_type) },

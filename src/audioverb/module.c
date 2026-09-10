@@ -12,10 +12,13 @@
 
 #include "audioverb/Tank.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audioverb_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioverb) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Tank), MP_ROM_PTR(&audioverb_tank_type) },
 };
 static MP_DEFINE_CONST_DICT(audioverb_module_globals,
