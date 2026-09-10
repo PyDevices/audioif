@@ -1424,9 +1424,7 @@ the flat-EQ passthrough, and the Nyquist refusal.
 > node recovers it.
 >
 > Identical on all three targets, so it is a fact about CircuitPython's kernel
-> and not about a binding. **`audiobiquad` reaches exact zero on every one of
-> those cases** and is the node to use below 100 Hz; the README's
-> `audiobiquad` section says so where a caller will actually read it.
+> and not about a binding.
 >
 > **Scope, stated plainly, because the numbers invite overstatement.** This is
 > a corner *we* live in and most callers do not: at 200 Hz and above the
@@ -1439,7 +1437,21 @@ the flat-EQ passthrough, and the Nyquist refusal.
 > `docs/upstream-reports/biquad-band-edges.md` carries the report. It is **held**
 > along with the other two — nothing goes upstream until we have done a great
 > deal more work across the org (Brad, 2026-09-09).
->
+
+### Which filter to reach for
+
+**Above a few hundred hertz, `audiofilters.Filter` is fine** — the difference
+from `audiobiquad` there is one to a few LSB, and it is the node CircuitPython
+has, so it is the one a ported sketch will already be using.
+
+**Below about 100 Hz, use `audiobiquad`.** It reaches exact zero on every one of
+the cases above, where `synthio.Biquad` settles on a constant it cannot be
+talked out of. The same applies to `audiobiquad.AllPass` against
+`audiofilters.Phaser`, whose feedback is clamped to `0.1..0.9` so a true null is
+not reachable.
+
+The README's `audiobiquad` section links here rather than repeating any of it.
+
 > Two smaller entries are **not** in this deviation's scope and stay applied
 > everywhere, because upstream has already merged them: PEAKING_EQ's `b2` sign
 > (CircuitPython `main` 8fabdbbfb1) and `synthio_biquad_filter_reset()` clearing
