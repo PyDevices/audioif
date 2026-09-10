@@ -311,8 +311,9 @@ deviation from upstream CircuitPython.
 
 **CPython:** the public surface and wheel plumbing are present, and the
 committed synthesis, mixer, MIDI, streaming, and effects fixtures match
-CircuitPython 10.2.1 PCM byte-for-byte. Import/API smoke success is not used
-as a substitute for those oracle comparisons.
+CircuitPython 10.3.0 PCM byte-for-byte — built at the same voice ceiling this
+port ships, which is the only comparison worth making. Import/API smoke success
+is not used as a substitute for those comparisons.
 
 `ulab` and `mp3` (the vendored Adafruit_MP3/Helix decoder `audiomp3`
 depends on, RPSL/RCSL-licensed — not MIT, carried unmodified per upstream's

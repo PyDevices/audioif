@@ -119,21 +119,26 @@ is the checklist, not a report.
   release job keep what a single interpreter *can* say - that every probe runs -
   across four operating systems and five Pythons, which catches an import
   error or an arithmetic assumption that only holds on x86_64.
-* **`cmods/bin/circuitpython` as an untouchable artefact** — *not yet done.* The
-  rule that it must never be rebuilt existed because it was a reference of
-  record for `audiodynamics` and `audioroute`. It is not one any more, and
-  CircuitPython should be built at whatever configuration a comparison needs.
-  What stands in the way is mechanical: the unix `coverage` variant hardcodes
-  `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14` into CFLAGS instead of taking the make
-  variable, and `build_cp.sh` has no passthrough for extra make arguments. **The
-  never-rebuild rule stays in force until that is done and the CP-shared gates
-  are re-read against the new binary** — the binary is still the reference for
-  every node CircuitPython does have.
-* **The 14 → 64 voice-ceiling deviation** recorded in `docs/upstream-diff.md`
-  earlier the same day — *not yet done*, and blocked on the same rebuild. It
-  only exists because the two sides are built at different ceilings. Build them
-  the same and there is no deviation to record; that section says so and stands
-  until then.
+* ~~**`cmods/bin/circuitpython` as an untouchable artefact**~~ — **done**
+  2026-09-09. The oracle is now built at the version and the ceiling this port
+  ships (CircuitPython 10.3.0, `CIRCUITPY_SYNTHIO_MAX_CHANNELS=64`) and is
+  rebuilt deliberately whenever either moves, re-pinned in the same change with
+  the reason written down. `cmods/build_cp.sh` passes `CP_CFLAGS_EXTRA` through
+  for the ceiling override, which must be `-U` then `-D` because `-Werror` makes
+  a conflicting redefinition an error. `tests/test_voice_ceiling_consistency.py`
+  still compares the binary's bytes against a pin — that check is about noticing
+  an *undeclared* rebuild and is not retired.
+
+  The rebuild earned itself immediately: it found two behaviour changes
+  CircuitPython 10.3.0 made to `synthio` and `audiomixer` that this port had not
+  taken — the panning polarity flip and the zero-crossing loudness gate. Both
+  were quiet arithmetic edits rather than new nodes, so the port already carried
+  10.3.0's new *files* and looked current. Nothing that grades us against our own
+  past could have seen them.
+* ~~**The 14 → 64 voice-ceiling deviation**~~ — **done** 2026-09-09, and gone
+  rather than documented. Both sides are built at 64,
+  `SYNTHIO_MIX_DOWN_SCALE` is 129 on both, and `verify_mixdown_knee` is
+  byte-identical to CircuitPython above the knee as well as below.
 * ~~**Stored digests as a reference of record**~~ — **done** for the DSP nodes:
   `golden/dsp_nodes.json` is deleted and `verify_dsp` compares interpreters
   against each other. The CP-shared gates (`verify_acceptance`,
