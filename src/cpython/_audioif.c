@@ -158,8 +158,16 @@ typedef struct {
 
 static int rawsample_raise_status(audioif_status_t status) {
     if (status == AUDIOIF_STATUS_DEINITIALIZED) {
-        PyErr_SetString(PyExc_RuntimeError,
-            "Object has been deinitialized and can no longer be used");
+        // ValueError, not RuntimeError: this is CircuitPython's own exception
+        // for a released object, straight out of shared-bindings/util.c, and
+        // cp_compat/util.c is a verbatim port of it. The exception type is the
+        // one thing about a released node that portable user code can catch, so
+        // a `try/except ValueError` around a teardown path has to work the same
+        // on a board and on this target. audioif#73; the message matches the
+        // native builds' too, trailing sentence included.
+        PyErr_SetString(PyExc_ValueError,
+            "Object has been deinitialized and can no longer be used. "
+            "Create a new object.");
     } else {
         PyErr_SetString(PyExc_RuntimeError, "audio sample operation failed");
     }

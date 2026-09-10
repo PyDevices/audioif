@@ -9,19 +9,22 @@ GET_BUFFER_MORE_DATA = 1
 GET_BUFFER_ERROR = 2
 
 
-#: What a released node raises **on the CPython target**: `RuntimeError`,
-#: which is what `_audioif`'s own guard raises (`src/cpython/_audioif.c:160`),
-#: so the target is consistent with itself. The native MicroPython and
-#: CircuitPython builds raise CircuitPython's `ValueError` from
-#: `raise_deinited_error()` (`src/cp_compat/util.c`) instead. That divergence
-#: is real, deliberate on neither side, and is audioif#73 - not something to
-#: change here, because the exception type is the one thing about a released
-#: node that portable user code can catch.
-DEINITED_MESSAGE = "Object has been deinitialized and can no longer be used"
+#: What a released node raises, on **every** target: CircuitPython's own
+#: `ValueError`, with CircuitPython's own message. It comes from
+#: `shared-bindings/util.c`, which `src/cp_compat/util.c` ports verbatim for the
+#: native builds; `_audioif`'s guard (`rawsample_raise_status`) and this shim
+#: now match it rather than raising `RuntimeError`.
+#:
+#: The exception type is the one thing about a released node that portable user
+#: code can actually catch, and the parity gates cannot see it because they
+#: compare rendered bytes. A `try/except ValueError` around a teardown path has
+#: to work the same on a board and on this target. audioif#73.
+DEINITED_MESSAGE = ("Object has been deinitialized and can no longer be used. "
+                    "Create a new object.")
 
 
 def raise_deinited_error():
-    raise RuntimeError(DEINITED_MESSAGE)
+    raise ValueError(DEINITED_MESSAGE)
 
 
 class _AudioSample:

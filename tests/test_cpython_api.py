@@ -71,17 +71,24 @@ class AudioifApiTests(unittest.TestCase):
                 sample.deinit()
 
     def test_deinit_guard_and_context_manager(self):
+        """`ValueError`, the same type and message the native builds raise.
+
+        This asserts the type deliberately: it is the one thing about a released
+        node that portable user code can catch, and the parity gates compare
+        rendered bytes, so nothing else here would see it drift. It was
+        `RuntimeError` on this target until audioif#73.
+        """
         sample = audiocore.RawSample(bytearray(8))
         with sample as entered:
             self.assertIs(entered, sample)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             audiocore.get_buffer(sample)
 
         synth = synthio.Synthesizer()
         synth.deinit()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             _ = synth.sample_rate
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             _ = synth.pressed
 
     def test_a_released_splitter_releases_its_taps(self):
@@ -99,15 +106,15 @@ class AudioifApiTests(unittest.TestCase):
 
         splitter.deinit()
         splitter.deinit()          # idempotent, as __exit__ makes it
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             splitter.tap(0)
         for tap in (first, second):
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 audiocore.get_buffer(tap)
             # `SplitterTap._reset_buffer` is deliberately a no-op, and used to
             # be a bare `pass` that never asked whether the tap was released -
             # so a rewind of a released tap quietly succeeded.
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(ValueError):
                 audiocore.reset_buffer(tap)
 
     def test_the_splitter_is_a_context_manager(self):
@@ -115,7 +122,7 @@ class AudioifApiTests(unittest.TestCase):
             array("h", [0] * 256), sample_rate=48000, channel_count=2)
         with audioroute.Splitter(sample, taps=2) as splitter:
             tap = splitter.tap(0)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             audiocore.get_buffer(tap)
 
     def test_chained_sources_released_on_deinit_and_gc(self):

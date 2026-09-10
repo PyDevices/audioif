@@ -81,13 +81,13 @@ class TheRateIsBoundByTheDestination(unittest.TestCase):
         node = audiospeed.Resampler(source(16000))
         node.deinit()
         node.deinit()                          # idempotent
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             audiocore.get_buffer(node)
 
     def test_it_is_a_context_manager(self):
         with audiospeed.Resampler(source(16000)) as node:
             self.assertEqual(node.rate, 1.0)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             audiocore.get_buffer(node)
 
 
