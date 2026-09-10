@@ -278,6 +278,14 @@ class Synthesizer(_AudioSample):
         self.waveform, self.envelope = waveform, envelope
         self.blocks = []
         self._notes = []
+        # The loudness each voice slot last actually rendered at. CircuitPython
+        # keys this to the channel (`synth->active_loudness[chan]`), not to the
+        # note, and never clears it -- not on reset_buffer, not when a slot
+        # changes hands. Zero-initialised there, so a slot's first block is
+        # gated until the oscillator crosses zero. This target's `_notes` is a
+        # compacting list rather than a fixed slot array (see press() below), so
+        # the render-loop index stands in for `chan`.
+        self._active_loudness = [[0, 0] for _ in range(self.max_polyphony)]
         self._deinited = False
 
     @property
@@ -452,7 +460,7 @@ class Synthesizer(_AudioSample):
             value = min(high, max(low, _value(value))) * 32768.0
             return int(value + 0.5) if value >= 0 else int(value - 0.5)
 
-        for note in self._notes:
+        for slot, note in enumerate(self._notes):
             if note._envelope_state is None:
                 self._start_note(note)
             waveform = note.waveform if note.waveform is not None else self.waveform
@@ -484,11 +492,14 @@ class Synthesizer(_AudioSample):
                 # panning block inputs.
                 loudness_left = loudness_right = envelope_level
             else:
+                # panning > 0 attenuates the LEFT channel, matching
+                # audiomixer.Mixer. CircuitPython 10.3.0 flipped this; before
+                # it, synthio and Mixer panned in opposite directions.
                 panning = scaled(note.panning)
                 if panning >= 0:
-                    left_pan, right_pan = 32768, 32767 - panning
+                    left_pan, right_pan = 32767 - panning, 32768
                 else:
-                    left_pan, right_pan = 32767 + panning, 32768
+                    left_pan, right_pan = 32768, 32767 + panning
                 amplitude = scaled(note.amplitude)
                 left_pan = (left_pan * amplitude) >> 15
                 right_pan = (right_pan * amplitude) >> 15
@@ -541,9 +552,19 @@ class Synthesizer(_AudioSample):
                         _value(stage.frequency), _value(stage.Q),
                         amplitude, self.sample_rate,
                     )
+            # The loudness this note last actually rendered at. A change waits
+            # for a zero crossing (CircuitPython 10.3.0); at the end of the
+            # block the kernel forces active to pending, so what carries into
+            # the next call is simply this block's pending pair.
+            # A loudness change waits for a zero crossing. The kernel forces
+            # active to pending at the end of the block, so what carries into
+            # the next call is simply this block's pending pair.
+            active = self._active_loudness[slot]
             contribution = _audioif.apply_loudness_i32(
                 voice_data, loudness_left, loudness_right, channels,
+                active[0], active[1],
             )
+            active[0], active[1] = loudness_left, loudness_right
             voice = memoryview(contribution).cast("i")
             for index, value in enumerate(voice):
                 mixed[index] += value

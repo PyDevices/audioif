@@ -35,6 +35,14 @@ struct synthio_biquad {
     // CircuitPython 10.3.0's audiofilters_process_filter_chain uses these:
     // Q15, same scale as shared-module/synthio/Biquad.c. audioif's wider
     // shift above is a different arithmetic and is not that helper.
+    //
+    // audioif#77: choosing per-function like this makes ONE NODE'S ARITHMETIC
+    // DEPEND ON WHICH TARGET IS RUNNING IT. synthio_biquad_filter_sample()
+    // uses these, its plural sibling uses the wider shift, and the CPython
+    // twin uses the wider shift for both -- so audiofilters.Filter renders
+    // different bytes on MicroPython and on the CPython extension, 11 LSB
+    // apart by the eighth sample of an 800 Hz low-pass and still opening.
+    // Awaiting Brad's call on which kernel wins; do not "fix" one side alone.
     int32_t cp_a1, cp_a2, cp_b0, cp_b1, cp_b2;
 };
 

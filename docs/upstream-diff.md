@@ -298,64 +298,39 @@ reconstructing an equivalent synth, four `BasslineSynth` steps with
 glide, `all_notes_off()`/`voice.stop()` tail-drain, and final `Mixer`
 state) is identical after the `CIRCUITPY_SYNTHIO_MAX_CHANNELS` fix.
 
-### The ceiling later moved 14 → 64, which gives up that alignment above the knee (audioif#31, recorded 2026-09-09; resolution decided, not yet applied)
+### The ceiling deviation is RETIRED (audioif#31, closed 2026-09-09)
 
-**Status.** Under `docs/correctness-standard.md` this deviation should not
-exist: a node CircuitPython also has is compared with CircuitPython *at the same
-compile-time configuration*, so the comparison build gets whatever ceiling we
-ship. Applying that retires this section outright. It has not been applied yet —
-the pinned CircuitPython is built at 14, and its unix `coverage` variant
-hardcodes `-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14` into CFLAGS rather than taking
-the `?=` make variable the way `ports/raspberrypi/mpconfigport.mk` does, so
-overriding it is a change to the build path and not a flag. Until then the
-divergence below is real and stands as written.
+There is no longer a ceiling deviation. The comparison build takes the ceiling
+this port ships, which is what `docs/correctness-standard.md` requires of any
+node CircuitPython also has: compare with CircuitPython *at the same
+compile-time configuration*.
 
-The paragraph above set the ceiling to 14 **because the oracle is built at
-14** — "matching the oracle's own build choice so voice-stealing arithmetic
-lines up exactly, not just 'enough channels'". That reason no longer holds
-everywhere, and this is the deviation it produced.
+`CIRCUITPY_SYNTHIO_MAX_CHANNELS` is **64** on every build path (14 fits the drum
+kits; 64 fits a ten-finger chord on the melodic library, whose instruments press
+up to 9 `Note`s per key), and the pinned CircuitPython is now built at 64 too.
+`SYNTHIO_MIX_DOWN_SCALE` is therefore 129 on both sides rather than 129 against
+623, and `tests/parity/verify_mixdown_knee.py` is byte-identical to
+CircuitPython **above** the knee as well as below. Nothing about that gate is
+advisory any more.
 
-`CIRCUITPY_SYNTHIO_MAX_CHANNELS` is now **64** on every build path (audioif#31:
-14 fits the drum kits, 64 fits a ten-finger chord on the melodic library,
-whose instruments press up to 9 `Note`s per key). The pinned oracle is still
-14 and must never be rebuilt. The ceiling is not just an admission limit — it
-divides every sample through the mix-down limiter:
+What it took: the unix `coverage` variant hardcodes
+`-DCIRCUITPY_SYNTHIO_MAX_CHANNELS=14` into CFLAGS rather than taking the `?=`
+make variable the way `ports/raspberrypi/mpconfigport.mk` does, so overriding it
+is a change to the build path and not a flag. `cmods/build_cp.sh` passes
+`CP_CFLAGS_EXTRA` through for this, and the override must be `-U` then `-D`:
+`-Werror` makes a conflicting redefinition an error, so "the last `-D` wins" is
+not true here.
 
-```
-SYNTHIO_MIX_DOWN_SCALE(x) = 0xfffffff / (32768 * x - 28000)
+What the rebuild found, which is the argument for doing it: two behaviour
+changes CircuitPython 10.3.0 made to `synthio` and `audiomixer` that this port
+had not taken — the panning polarity flip and the zero-crossing loudness gate.
+Both were quiet arithmetic edits rather than new nodes, every gate compared us
+against our own past, and nothing else in the repository could have seen them.
+That is the whole case for an oracle at our own configuration and version.
 
-    ceiling 14  ->  scale 623      the oracle
-    ceiling 64  ->  scale 129      this port
-```
-
-So **no material that crosses the ±28000 knee can be both above the knee and
-oracle-identical.** Below the knee the two are byte-identical, measured on all
-three runtimes (2026-09-06); above it they cannot agree, and that difference is
-the ceiling and nothing else. Anything describing an above-knee fixture as
-oracle-enforced is wrong.
-
-What that costs and what covers it:
-
-* `tests/parity/verify_mixdown_knee.py` is the only gate whose material
-  crosses the knee, so it is the only one that can see a ceiling change at
-  all — the other four are byte-identical at any ceiling. Its `stdout` field
-  is **this port's** output, deliberately, for the reason above; its
-  `circuitpython_stdout` field holds the oracle's answer and is enforced only
-  over the below-knee lines.
-* Its check (b) is the anti-launder tripwire: the ceiling the interpreter
-  reports must equal `port_max_polyphony` in the golden, so re-capturing
-  `stdout` under a changed ceiling re-greens check (a) and turns (b) red.
-  Measured: with the ceiling at 24 and `stdout` re-captured, (a) passed and
-  (b) failed.
-* `tests/test_voice_ceiling_consistency.py` holds all five sites of the
-  constant to one number, which is the other failure — a ceiling applied to
-  three of five places would otherwise ship green.
-
-Recorded here because `verify_mixdown_knee.py` says in as many words that it
-was not: *"That divergence is the ceiling and nothing else; it is not yet
-written down in docs/upstream-diff.md."* Writing it down is not a new decision
-— the ceiling was moved deliberately in audioif#31 — it is the one that was
-made having a record.
+The old rule that the oracle must never be rebuilt is retired with this section;
+`tests/test_voice_ceiling_consistency.py` carries the replacement and the
+provenance of each re-pin.
 
 ## Tier 5 audiomp3: license
 
@@ -1319,17 +1294,17 @@ Two consequences, both measured:
   the right channel made. Identical input in both channels came out 3.3 dB
   apart at 3 kHz. No scale factor can correct this one.
 
-**This one is a catch-up, not a divergence.** Upstream fixed it after 10.2.1:
-current `main` allocates through `audiofilters_assign_filter_chain(..., channel_count)`
-and indexes `filter.states[j * channel_count + k]` against a per-channel
-`filter_buffer + k * SYNTHIO_MAX_DUR`. Our CP tree is pinned at 10.2.1
-(`bcfcb51`), which still has the single interleaved state, so the port
-inherited it. The fix here was arrived at independently and lands on the same
-design, which is reassuring about both. **When the CP pin moves past that
-commit this entry stops describing a difference at all** — at which point
-prefer upstream's exact shape (one `SYNTHIO_MAX_DUR * channel_count` buffer
-deinterleaved in a single pass) over ours (one `SYNTHIO_MAX_DUR` buffer reused
-per channel) so the files converge and future pin bumps stay clean.
+**This one is a catch-up, and it is CLOSED (2026-09-09).** Upstream fixed it
+after 10.2.1, the CP pin has since moved to 10.3.0, and this port now carries
+upstream's exact shape: `audiofilters_assign_filter_chain(..., channel_count)`
+in `src/audiofilters/__init__.c`, `states[j * channel_count + channel]`, and
+10.3.0's own `synthio_biquad_filter_sample()` single-sample entry point. So this
+entry describes no difference at all any more — it is kept because the failure
+it records (a stereo `Filter` sharing one biquad state between the channels,
+which sounds like a filter that works and measures as one channel moving the
+other by 1.26 dB) is worth being able to recognise again. The fix here was
+arrived at independently and landed on the same design, which was reassuring
+about both.
 
 **Change**: one state per stage *per channel*, indexed
 `[stage * channels + channel]`, with the buffer deinterleaved per channel and

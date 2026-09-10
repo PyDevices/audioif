@@ -169,13 +169,19 @@ Both are expected as siblings in the parent workspace (`cmods/` in
 
 ## The CircuitPython oracle — extend, never modify
 
-`cmods/circuitpython` (sibling checkout, detached at tag `10.2.1`) is the
+`cmods/circuitpython` (sibling checkout, detached at tag `10.3.0`) is the
 **oracle** every parity golden is measured against. The rule, for any agent
 working here:
 
-- **Never edit files in `cmods/circuitpython` directly**, and never commit,
-  pull, or move its pin. A modified oracle silently redefines what "parity"
-  means and invalidates every golden without failing anything.
+- **Never edit files in `cmods/circuitpython` directly.** A modified oracle
+  silently redefines what "parity" means and invalidates every golden without
+  failing anything. Its *pin* is a different matter: it moves when this port
+  moves to a new CircuitPython release, deliberately, in a change that re-reads
+  every CP-shared gate and re-pins the binary's hash with the reason written
+  down. The oracle is built at the same version and the same ceiling this port
+  ships — an oracle at a different configuration cannot answer the only question
+  worth asking. See `docs/correctness-standard.md` and
+  `tests/test_voice_ceiling_consistency.py`.
 - **Extending CircuitPython is fine and is the designed path**: new modules
   live in this repo under `src/circuitpython_spike/`, and
   `apply_cp_patches.sh` copies them (plus `src/shared/` DSP) into the CP
