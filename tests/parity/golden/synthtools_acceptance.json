@@ -10,7 +10,7 @@
   "mixer playing False",
   "done"
  ],
- "circuitpython_stdout_note": "CircuitPython 10.3.0's own answer, at the same ceiling this port ships (64). It diverges from `stdout` only in the three biquad-filtered checksums -- lead, bend and bass -- and only because of the deliberate biquad deviations recorded in docs/upstream-diff.md, 'The biquads were Q15, so they could not go low'. The five other lines are identical. NOT YET EXPLAINED, and tracked separately: on those same three lines the CPython twin and desktop MicroPython also disagree with EACH OTHER, which the deliberate deviation does not account for -- both compile the same src/shared C. Measured 2026-09-09.",
+ "circuitpython_stdout_note": "CircuitPython 10.3.0's own answer, at the same ceiling this port ships (64). It diverges from `stdout` only in the three biquad-filtered checksums -- lead, bend and bass -- and only because of the deliberate biquad deviations recorded in docs/upstream-diff.md, 'The biquads were Q15, so they could not go low'. The five other lines are identical. EXPLAINED and tracked as audioif#77: on those same three lines the CPython twin and desktop MicroPython also disagree with EACH OTHER, because the deviation is applied on one target only: synthio_biquad_filter_sample() (the single-sample entry point 10.3.0's filter chain calls) does hand-written Q15 over cp_a1..cp_b2, while its plural sibling and the whole CPython twin go through audioif_biquad_process(). Measured 2026-09-09.",
  "fixture": "synthtools_acceptance.py stdout",
  "microcontroller_port": "parent workspace's built micropython",
  "sha256": "5eba14f15c8bad3c482f180e0382328c378314e8595f7d30f189df0aa23a6c3b",
