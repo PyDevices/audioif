@@ -155,6 +155,41 @@ should read −3.01 dB and a passband 0.00:
 The usable range is roughly 300 Hz to 16 kHz, and about 400 Hz to 12 kHz for
 anything under half a decibel of error.
 
+**"Silence" in the first row is too kind — it latches.** Measured on this port
+2026-09-09 (identical on the CPython extension, desktop MicroPython and a
+patched CircuitPython 10.3.0 build, so it is the kernel and not a binding).
+Feed a `LOW_PASS` at 40 Hz / Q 0.707 one 512-frame block and then silence, and
+its output settles on a constant and stays there:
+
+| material | settles at |
+|---|---|
+| DC burst | 16143 |
+| kick — 60 Hz decaying sine | 16143 |
+| bass note, 55 Hz | 16143 |
+| square, 80 Hz | 16143 |
+| noise burst | 16143 |
+| asymmetric saw, 45 Hz | 0 |
+
+Five of six, and at 100 Hz all six settle at 2631. Feeding fresh audio
+afterwards does not recover it: `min == max == 16143`, so the section has
+stopped passing signal rather than merely attenuating it, and
+`audiofilters.Filter` exposes no way to clear the state.
+
+The reason is the `b0` column above, read at its logical conclusion. At 40 Hz
+the input coefficient rounds to **zero** — the section has no input gain at all
+— leaving a bare feedback recursion whose poles sit at radius 0.9963 and which
+therefore has an integer fixed point to fall into. The `b0` figures here are
+computed with an exact cosine; through `fast_sincos`, which is what the code
+actually runs, they are 4.51e-05 at 100 Hz and 7.96e-06 at 40 Hz, so the
+picture is the same or slightly worse.
+
+**Proportion, so the thread does not start on the wrong foot.** This is a corner
+most callers never visit: at 200 Hz and above the coefficients are fine, and
+synthio's own note filters sit well clear of it. It matters to a project trying
+for exact replication and for instrument-grade fidelity below 100 Hz. It is
+worth reporting as a limitation with a fix and a cost, which is what this
+document is — not as an alarm.
+
 #### Why both causes have to go together
 
 Turning each cause off in the closed form, at 48 kHz:

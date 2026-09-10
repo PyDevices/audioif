@@ -1384,20 +1384,61 @@ the flat-EQ passthrough, and the Nyquist refusal.
 > cross-interpreter set, and a planted 1-LSB coefficient change fails it.
 >
 > **What that costs, measured rather than estimated.** Holding `synthio.Biquad`
-> to CircuitPython's arithmetic brings back the fixed points below. A DC burst
-> into a low-pass parks forever at:
+> to CircuitPython's arithmetic brings back its low-frequency fixed points.
+> Below roughly 100 Hz the filter stops being the filter it was asked for, and
+> the mechanism is one column wide — these are the Q15 coefficients the code
+> actually computes, through its own `fast_sincos` rather than an exact cosine:
 >
-> | 40 Hz | 100 Hz | 400 Hz | 1 kHz |
-> |---|---|---|---|
-> | **16143** | 2631 | 160 | 22 |
+> | corner | `b0` true | `b0` in Q15 |
+> |---|---|---|
+> | 1000 Hz | 3.93e-03 | 129 |
+> | 200 Hz | 1.73e-04 | 6 |
+> | 100 Hz | 4.51e-05 | **1** |
+> | 63 Hz | 1.87e-05 | **1** |
+> | 40 Hz | 7.96e-06 | **0** |
 >
-> 16143 is half of full scale, held indefinitely, from a filter asked for a
-> 40 Hz low-pass. Identical on all three targets (2026-09-09), so it is a fact
-> about CircuitPython's kernel. `audiobiquad` reaches exact zero at every one of
-> them. This is the measurement
-> `docs/upstream-reports/biquad-band-edges.md` carries, and that report — the
-> one upstream ask still open — is now the only route to fixing it for
-> `synthio.Biquad`.
+> At 40 Hz the input coefficient rounds to **zero**, so the section has no input
+> gain at all. What remains is a feedback recursion with poles at radius 0.9963,
+> which settles on an integer fixed point and holds it. At 63 and 100 Hz `b0` is
+> a single LSB against true values of 0.61 and 1.48, so the gain is already
+> wrong by 64% and 32% before the recursion is reached.
+>
+> **It does not go quiet, it latches, and ordinary material triggers it.** Where
+> the report draft says a low-frequency low-pass goes "silent", that is too kind.
+> Fed 512 frames and then silence, a 40 Hz `LOW_PASS` at Q 0.707 settles on a
+> constant and stays there:
+>
+> | material | parks at |
+> |---|---|
+> | DC burst | 16143 |
+> | kick, 60 Hz decaying sine | 16143 |
+> | bass note, 55 Hz | 16143 |
+> | square, 80 Hz | 16143 |
+> | noise burst | 16143 |
+> | asymmetric saw, 45 Hz | 0 |
+>
+> Five of six, and at 100 Hz all six park at 2631. Feed it fresh audio
+> afterwards and the output stays constant — `min == max == 16143` — so the
+> section is not merely inaccurate, it has stopped passing signal.
+> `audiofilters.Filter` exposes no `clear()`, so nothing short of building a new
+> node recovers it.
+>
+> Identical on all three targets, so it is a fact about CircuitPython's kernel
+> and not about a binding. **`audiobiquad` reaches exact zero on every one of
+> those cases** and is the node to use below 100 Hz; the README's
+> `audiobiquad` section says so where a caller will actually read it.
+>
+> **Scope, stated plainly, because the numbers invite overstatement.** This is
+> a corner *we* live in and most callers do not: at 200 Hz and above the
+> coefficients are fine, and synthio's own note filters sit far above it. We are
+> trying to be an exact replica and to build instruments a musician would use;
+> the projects synthio was designed for ask neither of those things (Brad,
+> 2026-09-09). It is severe for us, it has a fix on our side, and it is not a
+> fire under anyone else's chair.
+>
+> `docs/upstream-reports/biquad-band-edges.md` carries the report. It is **held**
+> along with the other two — nothing goes upstream until we have done a great
+> deal more work across the org (Brad, 2026-09-09).
 >
 > Two smaller entries are **not** in this deviation's scope and stay applied
 > everywhere, because upstream has already merged them: PEAKING_EQ's `b2` sign
