@@ -494,10 +494,28 @@ class Synthesizer(_AudioSample):
             value = min(high, max(low, _value(value))) * 32768.0
             return int(value + 0.5) if value >= 0 else int(value - 0.5)
 
+        silenced = []
         for note in self._notes:
             slot = note._slot
             if note._envelope_state is None:
                 self._start_note(note)
+            # A voice at envelope level 0 is DONE: CircuitPython sets its
+            # channel back to SYNTHIO_SILENCE and skips it here, before
+            # rendering anything (shared-module/synthio/__init__.c, and
+            # src/synthio/__init__.c does the same). Not a released-only check
+            # -- any level of exactly 0 ends the voice.
+            #
+            # Rendering it anyway used to be harmless: pending loudness 0 times
+            # any sample is 0, so it contributed silence. The zero-crossing
+            # gate changed that. The gate holds the loudness the voice LAST
+            # rendered at until the waveform crosses zero, so a note dropping
+            # to level 0 kept sounding at its previous loudness for up to a
+            # whole block -- audible material this target added and the native
+            # builds did not. That was audioif#78: one block of
+            # synthtools_acceptance's `bass`, the first after note_off.
+            if note._envelope_state.level == 0:
+                silenced.append(note)
+                continue
             waveform = note.waveform if note.waveform is not None else self.waveform
             waveform = _DEFAULT_WAVEFORM if waveform is None else waveform
             length = len(waveform)
@@ -604,11 +622,15 @@ class Synthesizer(_AudioSample):
             for index, value in enumerate(voice):
                 mixed[index] += value
 
+        # A silenced voice gets no envelope step, exactly as a channel set to
+        # SYNTHIO_SILENCE is skipped by the advance loop upstream, and its
+        # channel is free for the next press.
+        for note in silenced:
+            self._notes.remove(note)
+
         for note in tuple(self._notes):
             self._refresh_envelope(note)
             note._envelope_state.step(sample_count)
-            if note._released and note._envelope_state.level == 0:
-                self._notes.remove(note)
 
         output = _audioif.mixdown_i32(mixed, self.max_polyphony)
         return memoryview(output)
