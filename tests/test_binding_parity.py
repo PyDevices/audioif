@@ -39,6 +39,7 @@ import re
 import _audioif
 import importlib
 import pathlib
+import subprocess
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -190,14 +191,52 @@ class EveryModuleSaysWhichAudioifItIs(unittest.TestCase):
                 source = (ROOT / "src" / module / "module.c").read_text()
                 self.assertNotIn(self.MARKER, source)
 
-    def test_the_revision_is_not_a_placeholder_in_this_checkout(self):
-        """`unknown` is a real answer outside a checkout -- but not in one.
-
-        Without this the whole mechanism could ship reporting `unknown` from
-        every target and every test above would still pass.
-        """
-        self.assertNotEqual(_audioif.__revision__, "unknown")
+    def test_the_version_is_not_a_placeholder(self):
+        """`__version__` comes from the VERSION file and is always available."""
         self.assertNotEqual(_audioif.__version__, "0.0.0+unknown")
+
+    def test_the_revision_is_real_when_the_build_could_know_it(self):
+        """`unknown` is a real answer for a wheel, and a bug in a checkout build.
+
+        `__revision__` identifies a BUILD; `__version__` identifies a RELEASE.
+        A published wheel is built by `python -m build`, which builds from an
+        unpacked sdist with no `.git`, so `git describe` cannot run and the
+        honest answer is `unknown` -- the version already names that artifact
+        exactly. Firmware and in-place builds do run from a checkout, and that is
+        the case audioif#55 needed: attributing a board digest to a commit.
+
+        So this asserts the value only when the extension under test was built
+        from this checkout, and skips otherwise. It cost a red release run
+        (v0.4.0, every OS and Python) by asserting the value unconditionally --
+        CI installs a wheel, so `unknown` was correct there and the test was
+        wrong.
+        """
+        try:
+            described = subprocess.run(
+                ["git", "-C", str(ROOT), "describe", "--always", "--dirty",
+                 "--abbrev=7"],
+                capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            self.skipTest("not a git checkout, so no revision is knowable")
+        if not described:
+            self.skipTest("git described nothing")
+        # Built in place, or installed from a wheel elsewhere?
+        try:
+            in_tree = pathlib.Path(_audioif.__file__).resolve().is_relative_to(
+                ROOT.resolve())
+        except AttributeError:                      # Python < 3.9
+            in_tree = str(ROOT.resolve()) in str(
+                pathlib.Path(_audioif.__file__).resolve())
+        if not in_tree:
+            self.skipTest("_audioif was installed, not built from this tree; "
+                          "`unknown` is correct for a wheel")
+        # NOT an equality check against `described`. The revision is compiled in,
+        # so it names the commit the extension was BUILT at, and goes stale the
+        # moment anything is committed after it -- an equality bar would fail on
+        # every commit until someone rebuilt, which trains people to ignore it.
+        # What is worth asserting is that the mechanism produced something.
+        self.assertNotEqual(_audioif.__revision__, "unknown")
+        self.assertTrue(_audioif.__revision__.strip())
 
 
 if __name__ == "__main__":

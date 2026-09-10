@@ -34,7 +34,9 @@ retires the last ceiling deviation. See
 ### Added
 
 - Every module of ours reports `__version__` and `__revision__`, so a firmware
-  can name the audioif it was built from. (#55)
+  can name the audioif it was built from. A published wheel reports `unknown`
+  for the revision -- it is built from an sdist with no `.git`, and its
+  `__version__` already names it exactly. (#55)
 - `audiodelays.Flanger`, `audiodelays.GranularPitchShift`, `audiospeed.Resampler`
   and the `audiofilters` filter chain on MicroPython, so all three targets carry
   CircuitPython 10.3.0's nodes. (#74)
