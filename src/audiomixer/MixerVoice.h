@@ -29,6 +29,11 @@ typedef struct {
     uint32_t buffer_length;
     synthio_block_slot_t level;
     synthio_block_slot_t panning;
+    // The level this voice last ACTUALLY rendered at, per channel. A change to
+    // level or panning waits for a zero crossing (CircuitPython 10.3.0), so it
+    // cannot step the waveform mid-cycle and click.
+    int32_t active_lo_level;
+    int32_t active_hi_level;
 } audiomixer_mixervoice_obj_t;
 
 extern const mp_obj_type_t audiomixer_mixervoice_type;

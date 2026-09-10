@@ -1,27 +1,27 @@
 {
-  "circuitpython": "10.2.1",
-  "circuitpython_stdout": [
-    "lead nbytes 20480 checksum 2477316 order 3493961517",
-    "bend nbytes 9216 checksum 1156063 order 3133964132",
-    "json roundtrip filt_f 800.0 wave ASAW detune 1.004",
-    "bass nbytes 16384 checksum 1938672 order 2508469927",
-    "echo delay_ms 230.76923076923077",
-    "tail nbytes 2048 checksum 0 order 3523624389",
-    "mixer playing False",
-    "done"
-  ],
-  "circuitpython_stdout_note": "CircuitPython 10.2.1's own answer, kept for comparison. It diverges from `stdout` only in the three checksums, and only because of the deliberate biquad deviations: lead +0.020%, bend +0.24%, bass +1.50% (the bass is a Q 6.0 low-pass sweeping down from 300 Hz at 22050 Hz, which is the worst case for the Q15 coefficients this port replaced). See docs/upstream-diff.md.",
-  "fixture": "synthtools_acceptance.py stdout",
-  "microcontroller_port": "parent workspace's built micropython",
-  "sha256": "02a1f374080c75f89d69312f3913891113c7d2c5da74c04c2d0908c08331fb58",
-  "stdout": [
-    "lead nbytes 20480 checksum 2477815 order 3424303388",
-    "bend nbytes 9216 checksum 1158878 order 4178407717",
-    "json roundtrip filt_f 800.0 wave ASAW detune 1.004",
-    "bass nbytes 16384 checksum 1967784 order 268670207",
-    "echo delay_ms 230.76923076923077",
-    "tail nbytes 2048 checksum 0 order 3523624389",
-    "mixer playing False",
-    "done"
-  ]
+ "circuitpython": "10.3.0",
+ "circuitpython_stdout": [
+  "lead nbytes 20480 checksum 2466195 order 706098954",
+  "bend nbytes 9216 checksum 1152889 order 508356948",
+  "json roundtrip filt_f 800.0 wave ASAW detune 1.004",
+  "bass nbytes 16384 checksum 2011754 order 2633567105",
+  "echo delay_ms 230.76923076923077",
+  "tail nbytes 2048 checksum 0 order 3523624389",
+  "mixer playing False",
+  "done"
+ ],
+ "circuitpython_stdout_note": "CircuitPython 10.3.0's own answer, at the same ceiling this port ships (64). It diverges from `stdout` only in the three biquad-filtered checksums -- lead, bend and bass -- and only because of the deliberate biquad deviations recorded in docs/upstream-diff.md, 'The biquads were Q15, so they could not go low'. The five other lines are identical. NOT YET EXPLAINED, and tracked separately: on those same three lines the CPython twin and desktop MicroPython also disagree with EACH OTHER, which the deliberate deviation does not account for -- both compile the same src/shared C. Measured 2026-09-09.",
+ "fixture": "synthtools_acceptance.py stdout",
+ "microcontroller_port": "parent workspace's built micropython",
+ "sha256": "5eba14f15c8bad3c482f180e0382328c378314e8595f7d30f189df0aa23a6c3b",
+ "stdout": [
+  "lead nbytes 20480 checksum 2465688 order 4077999863",
+  "bend nbytes 9216 checksum 1151824 order 2220550381",
+  "json roundtrip filt_f 800.0 wave ASAW detune 1.004",
+  "bass nbytes 16384 checksum 2008512 order 3634604693",
+  "echo delay_ms 230.76923076923077",
+  "tail nbytes 2048 checksum 0 order 3523624389",
+  "mixer playing False",
+  "done"
+ ]
 }

@@ -213,9 +213,9 @@ static mp_obj_t synthio_synth_get_note_filter(mp_obj_t note_obj) {
     return mp_const_none;
 }
 
-static void sum_with_loudness(int32_t *out_buffer32, int32_t *tmp_buffer32, int16_t loudness[2], size_t dur, int synth_chan) {
-    audioif_sum_with_loudness(out_buffer32, tmp_buffer32, loudness, dur,
-        synth_chan);
+static void sum_with_loudness(int32_t *out_buffer32, int32_t *tmp_buffer32, int16_t active_loudness[2], int16_t loudness[2], size_t dur, int synth_chan) {
+    audioif_sum_with_loudness(out_buffer32, tmp_buffer32, active_loudness,
+        loudness, dur, synth_chan);
 }
 
 void synthio_synth_synthesize(synthio_synth_t *synth, uint8_t **bufptr, uint32_t *buffer_length, uint8_t channel) {
@@ -277,7 +277,7 @@ void synthio_synth_synthesize(synthio_synth_t *synth, uint8_t **bufptr, uint32_t
             }
         }
 
-        sum_with_loudness(out_buffer32, tmp_buffer32, loudness, dur, synth->base.channel_count);
+        sum_with_loudness(out_buffer32, tmp_buffer32, synth->active_loudness[chan], loudness, dur, synth->base.channel_count);
     }
 
     int16_t *out_buffer16 = (int16_t *)(void *)synth->buffers[synth->buffer_index];

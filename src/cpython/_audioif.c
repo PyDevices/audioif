@@ -3,6 +3,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 
 #include "shared/audioif_rawsample.h"
@@ -2261,7 +2262,10 @@ static PyObject *audioif_oscillator_i32(PyObject *module, PyObject *args) {
         &next_accumulator, (uint16_t)duration, 16);
     if (rendered) {
         int16_t loudness[2] = {(int16_t)loudness_left, (int16_t)loudness_right};
-        audioif_sum_with_loudness(output, voice, loudness, duration,
+        // No previous block to carry an active loudness from, so active is
+        // pending and the zero-crossing gate short-circuits.
+        int16_t active[2] = {loudness[0], loudness[1]};
+        audioif_sum_with_loudness(output, voice, active, loudness, duration,
             (uint8_t)channel_count);
     }
     PyObject *data = PyBytes_FromStringAndSize((const char *)output,
@@ -2380,11 +2384,19 @@ static PyObject *audioif_apply_loudness_i32(PyObject *module, PyObject *args) {
     Py_buffer voice = {0};
     int left, right;
     unsigned int channels;
-    if (!PyArg_ParseTuple(args, "y*iiI:apply_loudness_i32", &voice,
-        &left, &right, &channels)) return NULL;
+    // The loudness this voice was ACTUALLY rendered at when the previous block
+    // ended. Omitted means "no previous block", so it starts at pending and
+    // the zero-crossing gate never fires. See audioif_assign_loudness.
+    int active_left = INT_MIN, active_right = INT_MIN;
+    if (!PyArg_ParseTuple(args, "y*iiI|ii:apply_loudness_i32", &voice,
+        &left, &right, &channels, &active_left, &active_right)) return NULL;
+    if (active_left == INT_MIN) active_left = left;
+    if (active_right == INT_MIN) active_right = right;
     if (voice.len % sizeof(int32_t) || (channels != 1 && channels != 2) ||
         left < INT16_MIN || left > INT16_MAX ||
-        right < INT16_MIN || right > INT16_MAX) {
+        right < INT16_MIN || right > INT16_MAX ||
+        active_left < INT16_MIN || active_left > INT16_MAX ||
+        active_right < INT16_MIN || active_right > INT16_MAX) {
         PyBuffer_Release(&voice);
         PyErr_SetString(PyExc_ValueError, "invalid loudness parameters");
         return NULL;
@@ -2398,8 +2410,10 @@ static PyObject *audioif_apply_loudness_i32(PyObject *module, PyObject *args) {
     }
     memset(PyBytes_AS_STRING(result), 0, PyBytes_GET_SIZE(result));
     int16_t loudness[2] = {(int16_t)left, (int16_t)right};
+    int16_t active[2] = {(int16_t)active_left, (int16_t)active_right};
     audioif_sum_with_loudness((int32_t *)PyBytes_AS_STRING(result),
-        (const int32_t *)voice.buf, loudness, duration, (uint8_t)channels);
+        (const int32_t *)voice.buf, active, loudness, duration,
+        (uint8_t)channels);
     PyBuffer_Release(&voice);
     return result;
 }

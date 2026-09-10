@@ -13,6 +13,12 @@ int16_t audioif_mix_down_sample(int32_t sample, int32_t scale,
 bool audioif_oscillator_fill(int32_t *output, const int16_t *waveform,
     uint32_t waveform_start, uint32_t waveform_end, uint32_t dds_rate,
     uint32_t *accumulator, uint16_t duration, uint8_t frequency_shift);
+void audioif_assign_loudness(int32_t word, int32_t *last_word,
+    int16_t active_loudness[2], const int16_t pending_loudness[2]);
+void audioif_assign_packed_level(uint32_t word, uint32_t *last_word,
+    int32_t *active_lo, int32_t *active_hi,
+    int32_t pending_lo, int32_t pending_hi);
 void audioif_sum_with_loudness(int32_t *output, const int32_t *voice,
-    const int16_t loudness[2], size_t duration, uint8_t channel_count);
+    int16_t active_loudness[2], const int16_t pending_loudness[2],
+    size_t duration, uint8_t channel_count);
 uint32_t audioif_pitch_bend(uint32_t frequency_scaled, int32_t bend_value);

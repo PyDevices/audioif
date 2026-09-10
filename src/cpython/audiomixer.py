@@ -21,6 +21,10 @@ class MixerVoice:
         self.panning = 0.0
         self._remaining = b""
         self._source_more = False
+        # The level this voice last actually rendered at, per channel. Zero on
+        # a fresh voice, as CircuitPython's zero-initialised
+        # active_lo_level/active_hi_level are, and never cleared thereafter.
+        self._active_level = (0, 0)
 
     @property
     def playing(self): return self._sample is not None
@@ -155,17 +159,40 @@ class Mixer(_AudioSample):
                               (0.5 if panning_value >= 0 else -0.5))
                 left = right = level
                 if self.channel_count == 2:
-                    left_scale = 32768 if panning >= 0 else 32767 + panning
-                    right_scale = 32767 - panning if panning >= 0 else 32768
+                    # panning > 0 attenuates the LEFT channel. CircuitPython
+                    # 10.3.0 flipped this and matched synthio.Note to it.
+                    left_scale = 32767 - panning if panning >= 0 else 32768
+                    right_scale = 32768 if panning >= 0 else 32767 + panning
                     left = (left_scale * level) >> 15
                     right = (right_scale * level) >> 15
-                multipliers = (left, right)
-                data = array.array("h", (
-                    max(-32768, min(32767,
-                        int(value * (multipliers[index % self.channel_count] /
-                                     32767.0))))
-                    for index, value in enumerate(samples)
-                )).tobytes()
+                pending = (left, right)
+                # A level or pan move waits for a zero crossing so it cannot
+                # click. The samples are read two at a time because that is the
+                # packed 32-bit word the gate tests; see
+                # audioif_assign_packed_level in src/shared/audioif_synth_dsp.c,
+                # which is the authority this mirrors.
+                active = list(voice._active_level)
+                last_lo = last_hi = 0
+                scaled = []
+                for index in range(0, len(samples), 2):
+                    lo = samples[index]
+                    hi = samples[index + 1] if index + 1 < len(samples) else 0
+                    if active[0] != pending[0] or active[1] != pending[1]:
+                        if (lo == 0 or hi == 0
+                                or ((last_lo or last_hi)
+                                    and ((last_lo < 0) != (lo < 0)
+                                         or (last_hi < 0) != (hi < 0)))):
+                            active[0], active[1] = pending
+                        else:
+                            last_lo, last_hi = lo, hi
+                    scaled.append(max(-32768, min(32767,
+                        int(lo * (active[0] / 32767.0)))))
+                    if index + 1 < len(samples):
+                        scaled.append(max(-32768, min(32767,
+                            int(hi * (active[1] / 32767.0)))))
+                # Forced at the block boundary: at most one block of delay.
+                voice._active_level = pending
+                data = array.array("h", scaled).tobytes()
             chunks.append(data)
         size = max(map(len, chunks), default=0)
         chunks = [chunk + bytes(size - len(chunk)) for chunk in chunks]

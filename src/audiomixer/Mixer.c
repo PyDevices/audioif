@@ -20,6 +20,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "audiomixer/Mixer.h"
+#include "shared/audioif_synth_dsp.h"
 #include "audiomixer/MixerVoice.h"
 #include "cp_compat/argcheck.h"
 #include "cp_compat/context_manager_helpers.h"
@@ -229,10 +230,10 @@ static inline uint32_t add16signed(uint32_t a, uint32_t b) {
     return result;
 }
 
-static inline uint32_t mult16signed(uint32_t val, int32_t mul[2]) {
+static inline uint32_t mult16signed(uint32_t val, int32_t lomul, int32_t himul) {
     uint32_t result = 0;
     for (int8_t i = 0; i < 2; i++) {
-        float mod_mul = (float)mul[i] / (float)((1 << 15) - 1);
+        float mod_mul = (float)(i ? himul : lomul) / (float)((1 << 15) - 1);
         int16_t ai = (val >> (sizeof(uint16_t) * 8 * i));
         int32_t intermediate = (int32_t)(ai * mod_mul);
         if (intermediate > SHRT_MAX) {
@@ -312,6 +313,15 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
             if (voice->sample) {
                 // Load another buffer
                 audioio_get_buffer_result_t result = audiosample_get_buffer(voice->sample, false, 0, (uint8_t **)&voice->remaining_buffer, &voice->buffer_length);
+                // A deinited sample answers GET_BUFFER_ERROR with a NULL
+                // buffer (audiocore's funnel guard). Drop the voice rather
+                // than mixing from it.
+                if (result == GET_BUFFER_ERROR) {
+                    voice->sample = NULL;
+                    voice->buffer_length = 0;
+                    voice->more_data = false;
+                    break;
+                }
                 // Track length in terms of words.
                 voice->buffer_length /= sizeof(uint32_t);
                 voice->more_data = result == GET_BUFFER_MORE_DATA;
@@ -334,18 +344,26 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
 
         uint16_t left_panning_scaled = 32768, right_panning_scaled = 32768;
         if (MP_LIKELY(self->base.channel_count == 2)) {
+            // panning > 0 attenuates the LEFT channel. CircuitPython 10.3.0
+            // flipped this and matched synthio.Note to it.
             if (panning >= 0) {
-                right_panning_scaled = 32767 - panning;
+                left_panning_scaled = 32767 - panning;
             } else {
-                left_panning_scaled = 32767 + panning;
+                right_panning_scaled = 32767 + panning;
             }
         }
 
-        int32_t loudness[2] = { level, level };
+        int32_t pending_lo_level = level;
+        int32_t pending_hi_level = level;
         if (MP_LIKELY(self->base.channel_count == 2)) {
-            loudness[0] = (left_panning_scaled * loudness[0]) >> 15;
-            loudness[1] = (right_panning_scaled * loudness[1]) >> 15;
+            pending_lo_level = (left_panning_scaled * pending_lo_level) >> 15;
+            pending_hi_level = (right_panning_scaled * pending_hi_level) >> 15;
         }
+
+        // A level or pan move waits for a zero crossing so it cannot click.
+        int32_t active_lo_level = voice->active_lo_level;
+        int32_t active_hi_level = voice->active_hi_level;
+        uint32_t last_word = 0;
 
         // First active voice gets copied over verbatim.
         if (!voices_active) {
@@ -353,29 +371,39 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                 if (MP_LIKELY(self->base.samples_signed)) {
                     if (MP_LIKELY(self->base.channel_count == sample->channel_count)) {
                         for (uint32_t i = 0; i < n; i++) {
-                            uint32_t v = src[i];
-                            word_buffer[i] = mult16signed(v, loudness);
+                            uint32_t word = src[i];
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = mult16signed(word, active_lo_level, active_hi_level);
                         }
                     } else {
                         for (uint32_t i = 0; i < n; i += 2) {
-                            uint32_t v = src[i >> 1];
-                            word_buffer[i] = mult16signed(copy16lsb(v), loudness);
-                            word_buffer[i + 1] = mult16signed(copy16msb(v), loudness);
+                            uint32_t word = src[i >> 1];
+                            uint32_t word_lsb = copy16lsb(word);
+                            audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = mult16signed(word_lsb, active_lo_level, active_hi_level);
+                            word = copy16msb(word);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i + 1] = mult16signed(word, active_lo_level, active_hi_level);
                         }
                     }
                 } else {
                     if (MP_LIKELY(self->base.channel_count == sample->channel_count)) {
                         for (uint32_t i = 0; i < n; i++) {
-                            uint32_t v = src[i];
-                            v = tosigned16(v);
-                            word_buffer[i] = mult16signed(v, loudness);
+                            uint32_t word = src[i];
+                            word = tosigned16(word);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = mult16signed(word, active_lo_level, active_hi_level);
                         }
                     } else {
                         for (uint32_t i = 0; i + 1 < n; i += 2) {
-                            uint32_t v = src[i >> 1];
-                            v = tosigned16(v);
-                            word_buffer[i] = mult16signed(copy16lsb(v), loudness);
-                            word_buffer[i + 1] = mult16signed(copy16msb(v), loudness);
+                            uint32_t word = src[i >> 1];
+                            word = tosigned16(word);
+                            uint32_t word_lsb = copy16lsb(word);
+                            audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = mult16signed(word_lsb, active_lo_level, active_hi_level);
+                            word = copy16msb(word);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i + 1] = mult16signed(word, active_lo_level, active_hi_level);
                         }
                     }
                 }
@@ -388,7 +416,8 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                         if (MP_LIKELY(!self->base.samples_signed)) {
                             word = tosigned16(word);
                         }
-                        word = mult16signed(word, loudness);
+                        audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        word = mult16signed(word, active_lo_level, active_hi_level);
                         hword_buffer[i] = pack8(word);
                     }
                 } else {
@@ -397,8 +426,12 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                         if (MP_LIKELY(!self->base.samples_signed)) {
                             word = tosigned16(word);
                         }
-                        hword_buffer[i] = pack8(mult16signed(copy16lsb(word), loudness));
-                        hword_buffer[i + 1] = pack8(mult16signed(copy16msb(word), loudness));
+                        uint32_t word_lsb = copy16lsb(word);
+                        audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        hword_buffer[i] = pack8(mult16signed(word_lsb, active_lo_level, active_hi_level));
+                        word = copy16msb(word);
+                        audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        hword_buffer[i + 1] = pack8(mult16signed(word, active_lo_level, active_hi_level));
                     }
                 }
             }
@@ -408,13 +441,18 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                     if (MP_LIKELY(self->base.channel_count == sample->channel_count)) {
                         for (uint32_t i = 0; i < n; i++) {
                             uint32_t word = src[i];
-                            word_buffer[i] = add16signed(mult16signed(word, loudness), word_buffer[i]);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = add16signed(mult16signed(word, active_lo_level, active_hi_level), word_buffer[i]);
                         }
                     } else {
                         for (uint32_t i = 0; i + 1 < n; i += 2) {
                             uint32_t word = src[i >> 1];
-                            word_buffer[i] = add16signed(mult16signed(copy16lsb(word), loudness), word_buffer[i]);
-                            word_buffer[i + 1] = add16signed(mult16signed(copy16msb(word), loudness), word_buffer[i + 1]);
+                            uint32_t word_lsb = copy16lsb(word);
+                            audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = add16signed(mult16signed(word_lsb, active_lo_level, active_hi_level), word_buffer[i]);
+                            word = copy16msb(word);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i + 1] = add16signed(mult16signed(word, active_lo_level, active_hi_level), word_buffer[i + 1]);
                         }
                     }
                 } else {
@@ -422,14 +460,19 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                         for (uint32_t i = 0; i < n; i++) {
                             uint32_t word = src[i];
                             word = tosigned16(word);
-                            word_buffer[i] = add16signed(mult16signed(word, loudness), word_buffer[i]);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = add16signed(mult16signed(word, active_lo_level, active_hi_level), word_buffer[i]);
                         }
                     } else {
                         for (uint32_t i = 0; i + 1 < n; i += 2) {
                             uint32_t word = src[i >> 1];
                             word = tosigned16(word);
-                            word_buffer[i] = add16signed(mult16signed(copy16lsb(word), loudness), word_buffer[i]);
-                            word_buffer[i + 1] = add16signed(mult16signed(copy16msb(word), loudness), word_buffer[i + 1]);
+                            uint32_t word_lsb = copy16lsb(word);
+                            audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i] = add16signed(mult16signed(word_lsb, active_lo_level, active_hi_level), word_buffer[i]);
+                            word = copy16msb(word);
+                            audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                            word_buffer[i + 1] = add16signed(mult16signed(word, active_lo_level, active_hi_level), word_buffer[i + 1]);
                         }
                     }
                 }
@@ -442,7 +485,8 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                         if (MP_LIKELY(!self->base.samples_signed)) {
                             word = tosigned16(word);
                         }
-                        word = mult16signed(word, loudness);
+                        audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        word = mult16signed(word, active_lo_level, active_hi_level);
                         word = add16signed(word, unpack8(hword_buffer[i]));
                         hword_buffer[i] = pack8(word);
                     }
@@ -452,8 +496,12 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
                         if (MP_LIKELY(!self->base.samples_signed)) {
                             word = tosigned16(word);
                         }
-                        hword_buffer[i] = pack8(add16signed(mult16signed(copy16lsb(word), loudness), unpack8(hword_buffer[i])));
-                        hword_buffer[i + 1] = pack8(add16signed(mult16signed(copy16msb(word), loudness), unpack8(hword_buffer[i + 1])));
+                        uint32_t word_lsb = copy16lsb(word);
+                        audioif_assign_packed_level(word_lsb, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        hword_buffer[i] = pack8(add16signed(mult16signed(word_lsb, active_lo_level, active_hi_level), unpack8(hword_buffer[i])));
+                        word = copy16msb(word);
+                        audioif_assign_packed_level(word, &last_word, &active_lo_level, &active_hi_level, pending_lo_level, pending_hi_level);
+                        hword_buffer[i + 1] = pack8(add16signed(mult16signed(word, active_lo_level, active_hi_level), unpack8(hword_buffer[i + 1])));
                     }
                 }
             }
@@ -467,6 +515,12 @@ static void mix_down_one_voice(audiomixer_mixer_obj_t *self,
             voice->remaining_buffer += n >> 1;
             voice->buffer_length -= n >> 1;
         }
+
+        // Force the active level to match the pending level in the case that the conditions of a
+        // zero crossing weren't met within the last `SYNTHIO_MAX_DUR` frames. Will ensure minimal
+        // delay in level or panning changes at the potential expensive of an audible pop.
+        voice->active_lo_level = pending_lo_level;
+        voice->active_hi_level = pending_hi_level;
     }
 
     if (length && !voices_active) {

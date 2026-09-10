@@ -43,12 +43,24 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 #: The pinned CircuitPython oracle binary, and its hash.
 #:
-#: The oracle is built at 14 and must never be rebuilt (AGENTS.md, "The
-#: CircuitPython oracle -- extend, never modify"). The hole this closes: a
+#: The oracle is built at the SAME ceiling this port ships (64) and at the same
+#: CircuitPython version the port tracks (10.3.0). It is rebuilt deliberately
+#: whenever either moves, and re-pinned in that change -- the old rule
+#: ("built at 14 and must never be rebuilt") is retired: an oracle at a
+#: different configuration cannot answer the only question worth asking, which
+#: is whether we render CircuitPython's bytes in the same situation. See
+#: docs/correctness-standard.md. The hole this closes is unchanged: a
 #: CFLAGS_EXTRA rebuild of the oracle needs no edit to any tracked file,
 #: leaves `git -C cmods/circuitpython status` clean, and overwrites the
 #: gitignored binary in place. Every existing check would pass on a silently
 #: different oracle. Comparing the bytes is the only thing that notices.
+#:
+#: Re-pinned 2026-09-09 for the deliberate rebuild to CircuitPython 10.3.0 at
+#: CIRCUITPY_SYNTHIO_MAX_CHANNELS=64, replacing the 10.2.1-at-14 build
+#: b3063621c72a085b (kept at cmods/bin/circuitpython-oracle-10.2.1). That
+#: rebuild is what found the two synthio/audiomixer behaviour changes 10.3.0
+#: made and this port had not taken: the panning polarity flip and the
+#: zero-crossing loudness gate.
 #:
 #: It noticed once (#33). The hash was first recorded at dda8a77 on
 #: 2026-09-03 20:46; the binary was relinked at 23:05 the same evening by the
@@ -61,7 +73,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: re-pin with the reason written down.
 ORACLE = ROOT.parent / "cmods" / "bin" / "circuitpython"
 ORACLE_SHA256 = (
-    "b3063621c72a085bbabcb9da20736408132f082fdbf8f8cf361e083f1a3100fd")
+    "94500bc0382f1cc2c378014f1d1b379a6c0fc19d3e09058410b25646cdd6db01")
 
 
 def _search(relative, pattern):
