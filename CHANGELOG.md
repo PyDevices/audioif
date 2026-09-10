@@ -1,20 +1,85 @@
 ## Unreleased
 
-- `audiodelays.Echo.filter` and `audiofreeverb.Freeverb.pre_filter`/`post_filter` on the MicroPython side, via one extracted `audiofilters_filter_chain`
-- audiodelays.Flanger and audiodelays.GranularPitchShift on the MicroPython side, so all three targets have the CircuitPython 10.3.0 delay nodes
-- CI configures the standalone CMake path, which no workflow had ever run
-- CI installs the `[render]` extra, and proves a bare install does not bring numpy
-- `scripts/test_testpypi_install.py` follows the release beside it and its smoke code runs
-- audiodynamics: `reset()` clears the key filters, so a reset node is a fresh one
-- audiodynamics gains `feedback_gain_corrected`, so a feedback loop lands on its ratio (default off)
-- audiodynamics gains `gain_smooth_ms`, a one-pole on the computed gain (default off)
-- audiospeed.Resampler on the MicroPython side, so all three targets have it
-- audioconvolve.Convolver.latency reports 0 when nothing is loaded
-- audioecho.FeedbackDelay renders mono correctly when a source block is short
-- Every node type releases: `deinit()` on the twelve that had none, and the deinitialised guard on the one funnel every pull goes through
-- `audioroute.Splitter` can be released, and releasing it releases its taps
-- A released `SplitterTap` refuses a rewind on the CPython target instead of quietly succeeding
-- clean-build: MicroPython v1.29.0, and the deinit surface is gated on a real native build
+## v0.4.0 (2026-09-10)
+
+Brings `synthio` and `audiomixer` up to CircuitPython 10.3.0, which moves
+rendered audio: a pan control now works the other way round, and level changes
+wait for a zero crossing. The comparison build is now made at the same version
+and voice ceiling this port ships, which is what found those two changes and
+retires the last ceiling deviation. See
+[docs/correctness-standard.md](docs/correctness-standard.md).
+
+### Breaking
+
+- A released node raises `ValueError`, not `RuntimeError` on the CPython target.
+  Same type and message as the native builds now. Code catching `RuntimeError`
+  around a teardown path should be changed to `ValueError`. (#73)
+- `synthio`, `audiomixer`: `panning > 0` attenuates the **left** channel.
+  Upstream flipped `synthio.Note` to match `audiomixer.Mixer`; both were
+  reversed here, so the direction of every pan is inverted. A patch or a
+  composition that sets `panning` should have its sign flipped.
+- `synthio`, `audiomixer`: a level, amplitude or pan change now waits for a zero
+  crossing, so it cannot click. Delayed by at most one block.
+- `synthio`: a voice at envelope level 0 renders nothing, as the native builds
+  do. Previously it kept sounding at its previous loudness for up to a block.
+  (#78)
+- `synthio.Biquad`, and so `audiofilters.Filter`, runs CircuitPython's Q15
+  arithmetic on all three targets. `audiobiquad` keeps the widened kernel. The
+  deviation had been applied on one target only, 11 LSB apart by the eighth
+  sample of an 800 Hz low-pass. (#77) — **use `audiobiquad` below 100 Hz**, see
+  [which filter to reach for](docs/upstream-diff.md#which-filter-to-reach-for)
+- `audiobiquad`: transposed direct form II. 7 of 56 f0/Q cells outside 0.05 dB
+  becomes 1, at no measurable cost. (#64)
+
+### Added
+
+- Every module of ours reports `__version__` and `__revision__`, so a firmware
+  can name the audioif it was built from. (#55)
+- `audiodelays.Flanger`, `audiodelays.GranularPitchShift`, `audiospeed.Resampler`
+  and the `audiofilters` filter chain on MicroPython, so all three targets carry
+  CircuitPython 10.3.0's nodes. (#74)
+- `audiodelays.Echo.filter`, `audiofreeverb.Freeverb.pre_filter`/`post_filter`.
+- `audiodynamics`: `gain_smooth_ms`, a one-pole on the computed gain (#61), and
+  `feedback_gain_corrected`, so a feedback loop lands on its ratio (#62). Both
+  default off.
+- `audioroute.MidSide`, and `audiomath.SubOctave` as an analog octave divider.
+- `deinit()` on the twelve node types that had none, plus the deinitialised guard
+  on the one funnel every pull goes through. (#58, #59, #60, #63)
+
+### Fixed
+
+- `audiodynamics`: the ESP32-P4 and ESP32-S3 rendered the transient attack path
+  differently. Fused multiply-add, forbidden in that kernel; the two boards now
+  agree byte for byte. (#66)
+- `audiodynamics`: `reset()` clears the key filters, so a reset node is a fresh
+  one. (#56)
+- `audioconvolve.Convolver.latency` reports 0 when nothing is loaded. (#44)
+- `audioecho.FeedbackDelay` renders mono correctly when a source block is short.
+- `audioroute.Splitter` can be released, and releasing it releases its taps.
+- `audiodelays.Flanger`: the wet interpolation overflowed `int32` on full-scale
+  material. Upstream's still does. (#76)
+- `audioeffects.Phaser` and `audioeffects.LowPass` return to exact silence.
+  `audiofilters.Phaser` still holds DC. (#23, #36)
+- The comparison build was made at a different CircuitPython version and voice
+  ceiling than this port ships, so nothing above the mix-down knee could agree
+  with it. It is now built at 10.3.0 at our own ceiling, and the 14 → 64
+  deviation is retired rather than documented. (#27, #31)
+- `biquad_component_probe` was graded against its own stored digest, so it could
+  not see two of our own targets disagreeing. `verify_dsp` now compares the
+  three interpreters.
+- Nothing held the MicroPython and CircuitPython bindings to the same surface;
+  three changes drifted in one day. `tests/test_binding_parity.py` does. (#75)
+- Stored digests were a reference of record, and a digest can be re-blessed.
+  Replaced by numeric traits with planted faults for every own node. See
+  [docs/correctness-standard.md](docs/correctness-standard.md).
+
+### Documentation
+
+- [docs/correctness-standard.md](docs/correctness-standard.md): what audioif is
+  held to, in one page.
+- [docs/upstream-diff.md](docs/upstream-diff.md) records what CircuitPython's
+  Q15 biquad does below 100 Hz, where `b0` rounds to zero, and which filter to
+  reach for.
 
 ## v0.3.0 (2026-09-09)
 
