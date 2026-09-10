@@ -572,11 +572,14 @@ static PyObject *biquad_state_process(audioif_biquad_state_object_t *self,
         input.len);
     PyBuffer_Release(&input);
     if (result == NULL) return NULL;
-    audioif_biquad_coefficients_t coefficients;
-    audioif_biquad_configure(&coefficients, mode, frequency, Q, A,
-        sample_rate);
+    // CircuitPython's Q15 kernel, not the widened one beside it: this backs
+    // synthio.Biquad and audiofilters.Filter, which CircuitPython also has, so
+    // they render CircuitPython's bytes. audioif#77, Brad 2026-09-09.
+    audioif_biquad_cp_coefficients_t coefficients;
+    audioif_biquad_cp_configure(&coefficients, mode,
+        audioif_biquad_cp_w0(frequency, sample_rate), Q, A);
     // Mono path (synthio's per-note filters): one channel, state[0].
-    audioif_biquad_process(&coefficients, &self->state[0],
+    audioif_biquad_cp_process(&coefficients, &self->state[0],
         (int32_t *)PyBytes_AS_STRING(result),
         PyBytes_GET_SIZE(result) / sizeof(int32_t));
     return result;
@@ -606,9 +609,9 @@ static PyObject *biquad_state_process_s16(audioif_biquad_state_object_t *self,
         return PyErr_NoMemory();
     }
     const int16_t *source = input.buf;
-    audioif_biquad_coefficients_t coefficients;
-    audioif_biquad_configure(&coefficients, mode, frequency, Q, A,
-        sample_rate);
+    audioif_biquad_cp_coefficients_t coefficients;
+    audioif_biquad_cp_configure(&coefficients, mode,
+        audioif_biquad_cp_w0(frequency, sample_rate), Q, A);
     // Deinterleave each channel into its own contiguous span of `working`,
     // filter it with that channel's state, and read it back interleaved.
     for (int c = 0; c < channels; c++) {
@@ -616,7 +619,7 @@ static PyObject *biquad_state_process_s16(audioif_biquad_state_object_t *self,
         for (Py_ssize_t k = 0; k < frames; k++) {
             segment[k] = source[k * channels + c];
         }
-        audioif_biquad_process(&coefficients, &self->state[c], segment,
+        audioif_biquad_cp_process(&coefficients, &self->state[c], segment,
             frames);
     }
     PyObject *result = PyBytes_FromStringAndSize(NULL, input.len);

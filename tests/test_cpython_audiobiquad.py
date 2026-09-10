@@ -213,9 +213,30 @@ class TailTest(unittest.TestCase):
         Not every trajectory lands on one -- which is why the defect went
         unnoticed -- but a plain DC burst into a low-pass does, and the state
         it lands on reproduces itself for as long as anyone cares to look.
+
+        **The numbers here were 1 and 4 until 2026-09-09, and that was this
+        test measuring the wrong kernel.** `BiquadState.process_s16` ran
+        audioif's widened fixed point at the time, which does park but only on
+        a negligible value; audioif#77 pointed it at CircuitPython's actual Q15
+        arithmetic, which is what the name always claimed. The defect is far
+        larger than 1 LSB:
+
+            40 Hz   parks at 16143      100 Hz  parks at 2631
+            400 Hz  parks at 160       1000 Hz  parks at 22
+
+        16143 is half of full scale, held forever, from a filter asked for a
+        40 Hz low-pass. Measured identically on the CPython extension, desktop
+        MicroPython and CircuitPython 10.3.0 (2026-09-09), so it is a fact
+        about CircuitPython's kernel and not about one binding. `audiobiquad`,
+        whose float state is the point of it, reaches exact zero at every one of
+        these -- that is B4 above.
+
+        This is the measurement `docs/upstream-reports/biquad-band-edges.md`
+        exists to carry, and it is the cost of holding `synthio.Biquad` to
+        CircuitPython's bytes.
         """
         parked = []
-        for frequency, expected in ((100.0, 1), (40.0, 4)):
+        for frequency, expected in ((100.0, 2631), (40.0, 16143)):
             state = _audioif.BiquadState()
             state.process_s16(array("h", [30000] * 256).tobytes(), 0,
                               frequency, 0.7071067811865475, 1.0, 48000, 1.0,

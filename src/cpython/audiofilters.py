@@ -407,7 +407,10 @@ class _FilterChain:
             state[:] = [0, 0, 0, 0]
 
     def tick(self, sample_rate):
-        w_scale = (2.0 * math.pi) / sample_rate
+        # A multiply by a reciprocal, matching synthio_global_W_scale exactly.
+        # `(2 * pi) / sample_rate` differs in the last bits, and Q15 rounding
+        # turns that into different coefficients. See audioif_biquad_cp_w0().
+        w_scale = (2.0 * math.pi) * (1.0 / sample_rate)
         self.coeffs = [_cp_biquad_coeffs(biquad, w_scale)
                        for biquad in self.objs]
 

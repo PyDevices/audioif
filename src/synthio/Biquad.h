@@ -28,22 +28,12 @@ struct synthio_biquad {
     synthio_filter_mode mode;
     synthio_block_slot_t f0, Q, A;
     mp_float_t cached_W0, cached_Q, cached_A;
-    // `shift` is the coefficients' fixed-point format, which audioif picks per
-    // filter rather than fixing at Q15 the way upstream does. Cache it with
-    // them: they are meaningless apart.
-    int32_t a1, a2, b0, b1, b2, shift;
-    // CircuitPython 10.3.0's audiofilters_process_filter_chain uses these:
-    // Q15, same scale as shared-module/synthio/Biquad.c. audioif's wider
-    // shift above is a different arithmetic and is not that helper.
-    //
-    // audioif#77: choosing per-function like this makes ONE NODE'S ARITHMETIC
-    // DEPEND ON WHICH TARGET IS RUNNING IT. synthio_biquad_filter_sample()
-    // uses these, its plural sibling uses the wider shift, and the CPython
-    // twin uses the wider shift for both -- so audiofilters.Filter renders
-    // different bytes on MicroPython and on the CPython extension, 11 LSB
-    // apart by the eighth sample of an 800 Hz low-pass and still opening.
-    // Awaiting Brad's call on which kernel wins; do not "fix" one side alone.
-    int32_t cp_a1, cp_a2, cp_b0, cp_b1, cp_b2;
+    // CircuitPython's Q15 coefficients, and nothing else. audioif#77, Brad
+    // 2026-09-09: a node CircuitPython also has renders CircuitPython's bytes,
+    // so there is one coefficient set here rather than two. The widened
+    // fixed-point kernel this file used to carry alongside is now reached only
+    // through `audiobiquad`, which is ours.
+    audioif_biquad_cp_coefficients_t coefficients;
 };
 
 typedef audioif_biquad_state_t biquad_filter_state;

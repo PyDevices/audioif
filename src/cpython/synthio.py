@@ -215,6 +215,13 @@ class Biquad:
 
 
 class Note:
+    #: The synthesizer channel this note was admitted on, assigned by press().
+    #: CircuitPython's channel index, which the per-channel zero-crossing gate
+    #: state is keyed to. A note that has never been pressed has no channel; 0
+    #: is the value a stray render would read, and is deliberate rather than an
+    #: error, matching the note_obj[0] a never-admitted note would occupy.
+    _slot = 0
+
     def __init__(self, frequency, *, panning=0, amplitude=1, bend=0, waveform=None,
                  waveform_loop_start=0, waveform_loop_end=waveform_max_length,
                  envelope=None, filter=None, ring_frequency=0, ring_bend=0,
@@ -282,9 +289,18 @@ class Synthesizer(_AudioSample):
         # keys this to the channel (`synth->active_loudness[chan]`), not to the
         # note, and never clears it -- not on reset_buffer, not when a slot
         # changes hands. Zero-initialised there, so a slot's first block is
-        # gated until the oscillator crosses zero. This target's `_notes` is a
-        # compacting list rather than a fixed slot array (see press() below), so
-        # the render-loop index stands in for `chan`.
+        # gated until the oscillator crosses zero.
+        #
+        # `_notes` is a list here rather than CircuitPython's fixed
+        # `note_obj[chan]` array, so each note carries the channel index it was
+        # admitted on (`note._slot`) and this is indexed by that -- NOT by the
+        # note's position in the list. The list compacts when a note finishes
+        # and CircuitPython's channels do not, so using the list position made
+        # a note read another note's gate state after any voice ended. It cost
+        # one block of `synthtools_acceptance`'s `bend` and one of its release
+        # tail, and nothing else: the gate is forced to pending at every block
+        # boundary, so a wrong read cannot propagate past the block it happens
+        # in, which is what made it look like rounding rather than aliasing.
         self._active_loudness = [[0, 0] for _ in range(self.max_polyphony)]
         self._deinited = False
 
@@ -413,7 +429,25 @@ class Synthesizer(_AudioSample):
                 self._notes.remove(victim)
             self._start_note(note)
             note._accum = 0
+            note._slot = self._free_slot()
             self._notes.append(note)
+
+    def _free_slot(self):
+        """The lowest channel index no sounding note holds.
+
+        CircuitPython's `find_channel_with_note(SYNTHIO_SILENCE)` scans its
+        channel array in order and takes the first free one, so admitting a
+        note here has to pick the same index for the per-channel gate state to
+        line up. A note that has left `_notes` has freed its channel, exactly
+        as a channel set back to SYNTHIO_SILENCE has.
+        """
+        taken = {note._slot for note in self._notes}
+        for index in range(self.max_polyphony):
+            if index not in taken:
+                return index
+        # press() only reaches here having already evicted, so this cannot
+        # happen; answer the last channel rather than raising out of a render.
+        return self.max_polyphony - 1
 
     def release(self, notes):
         if isinstance(notes, (int, Note)): notes = (notes,)
@@ -460,7 +494,8 @@ class Synthesizer(_AudioSample):
             value = min(high, max(low, _value(value))) * 32768.0
             return int(value + 0.5) if value >= 0 else int(value - 0.5)
 
-        for slot, note in enumerate(self._notes):
+        for note in self._notes:
+            slot = note._slot
             if note._envelope_state is None:
                 self._start_note(note)
             waveform = note.waveform if note.waveform is not None else self.waveform
