@@ -39,15 +39,22 @@ learn what is being promised.
 | B8 | Silence in gives exactly zero out, every mode | exact |
 | B9 | Full-scale DC passes a low-pass at unity | exact, 0 LSB |
 | B10 | `clear()` leaves the node as a freshly built one, every mode | exact |
-| B11 | A band-pass peaks at 0 dB at its own centre | 0.05 dB at and above 100 Hz |
+| B11 | A band-pass peaks at 0 dB at its own centre | 0.05 dB at and above 100 Hz; 0.15 dB at the 20-63 Hz corner |
 | B12 | Presents as a sample; a starved node yields silence, not a short block | exact |
 
-**B11 has a recorded departure.** Below 100 Hz at high Q the direct-form I
-recursion in `float` loses peak gain — measured **−1.0906 dB** at 20 Hz / Q 32
-on a 48 kHz graph, against RBJ's 0 dB, while 100 Hz / Q 16 reads +0.0009 dB and
-1 kHz / Q 2 reads −0.0004 dB. That is audioif#64. The trait therefore carries
-two bars: a real one where the property holds, and a looser one at the low
-corner that records the departure so a *worsening* fails while a fix does not.
+**B11's recorded departure is CLOSED (audioif#64, 2026-09-09).** It had two
+causes and only one of them was the filter. The measurement ended before the
+resonator had rung up: the old window reached 2.09 ring-up time constants at
+20 Hz / Q 32 and read −1.1474 dB, where `20*log10(1 - exp(-2.09))` is
+−1.147 dB — the whole of it. `_peak_db` now derives its window from
+`Q*rate/(pi*f0)` and `test_the_short_window_reads_the_ring_up_not_the_filter`
+keeps it honest. The filter's own share was real but far smaller: direct form I
+differences two nearly-equal large numbers when the poles sit near the unit
+circle, and over the 8×7 f0/Q grid at three probe levels it had 7 of 56 cells
+outside 0.05 dB, worst +0.2034 dB. Transposed direct form II has 1 of 56, worst
+−0.0785 dB, and costs nothing at run time. The one cell left is 31.5 Hz / Q 32
+at −0.0899 dB, and it is level-independent, so it is the `float` coefficients
+placing the pole pair slightly beside `f0` rather than round-off.
 
 **Where a trait has a control that fails it**, the control is named in the test
 rather than left implied: a trait no implementation can fail is not a
@@ -523,27 +530,68 @@ class BandPassPeakTest(unittest.TestCase):
     #: every Q. Anything else is the arithmetic, not the design.
     WANTED_DB = 0.0
 
-    def _peak_db(self, rate, hz, q, level=20000):
+    #: How many ring-up time constants to discard before measuring. A
+    #: resonator approaches its final amplitude as `1 - exp(-t/tau)` with
+    #: `tau = Q*rate/(pi*f0)`, so a window that ends early reads the shortfall
+    #: and not the filter. 12 leaves 20*log10(1 - exp(-12)) = -0.00005 dB of it,
+    #: which is two orders below the tightest bar here.
+    SETTLE_TAUS = 12
+
+    @staticmethod
+    def _tau(rate, hz, q):
+        """Ring-up time constant in samples."""
+        return q * rate / (math.pi * hz)
+
+    def _peak_db(self, rate, hz, q, level=20000, settle_taus=None):
+        """Peak output at `hz`, in dB relative to the input, once settled.
+
+        **The window is derived from the filter, not fixed.** It used to be a
+        flat "render 400 periods, skip the first 120 blocks of 256 and read the
+        next 80", and at a low centre with a high Q that ends before the
+        resonator has rung up -- 2.09 time constants at 20 Hz / Q 32. The
+        reading there was -1.1474 dB, and `20*log10(1 - exp(-2.09))` is
+        **-1.147 dB**: the whole of it was incomplete settling, recorded as an
+        arithmetic defect (audioif#64) for as long as that window stood. The
+        same window is 3.30 tau at 31.5 Hz, 6.60 at 63 Hz and 20.9 at 100 Hz,
+        and the readings fell away exactly as that suggests.
+
+        The material is generated whole-block and whole-period so the node's
+        256-frame chunking cannot clip the window, and `top` is asserted
+        non-zero so an exhausted source reads as a failure rather than as a
+        filter with no output.
+        """
+        taus = self.SETTLE_TAUS if settle_taus is None else settle_taus
+        frames_per_block = 256
+        period = rate / hz
+        skip = int(self._tau(rate, hz, q) * taus) + 1
+        # At least four periods of peaks, and at least one whole block.
+        measure = max(int(period * 4) + 1, frames_per_block)
+        blocks_skip = -(-skip // frames_per_block)
+        blocks_measure = -(-measure // frames_per_block)
+        total = (blocks_skip + blocks_measure) * frames_per_block
+
         node = audiobiquad.Biquad(mode=audiobiquad.BAND_PASS, frequency=hz,
                                   Q=q, mix=1.0, sample_rate=rate,
                                   channel_count=1)
-        values = array("h")
-        for frame in range(int(rate / hz) * 400):
-            values.append(int(level * math.sin(2 * math.pi * hz * frame
-                                               / rate)))
+        values = array("h", (int(level * math.sin(2 * math.pi * hz * frame
+                                                  / rate))
+                             for frame in range(total)))
         node.play(audiocore.RawSample(values, sample_rate=rate,
                                       channel_count=1))
         top = 0
-        for index in range(200):
+        for index in range(blocks_skip + blocks_measure):
             data = bytes(audiocore.get_buffer(node)[1])
-            if index < 120:
+            if index < blocks_skip:
                 continue
             for position in range(0, len(data), 2):
                 word = data[position] | (data[position + 1] << 8)
                 if word >= 32768:
                     word -= 65536
                 top = max(top, abs(word))
-        return 20.0 * math.log10(max(top, 1) / level)
+        self.assertGreater(top, 0, "no output at %g Hz Q %g -- the source ran "
+                           "out before the window, so this measures nothing"
+                           % (hz, q))
+        return 20.0 * math.log10(top / level)
 
     def test_it_peaks_at_its_own_centre_from_100_hz_up(self):
         """B11 where the property holds, and the bar is tight because it does:
@@ -554,19 +602,66 @@ class BandPassPeakTest(unittest.TestCase):
                 self.assertAlmostEqual(self._peak_db(rate, hz, q),
                                        self.WANTED_DB, delta=0.05)
 
-    def test_the_low_corner_departs_and_the_departure_is_recorded(self):
-        """B11's recorded departure: audioif#64.
+    def test_the_low_corner_holds_too(self):
+        """B11 at the corner audioif#64 was about. It holds now.
 
-        Direct-form I with `float` state loses peak gain where the two
-        feedback terms nearly cancel. At 20 Hz / Q 32 on a 48 kHz graph the
-        centre reads **-1.0906 dB** against RBJ's 0. The bar here is loose on
-        purpose: it fails if the loss gets worse, and it does not stand in the
-        way of a fix. Tighten it, or delete this test for the one above, when
-        audioif#64 is closed.
+        Two things were wrong there and only one of them was the filter:
+
+        * the measurement ended before the resonator had rung up -- see
+          `_peak_db`, and the test below, which pins it;
+        * `audioif_biquad_f32_process_s16()` was direct form I, whose
+          `b0*x0 + b1*x1 + b2*x2 - a1*y1 - a2*y2` is the difference of two
+          nearly-equal large numbers when the poles are close to the unit
+          circle. Transposed direct form II is not, and costs nothing.
+
+        Measured through the kernel over the 8x7 f0/Q grid at three probe
+        levels, worst case over levels: direct form I had **7 of 56** cells
+        outside 0.05 dB and a worst of +0.2034 dB; transposed direct form II has
+        **1 of 56** and a worst of -0.0785 dB.
+
+        That one cell is 31.5 Hz / Q 32, and it is a different animal:
+        -0.0752/-0.0794/-0.0785 dB at levels 23197/5825/2000, i.e. **independent
+        of level**, where round-off moves with it. It is the `float`
+        coefficients placing the pole pair slightly off, so the true peak sits
+        just beside `f0` and reading exactly at `f0` comes in low. No recursion
+        form fixes that one; `double` coefficients would. Through the node it
+        reads -0.0899 dB and it is the worst cell on the grid, so the bar here
+        is 0.15 dB -- loose enough not to be flaky about it, tight enough that
+        anything approaching direct form I's +0.2034 dB fails.
         """
-        measured = self._peak_db(48000, 20.0, 32.0)
-        self.assertLess(measured, -0.2, "the departure is gone - #64 may be "
-                        "fixed, in which case fold this into B11 proper")
-        self.assertGreater(measured, -1.5,
-                           "the loss at 20 Hz / Q 32 is worse than the "
-                           "-1.0906 dB audioif#64 records")
+        for hz, q in ((20.0, 32.0), (20.0, 16.0), (25.0, 32.0), (31.5, 32.0),
+                      (40.0, 32.0), (63.0, 32.0)):
+            with self.subTest(hz=hz, q=q):
+                self.assertAlmostEqual(self._peak_db(48000, hz, q),
+                                       self.WANTED_DB, delta=0.15)
+
+    def test_the_short_window_reads_the_ring_up_not_the_filter(self):
+        """The control for `_peak_db`'s window, and the record of audioif#64.
+
+        A resonator approaches its final amplitude as `1 - exp(-t/tau)`, so a
+        window that ends early reports the shortfall as if it were the filter.
+        That is what the old flat window did at 20 Hz / Q 32 -- it ended at 2.09
+        time constants, read -1.1474 dB, and `20*log10(1 - exp(-2.09))` is
+        -1.147 dB.
+
+        Asserting the SHAPE rather than the exact model, because the measurement
+        spans a whole block past the skip point and is therefore settled a
+        little more than the nominal figure: short is materially short, longer is
+        better, and 12 taus is at unity. Any of those failing means `_peak_db`
+        has stopped settling -- which no bar above would notice, because they all
+        read through it.
+        """
+        readings = [self._peak_db(48000, 20.0, 32.0, settle_taus=taus)
+                    for taus in (2.0, 3.0, 6.0, 12.0)]
+        self.assertLess(readings[0], -0.3,
+                        "two time constants no longer reads short, so this "
+                        "control proves nothing about the window")
+        for earlier, later in zip(readings, readings[1:]):
+            self.assertGreater(later, earlier,
+                               "a longer window did not read closer to unity: "
+                               "%r" % (readings,))
+        self.assertAlmostEqual(readings[-1], self.WANTED_DB, delta=0.1)
+
+
+if __name__ == "__main__":
+    unittest.main()
