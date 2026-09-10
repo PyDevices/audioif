@@ -225,17 +225,16 @@ void audioif_biquad_f32_process_s16(const audioif_biquad_f32_config_t *config,
         for (uint32_t channel = 0; channel < channels; ++channel) {
             const size_t index = (size_t)frame * channels + channel;
             const float x0 = (float)in[index];
-            float y0 = b0 * x0 + b1 * state->x1[channel] +
-                b2 * state->x2[channel] - a1 * state->y1[channel] -
-                a2 * state->y2[channel];
-            // `x` is an integer sample and reaches exact zero by itself; only
-            // the feedback memory needs help. Flushing it here rather than
-            // after the store means the zero is what the next sample reads.
-            y0 = flush(y0);
-            state->x2[channel] = state->x1[channel];
-            state->x1[channel] = x0;
-            state->y2[channel] = state->y1[channel];
-            state->y1[channel] = y0;
+            // Transposed direct form II -- see the state struct for why this
+            // shape and not direct form I (audioif#64).
+            const float y0 = b0 * x0 + state->s1[channel];
+            // Both words ARE the memory, so both need the denormal flush that
+            // direct form I only had to give `y`. Flushing before the store
+            // means the exact zero is what the next sample reads, which is what
+            // makes the tail arrive rather than decay forever.
+            state->s1[channel] =
+                flush(b1 * x0 - a1 * y0 + state->s2[channel]);
+            state->s2[channel] = flush(b2 * x0 - a2 * y0);
             out[index] = to_s16(dry * x0 + mix * y0);
         }
     }

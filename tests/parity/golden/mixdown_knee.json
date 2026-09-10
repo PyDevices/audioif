@@ -1,5 +1,5 @@
 {
- "circuitpython_binary_sha256": "94500bc0382f1cc2c378014f1d1b379a6c0fc19d3e09058410b25646cdd6db01",
+ "circuitpython_binary_sha256": "447e3ee88a143e1db1605590a395e7b8f7335cf5d7f5fa3e768e10ecf44c047e",
  "circuitpython_binary_sha256_note": "The sha256 of cmods/bin/circuitpython AS IT WAS ON DISK when this capture was taken (2026-09-09), and the build pinned in tests/test_voice_ceiling_consistency.py -- the two now agree, which they did not before. This is CircuitPython 10.3.0 built at CIRCUITPY_SYNTHIO_MAX_CHANNELS=64: the same version and the same ceiling this port ships, which is the only configuration that can answer whether we render CircuitPython's bytes in the same situation. The previous capture was 10.2.1 at 14 (b3063621c72a085b, kept at cmods/bin/circuitpython-oracle-10.2.1); at that ceiling no material could be both above the knee and oracle-identical, and the above-knee half of this gate was advisory. It is not any more -- ours and the oracle are now byte-identical on every line of this probe, above the knee and below. See docs/correctness-standard.md.",
  "circuitpython_stdout": [
   "below_knee 1 0 512 52264 556885117 16382",

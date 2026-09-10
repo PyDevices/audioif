@@ -111,9 +111,36 @@ typedef struct {
 
 //: Direct Form I: two input words and two output words per channel. All
 //: float, which is the whole ask.
+// Transposed direct form II: two memory words per channel, not four.
+//
+// Direct form I computed `b0*x0 + b1*x1 + b2*x2 - a1*y1 - a2*y2`, and with the
+// poles close to the unit circle that is the difference of two nearly-equal
+// large numbers. At 20 Hz / Q 32 on a 48 kHz graph `a1 = -1.99991131` and
+// `a2 = +0.99991816`, so `1 + a1 + a2` is 6.9e-06 while `float` resolves
+// 1.2e-07 of the magnitudes being differenced -- about two decimal digits of
+// headroom -- and a resonator that rings for Q*rate/(pi*f0) samples accumulates
+// round-off the whole way.
+//
+// Measured over an 8x7 f0/Q grid (20 Hz..1 kHz, Q 0.5..32) at three probe
+// levels, worst case over levels, peak gain at f0 against RBJ's 0 dB:
+//
+//     direct form I    7 of 56 cells outside 0.05 dB, worst +0.2034 dB
+//     this form        1 of 56,                       worst -0.0785 dB
+//
+// The remaining cell is 31.5 Hz / Q 32, and it is level-independent, so it is
+// the `float` coefficients placing the pole pair slightly beside f0 rather than
+// round-off; no recursion form fixes that one. Same five coefficients, same
+// arithmetic count, half the state. audioif#64.
+//
+// The 1.0906 dB that issue opened with was mostly the MEASUREMENT: its window
+// ended at 2.09 ring-up time constants, and 20*log10(1 - exp(-2.09)) is
+// -1.147 dB. See tests/test_cpython_audiobiquad.py.
+//
+// The all-pass beside this one was already transposed direct form II; the
+// biquad was the odd one out. Nothing outside audioif_filter_f32.c reads these
+// words -- every caller goes through state_init / reset / process.
 typedef struct {
-    float x1[2], x2[2];
-    float y1[2], y2[2];
+    float s1[2], s2[2];
 } audioif_biquad_f32_state_t;
 
 void audioif_biquad_f32_config_init(audioif_biquad_f32_config_t *config,

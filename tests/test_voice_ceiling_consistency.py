@@ -55,6 +55,16 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: gitignored binary in place. Every existing check would pass on a silently
 #: different oracle. Comparing the bytes is the only thing that notices.
 #:
+#: Re-pinned again 2026-09-09, later the same day, for audioif#64: the
+#: `audiobiquad` float biquad moved to transposed direct form II, and
+#: `audiobiquad` is one of the nine modules `apply_cp_patches.sh` adds to the CP
+#: tree -- so a change to our own shared kernel relinks this binary even though
+#: CircuitPython's own sources are untouched. Verified: CircuitPython's own
+#: modules are byte-identical across the rebuild (`synthtools_acceptance` and
+#: `mixdown_knee`'s stored `circuitpython_stdout` both reproduce exactly), and
+#: `verify_dsp` agrees on all three interpreters again. Previous:
+#: 94500bc0382f1cc2.
+#:
 #: Re-pinned 2026-09-09 for the deliberate rebuild to CircuitPython 10.3.0 at
 #: CIRCUITPY_SYNTHIO_MAX_CHANNELS=64, replacing the 10.2.1-at-14 build
 #: b3063621c72a085b (kept at cmods/bin/circuitpython-oracle-10.2.1). That
@@ -73,7 +83,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 #: re-pin with the reason written down.
 ORACLE = ROOT.parent / "cmods" / "bin" / "circuitpython"
 ORACLE_SHA256 = (
-    "94500bc0382f1cc2c378014f1d1b379a6c0fc19d3e09058410b25646cdd6db01")
+    "447e3ee88a143e1db1605590a395e7b8f7335cf5d7f5fa3e768e10ecf44c047e")
 
 
 def _search(relative, pattern):
