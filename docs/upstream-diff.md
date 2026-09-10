@@ -43,7 +43,15 @@ CircuitPython and four are merged** (see that directory's README for the
 issue and PR numbers): peaking-eq-sign, dds-oscillator-off-by-one,
 distortion-soft-clip-union and biquad-reset are fixed upstream;
 biquad-band-edges remains open, awaiting maintainer appetite on a
-three-option ask. **The numbers here were measured on this port and are not
+three-option ask.
+
+**Merged upstream is not the same as released.** `peaking-eq-sign`
+(8fabdbbfb1) and `biquad-reset` (8a3deace5c) are on CircuitPython `main` and in
+no tag -- 10.3.0 is the newest, and predates both. So this port is *ahead of*
+the pinned oracle in exactly those two places, and each is a named departure
+that `verify_dsp` records and that expires when upstream cuts a release
+containing them. They are the reason `biquad_component_probe.py` compares only
+the CPython twin against MicroPython and skips CircuitPython. **The numbers here were measured on this port and are not
 upstream's** -- the reports carry figures measured on a build of upstream
 `main`, which differ.
 
@@ -1358,7 +1366,50 @@ reads −9.05 dB; `LowPass` at 1 kHz reads −3.00 dB at cutoff and −12.33 dB 
 octave above. `tests/test_cpython_effects_library.py` pins the bell placement,
 the flat-EQ passthrough, and the Nyquist refusal.
 
-## The biquads were Q15, so they could not go low (third approved deviation)
+## The biquads were Q15, so they could not go low — now `audiobiquad` only (audioif#77)
+
+> **SCOPE CHANGED 2026-09-09 (Brad's call on audioif#77).** This deviation now
+> applies to **`audiobiquad`, which is ours, and to nothing CircuitPython has.**
+> `synthio.Biquad` — and so `audiofilters.Filter` and a `Note.filter` chain —
+> runs `audioif_biquad_cp_*`, CircuitPython's own Q15 arithmetic, on all three
+> targets, because `docs/correctness-standard.md` holds a node CircuitPython
+> also has to CircuitPython's bytes.
+>
+> Why the scope had to be decided at all: it had been applied on **one target
+> only**. The CPython twin ran the widened kernel and desktop MicroPython ran
+> CircuitPython's Q15, so `audiofilters.Filter` rendered different bytes on two
+> of our own targets — 11 LSB apart by the eighth sample of an 800 Hz low-pass,
+> and still opening. Nothing caught it because each target was graded against
+> its own stored digest; `biquad_component_probe.py` is now in `verify_dsp`'s
+> cross-interpreter set, and a planted 1-LSB coefficient change fails it.
+>
+> **What that costs, measured rather than estimated.** Holding `synthio.Biquad`
+> to CircuitPython's arithmetic brings back the fixed points below. A DC burst
+> into a low-pass parks forever at:
+>
+> | 40 Hz | 100 Hz | 400 Hz | 1 kHz |
+> |---|---|---|---|
+> | **16143** | 2631 | 160 | 22 |
+>
+> 16143 is half of full scale, held indefinitely, from a filter asked for a
+> 40 Hz low-pass. Identical on all three targets (2026-09-09), so it is a fact
+> about CircuitPython's kernel. `audiobiquad` reaches exact zero at every one of
+> them. This is the measurement
+> `docs/upstream-reports/biquad-band-edges.md` carries, and that report — the
+> one upstream ask still open — is now the only route to fixing it for
+> `synthio.Biquad`.
+>
+> Two smaller entries are **not** in this deviation's scope and stay applied
+> everywhere, because upstream has already merged them: PEAKING_EQ's `b2` sign
+> (CircuitPython `main` 8fabdbbfb1) and `synthio_biquad_filter_reset()` clearing
+> all four state words rather than two (8a3deace5c). Neither is in a release
+> yet, so each is a named departure from the pinned 10.3.0 oracle that expires
+> when CircuitPython cuts a release containing it.
+>
+> The rest of this section is the original write-up. Read it as the case for
+> `audiobiquad`'s arithmetic and as the record of a failure worth recognising
+> again — not as a description of what `synthio.Biquad` does today.
+
 
 Found while looking for somewhere to put a tape head bump, recorded as a
 limitation, and then fixed one phase later once the user approved a third

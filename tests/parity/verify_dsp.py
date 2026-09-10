@@ -101,6 +101,21 @@ PROBES = (
     ("waveshaper_probe.py", "audioshaper", {}, None),
     ("convolve_probe.py", "audioconvolve", {}, None),
     ("filter_f32_probe.py", "audiobiquad", {}, None),
+    # synthio.Biquad and audiofilters.Filter are CircuitPython's, so they are
+    # held to CircuitPython's bytes and NOT to a stored digest -- which is the
+    # whole of audioif#77: graded against its own capture, this probe reported
+    # green for months while the CPython twin ran audioif's widened fixed point
+    # and MicroPython ran CircuitPython's Q15, 11 LSB apart by the eighth
+    # sample of an 800 Hz low-pass. Comparing the interpreters is what sees it.
+    ("biquad_component_probe.py", "audiofilters",
+     {"circuitpython": "two named departures from the pinned 10.3.0 build, "
+                       "both from PRs upstream has already merged and not yet "
+                       "released: PEAKING_EQ's b2 sign (8fabdbbfb1) and the "
+                       "half-cleared filter reset (8a3deace5c). This probe "
+                       "also covers Note.filter cascades, which are this "
+                       "port's extension and which 10.3.0 refuses. See "
+                       "docs/upstream-diff.md"},
+     None),
     ("tank_probe.py", "audioverb", {}, None),
     ("flanger_probe.py", "audiodelays",
      {"circuitpython": "upstream's own Flanger overflows int32 in its wet "

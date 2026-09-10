@@ -154,14 +154,25 @@ for name, mode in MODES:
 CASCADE_MODES = (synthio.FilterMode.LOW_PASS, synthio.FilterMode.HIGH_PASS,
                  synthio.FilterMode.BAND_PASS, synthio.FilterMode.PEAKING_EQ)
 
+# A cascade -- `Note.filter` taking a tuple -- is this port's extension;
+# CircuitPython 10.3.0 raises "filter must be of type Biquad, not tuple". The
+# single-stage case is common ground and runs everywhere, so the cascade cases
+# announce themselves and stop rather than killing the probe. That keeps this
+# file runnable on all three interpreters, which is what lets verify_dsp
+# compare them (audioif#77 -- graded against its own stored digest, this probe
+# could not see the two targets disagreeing with each other).
 for stages in (1, 2, 3, 4):
     synth = synthio.Synthesizer(sample_rate=RATE, channel_count=2)
     stack = tuple(
         synthio.Biquad(CASCADE_MODES[i], CENTER * (i + 1), Q, A=GAIN_A)
         for i in range(stages)
     )
-    note = synthio.Note(220.0, amplitude=0.6,
-                        filter=stack[0] if stages == 1 else stack)
+    try:
+        note = synthio.Note(220.0, amplitude=0.6,
+                            filter=stack[0] if stages == 1 else stack)
+    except TypeError:
+        print("note_filter_cascade unsupported", stages)
+        continue
     synth.press(note)
     for index in range(4):
         data = bytes(audiocore.get_buffer(synth)[1])
