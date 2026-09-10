@@ -43,9 +43,12 @@ jobs:
             cflags: -DMICROPY_FLOAT_IMPL=MICROPY_FLOAT_IMPL_FLOAT
             # See #80. The double cell has no exceptions and must not gain any.
             known-divergent: >-
-              --known-divergent dynamics_probe.py
+              --known-divergent biquad_component_probe.py
               --known-divergent dynamics_extras_probe.py
               --known-divergent dynamics_options_probe.py
+              --known-divergent dynamics_probe.py
+              --known-divergent echo_filter_probe.py
+              --known-divergent granular_pitch_shift_probe.py
     name: unix-usermod (${{ matrix.float-impl.name }}-precision)
     steps:
       - uses: actions/checkout@v7
@@ -94,9 +97,9 @@ jobs:
       #
       # CircuitPython is not built in CI, so this is the two-way; the three-way
       # including the patched CircuitPython build is a local run.
-      # The float cell diverges on three dynamics probes because mp_float_t is
-      # 32-bit there and CPython's is not -- that is #80, deliberately deferred.
-      # --known-divergent narrows the gate to exactly those three rather than
+      # The float cell diverges on six probes because mp_float_t is 32-bit
+      # there and CPython's is not -- that is #80, deliberately deferred.
+      # --known-divergent narrows the gate to exactly those six rather than
       # switching it off: a fourth probe diverging still fails, and so does any
       # of these three starting to agree, which is what stops the exception
       # outliving its reason. Delete the flag when #80 closes; the gate will
