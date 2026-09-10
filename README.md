@@ -133,11 +133,23 @@ and `audiobiquad` (below) have no ancestor anywhere and are audioif's own.
 
 `audiofilters.Filter` (over `synthio.Biquad`) and `audiofilters.Phaser` are
 ported CircuitPython and their recursions are integer. Both have states that
-reproduce themselves: fed silence after a burst, they can hold a constant of
-one to a few LSB for ever. `audiobiquad` is the same two filters with
-`float` state and a flush of anything below 1e-20, so a tail decays to zero
-and stays there — and its all-pass feedback is not clamped to `0.1..0.9`, so
-zero is zero and a feedback-free phaser's notches are true nulls.
+reproduce themselves: fed silence after a burst, they hold a constant for ever.
+`audiobiquad` is the same two filters with `float` state and a flush of anything
+below 1e-20, so a tail decays to zero and stays there — and its all-pass
+feedback is not clamped to `0.1..0.9`, so zero is zero and a feedback-free
+phaser's notches are true nulls.
+
+**Which to reach for.** Above a few hundred hertz the difference is one to a few
+LSB and `audiofilters.Filter` is fine. **Below about 100 Hz, use `audiobiquad`.**
+`synthio.Biquad`'s coefficients are Q15, and a low-pass's input coefficient `b0`
+falls off with frequency until it rounds away: 6 at 200 Hz, 1 at 100 Hz, and
+**0 at 40 Hz**. With no input gain the section is left with a bare feedback
+recursion, which settles on a constant and stays there — 16143 at 40 Hz, half of
+full scale, reached from a kick, a bass note, a square or a noise burst alike,
+and not cleared by feeding it fresh audio. `audiobiquad` reaches exact zero on
+every one of those. Measured 2026-09-09; the mechanism and the numbers are in
+[docs/upstream-diff.md](docs/upstream-diff.md), "The biquads were Q15, so they
+could not go low".
 
 ```python
 import audiobiquad, synthio
