@@ -9,10 +9,13 @@
 
 #include "audioconvolve/Convolver.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audioconvolve_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioconvolve) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Convolver), MP_ROM_PTR(&audioconvolve_convolver_type) },
     // The block size and the ceiling, so Python-side code can size a
     // convolver in partitions without hard-coding either. The CPython

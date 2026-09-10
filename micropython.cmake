@@ -15,6 +15,7 @@ add_library(usermod_mpaudio INTERFACE)
 #     source list, kept in sync by hand -- both build flavors compile the
 #     same C files).
 target_sources(usermod_mpaudio INTERFACE
+    ${MPAUDIO_SRC_DIR}/cp_compat/audioif_build.c
     ${MPAUDIO_SRC_DIR}/cp_compat/argcheck.c
     ${MPAUDIO_SRC_DIR}/cp_compat/enum.c
     ${MPAUDIO_SRC_DIR}/cp_compat/context_manager_helpers.c
@@ -242,6 +243,27 @@ target_compile_definitions(usermod_mpaudio INTERFACE MICROPY_MODULE_BUILTIN_SUBP
 # reads it (cmods/micropython/py/mkrules.cmake:79-86), not a make variable
 # as on the unix Make path. Per-board tuning is the fuller phase 10 (port
 # matrix) job, not this one.
+# --- which audioif this firmware was built from -----------------------------
+# See micropython.mk for why this is computed at build time and not stored.
+# Quoted through CMake's generator so the strings survive as C string literals.
+execute_process(
+    COMMAND git -C ${MPAUDIO_MOD_DIR} describe --always --dirty --abbrev=7
+    OUTPUT_VARIABLE MPAUDIO_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if(NOT MPAUDIO_REVISION)
+    set(MPAUDIO_REVISION "unknown")
+endif()
+if(EXISTS ${MPAUDIO_MOD_DIR}/VERSION)
+    file(READ ${MPAUDIO_MOD_DIR}/VERSION MPAUDIO_VERSION)
+    string(STRIP "${MPAUDIO_VERSION}" MPAUDIO_VERSION)
+else()
+    set(MPAUDIO_VERSION "0.0.0+unknown")
+endif()
+target_compile_definitions(usermod_mpaudio INTERFACE
+    AUDIOIF_VERSION=\"${MPAUDIO_VERSION}\"
+    AUDIOIF_REVISION=\"${MPAUDIO_REVISION}\")
+
 target_compile_definitions(usermod_mpaudio INTERFACE CIRCUITPY_SYNTHIO_MAX_CHANNELS=64)
 
 target_link_libraries(usermod INTERFACE usermod_mpaudio)

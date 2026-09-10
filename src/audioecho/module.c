@@ -12,10 +12,13 @@
 
 #include "audioecho/FeedbackDelay.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audioecho_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioecho) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_FeedbackDelay),
       MP_ROM_PTR(&audioecho_feedback_delay_type) },
 };

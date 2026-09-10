@@ -13,10 +13,13 @@
 
 #include "audioladder/Ladder.h"
 
+#include "cp_compat/audioif_build.h"
+
 #include "py/obj.h"
 
 static const mp_rom_map_elem_t audioladder_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audioladder) },
+    AUDIOIF_BUILD_GLOBALS,
     { MP_ROM_QSTR(MP_QSTR_Ladder), MP_ROM_PTR(&audioladder_ladder_type) },
 };
 static MP_DEFINE_CONST_DICT(audioladder_module_globals,
