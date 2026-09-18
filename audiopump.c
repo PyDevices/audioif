@@ -39,7 +39,11 @@
 #include "audiocore/__init__.h"
 #include "shared/audioif_sample.h"
 
-#ifdef ESP_PLATFORM
+// AUDIOPUMP_ESP32 comes from micropython.cmake, not from the IDF: a user C
+// module is compiled without ESP_PLATFORM, and the POSIX branch below LINKS
+// on esp32 (newlib has pthread.h), so keying off the wrong macro gets you a
+// silently unpinned pump with no sink.
+#if defined(AUDIOPUMP_ESP32) || defined(ESP_PLATFORM)
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
 #include "esp_timer.h"

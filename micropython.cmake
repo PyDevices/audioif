@@ -33,4 +33,12 @@ target_include_directories(usermod_audiopump INTERFACE
     ${AUDIOPUMP_AUDIOIF_DIR}/src
 )
 
+# The IDF does NOT hand ESP_PLATFORM to user C modules -- it is a CMake
+# variable here and a compile definition only inside IDF components. Without
+# this the source compiles its POSIX branch instead, and it links, because
+# ESP-IDF's newlib has pthread.h: you get an unpinned pump on a default
+# pthread stack and no I2S sink, with nothing failing to say so. displayif
+# hits the same thing (src/ports/esp32/micropython.cmake:24).
+target_compile_definitions(usermod_audiopump INTERFACE AUDIOPUMP_ESP32=1)
+
 target_link_libraries(usermod INTERFACE usermod_audiopump)
