@@ -608,9 +608,14 @@ static void audiopump_teardown(void) {
     // Everything in here points into a heap that is about to be re-inited.
     memset(&audiopump_ctx, 0, sizeof(audiopump_ctx));
     audiopump_ctx.sink_fd = -1;
-    for (size_t i = 0; i < MP_ARRAY_SIZE(MP_STATE_VM(audiopump_held)); i++) {
-        MP_STATE_VM(audiopump_held)[i] = MP_OBJ_NULL;
-    }
+    // Slots 0-2 only. The guard at [3] stays rooted for the life of the VM:
+    // unrooting it here would leave it unreachable but not yet swept, and the
+    // next gc.collect() would then finalise it -- tearing down whatever pump
+    // had been spawned in between. Which is the exact failure this object
+    // exists to prevent, arriving by the other door.
+    MP_STATE_VM(audiopump_held)[0] = MP_OBJ_NULL;
+    MP_STATE_VM(audiopump_held)[1] = MP_OBJ_NULL;
+    MP_STATE_VM(audiopump_held)[2] = MP_OBJ_NULL;
 }
 
 typedef struct {
