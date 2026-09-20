@@ -37,6 +37,7 @@
 #include "py/runtime.h"
 
 #include "audiocore/__init__.h"
+#include "shared/audioif_pump_lock.h"
 #include "shared/audioif_sample.h"
 
 // AUDIOPUMP_ESP32 comes from micropython.cmake, not from the IDF: a user C
@@ -67,7 +68,7 @@
 // written by the loop and read by Python with struct.unpack_from. A
 // bytearray rather than an array() so the width is not a typecode argument;
 // MicroPython's GC blocks are 16-byte aligned, so the 64-bit stores are too.
-#define AUDIOPUMP_STATUS_WORDS (24)
+#define AUDIOPUMP_STATUS_WORDS (32)
 #define AUDIOPUMP_STATUS_BYTES (AUDIOPUMP_STATUS_WORDS * 8)
 
 enum {
@@ -95,6 +96,13 @@ enum {
     STATUS_DMA_BYTES = 21,  // bytes the I2S TX DMA actually clocked out
     STATUS_RX_BYTES = 22,   // bytes the I2S RX DMA actually clocked in
     STATUS_IN_TIMEOUTS = 23, // Input blocks the RX channel could not fill
+    // --- what audioif's pump lock says (shared/audioif_pump_lock.h) ---
+    STATUS_FAULT = 24,          // audioif_pump_fault_get(): why a pull gave up
+    STATUS_LOCK_PUMP_WAIT = 25, // worst us the PUMP waited for a control swap
+    STATUS_LOCK_CTRL_WAIT = 26, // worst us a CONTROL call waited for a pull
+    STATUS_LOCK_CTRL_HELD = 27, // worst us the audio stood still inside a swap
+    STATUS_LOCK_PUMP_TAKES = 28,
+    STATUS_LOCK_CTRL_TAKES = 29,
 };
 
 #define FNV_OFFSET (0xcbf29ce484222325ULL)
@@ -281,40 +289,70 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
             }
         }
 
-        // The tail can change identity while the pump is parked --
-        // Phaser._install_cascade does it by itself, and `retarget()` does it
-        // on purpose when a helper swaps the effect class. Re-reading it here
-        // is one load at the block boundary and it is what stops the pump
-        // playing a graph nobody is holding any more.
+        const uint8_t *buffer = NULL;
+        uint32_t length = 0;
+        const uint64_t t0 = audiopump_now_us();
+        // The lock, held for exactly one block pull and nothing else. The
+        // control path takes the same lock around its final swap, so a
+        // rewire can no longer land in the middle of a pull -- which is what
+        // killed Phaser 5 times out of 5 on the desktop and panicked core 0
+        // on the P4 at the same statement. Nobody has to call park() for
+        // this; the lock is inside audioif, at the write.
+        //
+        // NOT held across the sink write below: that blocks for up to a DMA
+        // block, and holding it there would make every knob wait for the
+        // speaker instead of for the arithmetic.
+        audioif_pump_lock_acquire_pump();
+        // Re-read the tail INSIDE the lock. A retarget that swapped it is
+        // holding this lock while it does, so either we see the whole swap or
+        // none of it -- the registry entry the handoff page designs, which is
+        // one word of state and one lock rather than a park.
         if (ctx->retarget_req) {
             ctx->retarget_req = false;
             ctx->sample_type = (const void *)
                 ((mp_obj_base_t *)MP_OBJ_TO_PTR(ctx->sample))->type;
         }
-
-        // The net under the finaliser. A type word that is no longer the one
-        // adopted means the heap holding the graph has been re-inited and
-        // re-used: stop, rather than hand the DSP a pointer out of somebody
-        // else's object.
+        // The net under the finaliser, and it has to be INSIDE the lock and
+        // AFTER the retarget: a retarget to a different class legitimately
+        // changes the type word, and checking before the swap was applied
+        // called every live class swap a re-inited heap. A type word that is
+        // no longer the one adopted, with no retarget pending, does mean the
+        // heap holding the graph has been re-inited and re-used: stop, rather
+        // than hand the DSP a pointer out of somebody else's object.
         if (ctx->sample_type != NULL
             && (const void *)((mp_obj_base_t *)MP_OBJ_TO_PTR(ctx->sample))->type
                != ctx->sample_type) {
+            audioif_pump_lock_release_pump();
             error = 4;
             break;
         }
-
-        const uint8_t *buffer = NULL;
-        uint32_t length = 0;
-        const uint64_t t0 = audiopump_now_us();
         audioif_status_t status = audioif_sample_get(&ctx->source, false, 0,
             &buffer, &length, &result);
+        audioif_pump_lock_release_pump();
         const uint64_t dt = audiopump_now_us() - t0;
         pull_us += dt;
         if (dt > max_pull_us) {
             max_pull_us = dt;
         }
+        // A pull no longer raises: audioif's funnel returns GET_BUFFER_ERROR
+        // and leaves a code in its fault register instead of longjmping off a
+        // thread that has no interpreter state to allocate the exception
+        // from. So a deinited node, a missing protocol or a file-backed
+        // source in the graph all arrive HERE, as a number, and the pump
+        // stops pulling that source and publishes why.
         if (status != AUDIOIF_STATUS_OK || result == AUDIOIF_BUFFER_ERROR) {
             error = 1;
+            ctx->status[STATUS_FAULT] = audioif_pump_fault_get();
+            break;
+        }
+        const uint32_t fault = audioif_pump_fault_get();
+        if (fault != AUDIOIF_PUMP_FAULT_NONE) {
+            // A node swallowed the error into silence -- every node in the
+            // palette treats GET_BUFFER_ERROR from its source as "produce
+            // zeros" -- so the result came back clean and the graph is quietly
+            // wrong. That is the failure worth catching: stop, and say which.
+            error = 5;
+            ctx->status[STATUS_FAULT] = fault;
             break;
         }
         if (buffer == NULL) {
@@ -390,6 +428,12 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         ctx->status[STATUS_SINK_BYTES] = sink_bytes;
         ctx->status[STATUS_SINK_TIMEOUTS] = sink_timeouts;
         ctx->status[STATUS_MAX_PULL_US] = max_pull_us;
+        const audioif_pump_lock_stats_t *lock = audioif_pump_lock_stats();
+        ctx->status[STATUS_LOCK_PUMP_WAIT] = lock->pump_wait_us_max;
+        ctx->status[STATUS_LOCK_CTRL_WAIT] = lock->ctrl_wait_us_max;
+        ctx->status[STATUS_LOCK_CTRL_HELD] = lock->ctrl_held_us_max;
+        ctx->status[STATUS_LOCK_PUMP_TAKES] = lock->pump_takes;
+        ctx->status[STATUS_LOCK_CTRL_TAKES] = lock->ctrl_takes;
         #if AUDIOPUMP_ESP
         ctx->status[STATUS_DMA_BYTES] = audiopump_dma_bytes;
         ctx->status[STATUS_RX_BYTES] = audiopump_rx_bytes;
@@ -446,6 +490,7 @@ static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     const audiosample_p_t *protocol = mp_proto_get_or_throw(
         MP_QSTR_protocol_audiosample, sample);
     audiosample_check_for_deinit(MP_OBJ_TO_PTR(sample));
+    audioif_pump_fault_clear();
 
     ctx->protocol = protocol;
     ctx->sample = sample;
@@ -582,6 +627,7 @@ static void *audiopump_entry(void *arg) {
 static void audiopump_teardown(bool release_guard) {
     audiopump_ctx.stop = true;
     audiopump_ctx.park_req = false;
+    audioif_pump_set_active(false);
     #if AUDIOPUMP_ESP
     TaskHandle_t handle = audiopump_task_handle;
     if (handle != NULL) {
@@ -679,6 +725,27 @@ static mp_obj_t audiopump_shutdown(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_shutdown_obj, audiopump_shutdown);
 
+// A file-backed source cannot be pulled by a pump: it reads through the VFS
+// from inside get_buffer, which re-enters the interpreter, and it raises
+// there. audioif's WaveFile and MP3Decoder now refuse it from the inside --
+// they publish AUDIOIF_PUMP_FAULT_UNPUMPABLE and go silent rather than
+// crash -- but a graph that is nothing BUT a file is worth refusing at the
+// door, with a sentence, instead of playing silence and leaving a number to
+// be looked up.
+//
+// This catches the tail only. A file source sits at the HEAD of a graph, and
+// the audiosample protocol has no "what is behind you" accessor to walk, so a
+// deep one is caught at the first block instead of at the door. That is the
+// honest limit of this check and it is written down in the notes.
+static void audiopump_refuse_unpumpable(mp_obj_t sample) {
+    const qstr name = mp_obj_get_type(sample)->name;
+    if (name == MP_QSTR_WaveFile || name == MP_QSTR_MP3Decoder) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "a file-backed source cannot be pumped; it reads through the VFS "
+            "inside the pull. Fill a ring from the interpreter instead."));
+    }
+}
+
 static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     mp_map_t *kw_args) {
     enum { ARG_sample, ARG_blocks, ARG_status, ARG_sink, ARG_ring, ARG_core,
@@ -715,10 +782,17 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     }
     #endif
 
+    audiopump_refuse_unpumpable(args[ARG_sample].u_obj);
     audiopump_arm_guard();
     audiopump_prepare(args[ARG_sample].u_obj, args[ARG_blocks].u_obj,
         args[ARG_status].u_obj, args[ARG_ring].u_obj, &audiopump_ctx);
     audiopump_ctx.sink_timeout_ms = (uint32_t)args[ARG_timeout_ms].u_int;
+    // From here on audioif knows a pump exists, so the file-backed sources
+    // refuse to be pulled and the funnel reports rather than raises. Set
+    // BEFORE the thread is created, cleared after it has gone, both from this
+    // thread -- so there is a happens-before at each end and no flag race.
+    audioif_pump_lock_stats_reset();
+    audioif_pump_set_active(true);
 
     #if AUDIOPUMP_ESP
     if (mp_obj_is_true(args[ARG_sink].u_obj)) {
@@ -807,6 +881,7 @@ static mp_obj_t audiopump_join(size_t n_args, const mp_obj_t *args) {
         audiopump_ctx.sink_fd = -1;
     }
     #endif
+    audioif_pump_set_active(false);
     MP_STATE_VM(audiopump_held)[0] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[1] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[2] = MP_OBJ_NULL;
@@ -865,18 +940,28 @@ static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_park_obj, 0, 1,
 // in spawn() -- both of them raise, and the pump thread has nothing to raise
 // from.
 static mp_obj_t audiopump_retarget(mp_obj_t sample) {
-    if (audiopump_is_running() && !audiopump_ctx.parked) {
-        mp_raise_ValueError(MP_ERROR_TEXT("park the pump before retargeting"));
-    }
+    // No park. Everything that can raise or allocate happens first, on this
+    // thread: the protocol lookup, the deinit check, the refusal. Then the
+    // lock, then three stores, then the unlock -- and the pump either sees
+    // the whole new tail or the whole old one.
+    //
+    // This is the handoff page's registry entry. The pump holds the entry,
+    // not the tail object, so a Component that replaces its own `.output`
+    // (Phaser._install_cascade does, on every macro-5 move) can say so
+    // without the pump ever pulling the orphan it left behind.
+    audiopump_refuse_unpumpable(sample);
     const audiosample_p_t *protocol = mp_proto_get_or_throw(
         MP_QSTR_protocol_audiosample, sample);
     audiosample_check_for_deinit(MP_OBJ_TO_PTR(sample));
+    MP_STATE_VM(audiopump_held)[0] = sample;
+
+    audioif_pump_lock_acquire();
     audiopump_ctx.protocol = protocol;
     audiopump_ctx.sample = sample;
-    MP_STATE_VM(audiopump_held)[0] = sample;
-    // The type word is re-read by the loop rather than written here, so the
-    // guard cannot see a half-updated pair.
+    // The type word is re-read by the loop, inside the same lock, so the
+    // soft-reset guard cannot see a half-updated pair.
     audiopump_ctx.retarget_req = true;
+    audioif_pump_lock_release();
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_retarget_obj, audiopump_retarget);
@@ -1323,7 +1408,44 @@ static MP_DEFINE_CONST_FUN_OBJ_KW(audiopump_rt_probe_obj, 1,
     audiopump_rt_probe);
 #endif
 
+// --- what the lock cost, and why a pull gave up ---------------------------
+//
+// The status block carries these too, but a storm wants them without a pump
+// running and wants to zero them between rounds.
+
+static mp_obj_t audiopump_lock_stats(void) {
+    const audioif_pump_lock_stats_t *s = audioif_pump_lock_stats();
+    mp_obj_t items[7] = {
+        mp_obj_new_int_from_ull(s->pump_takes),
+        mp_obj_new_int_from_ull(s->pump_wait_us),
+        mp_obj_new_int_from_ull(s->pump_wait_us_max),
+        mp_obj_new_int_from_ull(s->ctrl_takes),
+        mp_obj_new_int_from_ull(s->ctrl_wait_us),
+        mp_obj_new_int_from_ull(s->ctrl_wait_us_max),
+        mp_obj_new_int_from_ull(s->ctrl_held_us_max),
+    };
+    return mp_obj_new_tuple(7, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_lock_stats_obj,
+    audiopump_lock_stats);
+
+static mp_obj_t audiopump_lock_reset(void) {
+    audioif_pump_lock_stats_reset();
+    audioif_pump_fault_clear();
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_lock_reset_obj,
+    audiopump_lock_reset);
+
+static mp_obj_t audiopump_fault(void) {
+    return mp_obj_new_int_from_uint(audioif_pump_fault_get());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_fault_obj, audiopump_fault);
+
 static const mp_rom_map_elem_t audiopump_globals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_lock_stats), MP_ROM_PTR(&audiopump_lock_stats_obj) },
+    { MP_ROM_QSTR(MP_QSTR_lock_reset), MP_ROM_PTR(&audiopump_lock_reset_obj) },
+    { MP_ROM_QSTR(MP_QSTR_fault), MP_ROM_PTR(&audiopump_fault_obj) },
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_audiopump) },
     { MP_ROM_QSTR(MP_QSTR_pull), MP_ROM_PTR(&audiopump_pull_obj) },
     { MP_ROM_QSTR(MP_QSTR_spawn), MP_ROM_PTR(&audiopump_spawn_obj) },
