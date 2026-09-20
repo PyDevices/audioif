@@ -92,9 +92,9 @@ enum {
     STATUS_PARK_US = 18,    // total time parked
     STATUS_STACK_FREE = 19, // uxTaskGetStackHighWaterMark at the end
     STATUS_MAX_PULL_US = 20, // worst single block
-    STATUS_DMA_BYTES = 21,  // bytes the I2S DMA actually clocked out
-    STATUS_SPARE_22 = 22,
-    STATUS_SPARE_23 = 23,
+    STATUS_DMA_BYTES = 21,  // bytes the I2S TX DMA actually clocked out
+    STATUS_RX_BYTES = 22,   // bytes the I2S RX DMA actually clocked in
+    STATUS_IN_TIMEOUTS = 23, // Input blocks the RX channel could not fill
 };
 
 #define FNV_OFFSET (0xcbf29ce484222325ULL)
@@ -106,6 +106,12 @@ typedef struct {
     // stack, because the pump thread outlives the call that built it.
     const audiosample_p_t *protocol;
     mp_obj_t sample;
+    // What the tail looked like when it was adopted. Checked at every block
+    // boundary: if the type word behind `sample` is no longer this, the heap
+    // that owned the graph has been reused under us and the only safe thing
+    // left is to stop. See "teardown on soft reset" in the spike notes --
+    // the finaliser below is the mechanism, this is the net under it.
+    const void *sample_type;
     uint64_t *status;
     uint64_t blocks;
     // The RAM ring the interpreter drains. NULL when nobody asked for one.
@@ -121,6 +127,7 @@ typedef struct {
     bool to_sink;               // esp32: write every block to I2S
     uint32_t sink_timeout_ms;
     int sink_fd;                // unix only
+    volatile bool retarget_req; // re-read `sample` at the next block boundary
 } audiopump_ctx_t;
 
 static audiopump_ctx_t audiopump_ctx;
@@ -171,11 +178,19 @@ static const audioif_sample_ops_t audiopump_ops = {
 
 #if AUDIOPUMP_ESP
 static i2s_chan_handle_t audiopump_i2s_tx;
+// The other half of the same clock tree. i2s_new_channel(&cfg, &tx, &rx)
+// fills both handles from one port, so BCLK, WS and MCLK are generated once
+// and the capture is frame-aligned with the playback by construction. That
+// is what machine.I2S cannot do on this board -- it opens one direction per
+// port object, which is why board_peripherals runs its AudioSession with
+// duplex=False.
+static i2s_chan_handle_t audiopump_i2s_rx;
 // Written from the driver's ISR, read by the interpreter. Counting what the
 // DMA actually clocked out is how an underrun gets measured at all: with
 // auto_clear on, a starved descriptor still fires on_sent, so DMA bytes
 // running ahead of the bytes the pump supplied IS the underrun.
 static volatile uint64_t audiopump_dma_bytes;
+static volatile uint64_t audiopump_rx_bytes;
 
 static IRAM_ATTR bool audiopump_on_sent(i2s_chan_handle_t handle,
     i2s_event_data_t *event, void *user_ctx) {
@@ -183,6 +198,31 @@ static IRAM_ATTR bool audiopump_on_sent(i2s_chan_handle_t handle,
     (void)user_ctx;
     audiopump_dma_bytes += event->size;
     return false;
+}
+
+static IRAM_ATTR bool audiopump_on_recv(i2s_chan_handle_t handle,
+    i2s_event_data_t *event, void *user_ctx) {
+    (void)handle;
+    (void)user_ctx;
+    audiopump_rx_bytes += event->size;
+    return false;
+}
+
+static void audiopump_i2s_close(void) {
+    if (audiopump_i2s_rx != NULL) {
+        i2s_channel_disable(audiopump_i2s_rx);
+    }
+    if (audiopump_i2s_tx != NULL) {
+        i2s_channel_disable(audiopump_i2s_tx);
+    }
+    if (audiopump_i2s_rx != NULL) {
+        i2s_del_channel(audiopump_i2s_rx);
+        audiopump_i2s_rx = NULL;
+    }
+    if (audiopump_i2s_tx != NULL) {
+        i2s_del_channel(audiopump_i2s_tx);
+        audiopump_i2s_tx = NULL;
+    }
 }
 #endif
 
@@ -241,6 +281,28 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
             }
         }
 
+        // The tail can change identity while the pump is parked --
+        // Phaser._install_cascade does it by itself, and `retarget()` does it
+        // on purpose when a helper swaps the effect class. Re-reading it here
+        // is one load at the block boundary and it is what stops the pump
+        // playing a graph nobody is holding any more.
+        if (ctx->retarget_req) {
+            ctx->retarget_req = false;
+            ctx->sample_type = (const void *)
+                ((mp_obj_base_t *)MP_OBJ_TO_PTR(ctx->sample))->type;
+        }
+
+        // The net under the finaliser. A type word that is no longer the one
+        // adopted means the heap holding the graph has been re-inited and
+        // re-used: stop, rather than hand the DSP a pointer out of somebody
+        // else's object.
+        if (ctx->sample_type != NULL
+            && (const void *)((mp_obj_base_t *)MP_OBJ_TO_PTR(ctx->sample))->type
+               != ctx->sample_type) {
+            error = 4;
+            break;
+        }
+
         const uint8_t *buffer = NULL;
         uint32_t length = 0;
         const uint64_t t0 = audiopump_now_us();
@@ -257,6 +319,12 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         }
         if (buffer == NULL) {
             error = 2;
+            break;
+        }
+        // A stop that arrived while the pull was running must not be followed
+        // by a sink write: the write blocks for up to sink_timeout_ms, and a
+        // teardown waiting for this task is waiting exactly that long.
+        if (ctx->stop) {
             break;
         }
         for (uint32_t i = 0; i < length; i++) {
@@ -324,6 +392,7 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         ctx->status[STATUS_MAX_PULL_US] = max_pull_us;
         #if AUDIOPUMP_ESP
         ctx->status[STATUS_DMA_BYTES] = audiopump_dma_bytes;
+        ctx->status[STATUS_RX_BYTES] = audiopump_rx_bytes;
         #endif
         if (result == AUDIOIF_BUFFER_DONE) {
             error = 3;
@@ -346,9 +415,10 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
 // --- the MicroPython side, all of it on the interpreter thread ------------
 
 // The pump's pointers are invisible to the collector, so everything it
-// touches is rooted here: the graph tail, the status bytearray and the ring.
+// touches is rooted here: the graph tail, the status bytearray, the ring and
+// the guard object whose finaliser is the soft-reset teardown.
 // See the spike notes, "what the pump holds".
-MP_REGISTER_ROOT_POINTER(mp_obj_t audiopump_held[3]);
+MP_REGISTER_ROOT_POINTER(mp_obj_t audiopump_held[4]);
 
 static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     mp_obj_t status_in, mp_obj_t ring_in, audiopump_ctx_t *ctx) {
@@ -379,6 +449,7 @@ static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
 
     ctx->protocol = protocol;
     ctx->sample = sample;
+    ctx->sample_type = (const void *)((mp_obj_base_t *)MP_OBJ_TO_PTR(sample))->type;
     ctx->status = info.buf;
     ctx->blocks = (uint64_t)mp_obj_get_int(blocks_in);
     ctx->sink_fd = -1;
@@ -479,6 +550,124 @@ static void *audiopump_entry(void *arg) {
 }
 #endif
 
+// --- teardown, and the thing that makes it happen on a soft reset ---------
+//
+// The board half found that a soft reset frees the graph out from under a
+// running pump and nothing notices: MicroPython re-inits the GC over the same
+// region, the FreeRTOS task is a C task and keeps pulling, and the audio goes
+// on until something reuses the memory. A pump that survives the heap that
+// owns its graph is worse than one that crashes.
+//
+// The esp32 port has no hook a user C module can register in its soft-reset
+// path -- main.c's soft_reset_exit calls a fixed list of `_deinit()`s and
+// there is no MICROPY_BOARD_END_SOFT_RESET on this port. But two lines above
+// that list it calls `gc_sweep_all()`, which runs `__del__` on EVERY object
+// that has one, reachable or not (py/gc.c:604, gc_sweep_run_finalisers).
+// So the cheapest robust mechanism is an object with a finaliser: it is
+// rooted here so an ordinary collection never touches it, and a soft reset
+// finalises it anyway. No port patch.
+//
+// Finalisers run before gc_sweep_free_blocks, so the graph is still intact
+// while this runs -- and audioif has no finalisers of its own outside
+// audiomp3, so nothing can deinit a node ahead of us.
+
+static void audiopump_teardown(void) {
+    audiopump_ctx.stop = true;
+    audiopump_ctx.park_req = false;
+    #if AUDIOPUMP_ESP
+    TaskHandle_t handle = audiopump_task_handle;
+    if (handle != NULL) {
+        xTaskNotifyGive(handle);
+        // The loop checks `stop` at the block boundary and again between the
+        // pull and the sink write, so the longest it can be away is one pull.
+        // vTaskDelay, not mp_hal_delay_ms: this runs inside a finaliser under
+        // the GC mutex, and mp_hal_delay_ms ends in mp_handle_pending, which
+        // can raise.
+        uint32_t waited = 0;
+        while (!audiopump_ctx.finished && waited < 2000) {
+            vTaskDelay(1);      // 10 ms at this port's 100 Hz tick
+            waited += 10;
+        }
+        audiopump_task_handle = NULL;
+        if (audiopump_task_psram) {
+            vTaskDeleteWithCaps(handle);
+        } else {
+            vTaskDelete(handle);
+        }
+    }
+    audiopump_i2s_close();
+    #else
+    if (audiopump_thread_live) {
+        pthread_join(audiopump_thread, NULL);
+        audiopump_thread_live = false;
+    }
+    if (audiopump_ctx.sink_fd >= 0) {
+        close(audiopump_ctx.sink_fd);
+    }
+    #endif
+    // Everything in here points into a heap that is about to be re-inited.
+    memset(&audiopump_ctx, 0, sizeof(audiopump_ctx));
+    audiopump_ctx.sink_fd = -1;
+    for (size_t i = 0; i < MP_ARRAY_SIZE(MP_STATE_VM(audiopump_held)); i++) {
+        MP_STATE_VM(audiopump_held)[i] = MP_OBJ_NULL;
+    }
+}
+
+typedef struct {
+    mp_obj_base_t base;
+} audiopump_guard_obj_t;
+
+static mp_obj_t audiopump_guard_del(mp_obj_t self_in) {
+    (void)self_in;
+    audiopump_teardown();
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_guard_del_obj, audiopump_guard_del);
+
+static const mp_rom_map_elem_t audiopump_guard_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR___del__), MP_ROM_PTR(&audiopump_guard_del_obj) },
+};
+static MP_DEFINE_CONST_DICT(audiopump_guard_locals,
+    audiopump_guard_locals_table);
+
+MP_DEFINE_CONST_OBJ_TYPE(
+    audiopump_guard_type,
+    MP_QSTR_Guard,
+    MP_TYPE_FLAG_NONE,
+    locals_dict, &audiopump_guard_locals
+    );
+
+// Called by anything that takes ownership of hardware or a graph. Rooted, so
+// a normal gc.collect() never finalises it; unrooted objects are finalised by
+// gc_sweep_all() regardless, which is the whole point.
+static void audiopump_arm_guard(void) {
+    if (MP_STATE_VM(audiopump_held)[3] == MP_OBJ_NULL) {
+        MP_STATE_VM(audiopump_held)[3] = MP_OBJ_FROM_PTR(
+            mp_obj_malloc_with_finaliser(audiopump_guard_obj_t,
+                &audiopump_guard_type));
+    }
+}
+
+static bool audiopump_is_running(void) {
+    #if AUDIOPUMP_ESP
+    return audiopump_task_handle != NULL && !audiopump_ctx.finished;
+    #else
+    return audiopump_thread_live && !audiopump_ctx.finished;
+    #endif
+}
+
+static mp_obj_t audiopump_running(void) {
+    return mp_obj_new_bool(audiopump_is_running());
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_running_obj, audiopump_running);
+
+// The explicit form of what the finaliser does. Safe to call twice.
+static mp_obj_t audiopump_shutdown(void) {
+    audiopump_teardown();
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_shutdown_obj, audiopump_shutdown);
+
 static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     mp_map_t *kw_args) {
     enum { ARG_sample, ARG_blocks, ARG_status, ARG_sink, ARG_ring, ARG_core,
@@ -499,16 +688,23 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
         allowed, args);
 
+    // One global pump, so a second spawn would silently orphan the first --
+    // the task that is already pulling, and the graph behind it. Refuse, and
+    // say what to call. shutdown() is the door out; it is also what the soft
+    // reset finaliser calls.
     #if AUDIOPUMP_ESP
     if (audiopump_task_handle != NULL) {
-        mp_raise_ValueError(MP_ERROR_TEXT("pump already running"));
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "a pump is already spawned; call audiopump.shutdown() first"));
     }
     #else
     if (audiopump_thread_live) {
-        mp_raise_ValueError(MP_ERROR_TEXT("pump already running"));
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "a pump is already spawned; call audiopump.shutdown() first"));
     }
     #endif
 
+    audiopump_arm_guard();
     audiopump_prepare(args[ARG_sample].u_obj, args[ARG_blocks].u_obj,
         args[ARG_status].u_obj, args[ARG_ring].u_obj, &audiopump_ctx);
     audiopump_ctx.sink_timeout_ms = (uint32_t)args[ARG_timeout_ms].u_int;
@@ -651,6 +847,29 @@ static mp_obj_t audiopump_park(size_t n_args, const mp_obj_t *args) {
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_park_obj, 0, 1,
     audiopump_park);
 
+// Point the pump at a different tail. The handoff page's registry entry, cut
+// down to the one thing the spike needs: a helper that swaps the effect class
+// parks, builds the new graph, retargets, unparks. The protocol lookup and
+// the deinit check happen here, on the interpreter thread, exactly as they do
+// in spawn() -- both of them raise, and the pump thread has nothing to raise
+// from.
+static mp_obj_t audiopump_retarget(mp_obj_t sample) {
+    if (audiopump_is_running() && !audiopump_ctx.parked) {
+        mp_raise_ValueError(MP_ERROR_TEXT("park the pump before retargeting"));
+    }
+    const audiosample_p_t *protocol = mp_proto_get_or_throw(
+        MP_QSTR_protocol_audiosample, sample);
+    audiosample_check_for_deinit(MP_OBJ_TO_PTR(sample));
+    audiopump_ctx.protocol = protocol;
+    audiopump_ctx.sample = sample;
+    MP_STATE_VM(audiopump_held)[0] = sample;
+    // The type word is re-read by the loop rather than written here, so the
+    // guard cannot see a half-updated pair.
+    audiopump_ctx.retarget_req = true;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_retarget_obj, audiopump_retarget);
+
 static mp_obj_t audiopump_unpark(void) {
     audiopump_ctx.park_req = false;
     #if AUDIOPUMP_ESP
@@ -705,7 +924,8 @@ static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_drain_obj, audiopump_drain);
 static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     mp_map_t *kw_args) {
     enum { ARG_port, ARG_bclk, ARG_ws, ARG_dout, ARG_rate, ARG_bits,
-           ARG_channels, ARG_mclk, ARG_mclk_fs, ARG_dma_desc, ARG_dma_frame };
+           ARG_channels, ARG_mclk, ARG_mclk_fs, ARG_dma_desc, ARG_dma_frame,
+           ARG_din };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_port,      MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = 0 } },
         { MP_QSTR_bclk,      MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
@@ -718,6 +938,9 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
         { MP_QSTR_mclk_fs,   MP_ARG_INT,  { .u_int = 256 } },
         { MP_QSTR_dma_desc,  MP_ARG_INT,  { .u_int = 6 } },
         { MP_QSTR_dma_frame, MP_ARG_INT,  { .u_int = 240 } },
+        // >= 0 opens the RX half of the SAME channel pair, so one clock tree
+        // drives both directions.
+        { MP_QSTR_din,       MP_ARG_INT,  { .u_int = -1 } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
     mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
@@ -726,15 +949,20 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     if (audiopump_i2s_tx != NULL) {
         mp_raise_ValueError(MP_ERROR_TEXT("i2s already open"));
     }
+    audiopump_arm_guard();
+
+    const bool duplex = args[ARG_din].u_int >= 0;
 
     i2s_chan_config_t chan_config = I2S_CHANNEL_DEFAULT_CONFIG(
         (i2s_port_t)args[ARG_port].u_int, I2S_ROLE_MASTER);
     chan_config.dma_desc_num = (uint32_t)args[ARG_dma_desc].u_int;
     chan_config.dma_frame_num = (uint32_t)args[ARG_dma_frame].u_int;
     chan_config.auto_clear = true;   // zeros on underrun, never stale data
-    esp_err_t err = i2s_new_channel(&chan_config, &audiopump_i2s_tx, NULL);
+    esp_err_t err = i2s_new_channel(&chan_config, &audiopump_i2s_tx,
+        duplex ? &audiopump_i2s_rx : NULL);
     if (err != ESP_OK) {
         audiopump_i2s_tx = NULL;
+        audiopump_i2s_rx = NULL;
         mp_raise_OSError(MP_EIO);
     }
 
@@ -755,7 +983,7 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
             .bclk = (gpio_num_t)args[ARG_bclk].u_int,
             .ws = (gpio_num_t)args[ARG_ws].u_int,
             .dout = (gpio_num_t)args[ARG_dout].u_int,
-            .din = I2S_GPIO_UNUSED,
+            .din = duplex ? (gpio_num_t)args[ARG_din].u_int : I2S_GPIO_UNUSED,
             .invert_flags = { false, false, false },
         },
     };
@@ -767,17 +995,36 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     }
 
     err = i2s_channel_init_std_mode(audiopump_i2s_tx, &std_cfg);
+    if (err == ESP_OK && duplex) {
+        // The same std config on both halves. On one port that is not a
+        // convenience -- the IDF derives BCLK/WS once and the second channel
+        // has to agree with it or the init is refused.
+        err = i2s_channel_init_std_mode(audiopump_i2s_rx, &std_cfg);
+    }
     if (err == ESP_OK) {
         i2s_event_callbacks_t cbs = { .on_sent = audiopump_on_sent };
         err = i2s_channel_register_event_callback(audiopump_i2s_tx, &cbs, NULL);
     }
+    if (err == ESP_OK && duplex) {
+        i2s_event_callbacks_t rx_cbs = { .on_recv = audiopump_on_recv };
+        err = i2s_channel_register_event_callback(audiopump_i2s_rx, &rx_cbs,
+            NULL);
+    }
     if (err == ESP_OK) {
         audiopump_dma_bytes = 0;
+        audiopump_rx_bytes = 0;
+        // RX first: it is the half that must not miss the beginning of what
+        // TX emits, and enabling it first makes any gap between the two an
+        // over-estimate of the round trip rather than an under-estimate.
+        if (duplex) {
+            err = i2s_channel_enable(audiopump_i2s_rx);
+        }
+    }
+    if (err == ESP_OK) {
         err = i2s_channel_enable(audiopump_i2s_tx);
     }
     if (err != ESP_OK) {
-        i2s_del_channel(audiopump_i2s_tx);
-        audiopump_i2s_tx = NULL;
+        audiopump_i2s_close();
         mp_raise_OSError(MP_EIO);
     }
     // Bytes the DMA holds when full: the block-to-wire latency floor.
@@ -789,11 +1036,7 @@ static MP_DEFINE_CONST_FUN_OBJ_KW(audiopump_i2s_start_obj, 5,
     audiopump_i2s_start);
 
 static mp_obj_t audiopump_i2s_stop(void) {
-    if (audiopump_i2s_tx != NULL) {
-        i2s_channel_disable(audiopump_i2s_tx);
-        i2s_del_channel(audiopump_i2s_tx);
-        audiopump_i2s_tx = NULL;
-    }
+    audiopump_i2s_close();
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_i2s_stop_obj, audiopump_i2s_stop);
@@ -803,6 +1046,270 @@ static mp_obj_t audiopump_i2s_dma_bytes(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_i2s_dma_bytes_obj,
     audiopump_i2s_dma_bytes);
+
+static mp_obj_t audiopump_i2s_rx_bytes(void) {
+    return mp_obj_new_int_from_uint((mp_uint_t)audiopump_rx_bytes);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_i2s_rx_bytes_obj,
+    audiopump_i2s_rx_bytes);
+
+// --- audiopump.Input: the capture side, as an audiosample ------------------
+//
+// An audiosample whose get_buffer is an i2s_channel_read. That makes the live
+// microphone a source like any other, so
+//
+//     audioeffects.create("Overdrive", audiopump.Input(...), rate)
+//
+// builds a real effect graph on it and the pump pulls the whole thing. The
+// read blocks, which is the pacing: RX is the clock, and because RX and TX
+// came out of one i2s_new_channel they are the SAME clock.
+//
+// Nothing in here calls into the MicroPython runtime, because everything in
+// here runs on the pump task.
+
+typedef struct {
+    audiosample_base_t base;
+    uint8_t *buf[2];            // ping-pong, so a node may hold the last block
+    uint32_t len;               // bytes per block
+    uint8_t which;
+    uint32_t timeout_ms;
+    volatile uint64_t blocks;
+    volatile uint64_t timeouts;
+    volatile uint64_t short_reads;
+} audiopump_input_obj_t;
+
+extern const mp_obj_type_t audiopump_input_type;
+
+static void audiopump_input_reset_buffer(audiopump_input_obj_t *self,
+    bool single_channel_output, uint8_t channel) {
+    (void)single_channel_output;
+    (void)channel;
+    self->which = 0;
+}
+
+static audioio_get_buffer_result_t audiopump_input_get_buffer(
+    audiopump_input_obj_t *self, bool single_channel_output, uint8_t channel,
+    uint8_t **buffer, uint32_t *buffer_length) {
+    (void)single_channel_output;
+    (void)channel;
+    uint8_t *dst = self->buf[self->which];
+    self->which ^= 1;
+    size_t got = 0;
+    if (audiopump_i2s_rx != NULL) {
+        esp_err_t err = i2s_channel_read(audiopump_i2s_rx, dst, self->len,
+            &got, pdMS_TO_TICKS(self->timeout_ms));
+        if (err != ESP_OK) {
+            self->timeouts++;
+        }
+    }
+    if (got < self->len) {
+        // Silence rather than stale audio: a short read is a starve, and a
+        // starve should sound like a hole, not like a stutter.
+        memset(dst + got, 0, self->len - got);
+        if (got != self->len) {
+            self->short_reads++;
+        }
+    }
+    self->blocks++;
+    *buffer = dst;
+    *buffer_length = self->len;
+    return GET_BUFFER_MORE_DATA;
+}
+
+static mp_obj_t audiopump_input_make_new(const mp_obj_type_t *type,
+    size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
+    enum { ARG_rate, ARG_channels, ARG_frames, ARG_timeout_ms };
+    static const mp_arg_t allowed[] = {
+        { MP_QSTR_sample_rate,  MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 48000 } },
+        { MP_QSTR_channel_count, MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 2 } },
+        { MP_QSTR_frames,       MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 256 } },
+        { MP_QSTR_timeout_ms,   MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 500 } },
+    };
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed),
+        allowed, args);
+
+    const uint32_t channels = (uint32_t)args[ARG_channels].u_int;
+    const uint32_t frames = (uint32_t)args[ARG_frames].u_int;
+    if (channels < 1 || channels > 2 || frames < 16) {
+        mp_raise_ValueError(MP_ERROR_TEXT("bad channel_count or frames"));
+    }
+
+    audiopump_input_obj_t *self = mp_obj_malloc(audiopump_input_obj_t,
+        (const mp_obj_type_t *)&audiopump_input_type);
+    self->len = frames * channels * 2;
+    self->buf[0] = m_new(uint8_t, self->len);
+    self->buf[1] = m_new(uint8_t, self->len);
+    memset(self->buf[0], 0, self->len);
+    memset(self->buf[1], 0, self->len);
+    self->which = 0;
+    self->timeout_ms = (uint32_t)args[ARG_timeout_ms].u_int;
+    self->blocks = 0;
+    self->timeouts = 0;
+    self->short_reads = 0;
+
+    self->base.sample_rate = (uint32_t)args[ARG_rate].u_int;
+    self->base.max_buffer_length = self->len;
+    self->base.bits_per_sample = 16;
+    self->base.channel_count = (uint8_t)channels;
+    self->base.samples_signed = true;
+    // Two buffers, so a node downstream may keep the previous block.
+    self->base.single_buffer = false;
+    return MP_OBJ_FROM_PTR(self);
+}
+
+static mp_obj_t audiopump_input_stats(mp_obj_t self_in) {
+    audiopump_input_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    mp_obj_t items[4] = {
+        mp_obj_new_int_from_uint((mp_uint_t)self->blocks),
+        mp_obj_new_int_from_uint((mp_uint_t)self->timeouts),
+        mp_obj_new_int_from_uint((mp_uint_t)self->short_reads),
+        mp_obj_new_int_from_uint(self->len),
+    };
+    return mp_obj_new_tuple(4, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_input_stats_obj,
+    audiopump_input_stats);
+
+static const mp_rom_map_elem_t audiopump_input_locals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR_stats), MP_ROM_PTR(&audiopump_input_stats_obj) },
+    AUDIOSAMPLE_FIELDS,
+};
+static MP_DEFINE_CONST_DICT(audiopump_input_locals,
+    audiopump_input_locals_table);
+
+static const audiosample_p_t audiopump_input_proto = {
+    MP_PROTO_IMPLEMENT(MP_QSTR_protocol_audiosample)
+    .reset_buffer = (audiosample_reset_buffer_fun)audiopump_input_reset_buffer,
+    .get_buffer = (audiosample_get_buffer_fun)audiopump_input_get_buffer,
+};
+
+MP_DEFINE_CONST_OBJ_TYPE(
+    audiopump_input_type,
+    MP_QSTR_Input,
+    MP_TYPE_FLAG_HAS_SPECIAL_ACCESSORS,
+    make_new, audiopump_input_make_new,
+    attr, cp_compat_attr,
+    locals_dict, &audiopump_input_locals,
+    protocol, &audiopump_input_proto
+    );
+
+// --- the round-trip latency probe -----------------------------------------
+//
+// DAC to speaker to microphone to ADC, measured in frames rather than in host
+// time. TX and RX share one frame clock, so RX frame N is sampled as TX frame
+// N goes out; the only thing needed is a known origin, and
+// i2s_channel_preload_data gives one -- the click is written into the DMA
+// BEFORE the channels are enabled, so it leaves at a frame this code chose.
+//
+// Runs on the interpreter thread with no pump spawned; two owners of one
+// channel is the failure that sounds like silence.
+static mp_obj_t audiopump_rt_probe(size_t n_args, const mp_obj_t *pos_args,
+    mp_map_t *kw_args) {
+    enum { ARG_capture, ARG_frames, ARG_lead, ARG_prime, ARG_level,
+           ARG_channels, ARG_timeout_ms };
+    static const mp_arg_t allowed[] = {
+        { MP_QSTR_capture,    MP_ARG_REQUIRED | MP_ARG_OBJ, { .u_obj = MP_OBJ_NULL } },
+        { MP_QSTR_frames,     MP_ARG_INT, { .u_int = 256 } },
+        { MP_QSTR_lead,       MP_ARG_INT, { .u_int = 0 } },
+        { MP_QSTR_prime,      MP_ARG_INT, { .u_int = 0 } },
+        { MP_QSTR_level,      MP_ARG_INT, { .u_int = 24000 } },
+        { MP_QSTR_channels,   MP_ARG_INT, { .u_int = 2 } },
+        { MP_QSTR_timeout_ms, MP_ARG_INT, { .u_int = 2000 } },
+    };
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
+        allowed, args);
+
+    if (audiopump_i2s_tx == NULL || audiopump_i2s_rx == NULL) {
+        mp_raise_ValueError(MP_ERROR_TEXT("open i2s with din= first"));
+    }
+    if (audiopump_is_running()) {
+        mp_raise_ValueError(MP_ERROR_TEXT("stop the pump first"));
+    }
+
+    mp_buffer_info_t cap;
+    mp_get_buffer_raise(args[ARG_capture].u_obj, &cap, MP_BUFFER_WRITE);
+
+    const uint32_t channels = (uint32_t)args[ARG_channels].u_int;
+    const uint32_t frames = (uint32_t)args[ARG_frames].u_int;
+    const uint32_t lead = (uint32_t)args[ARG_lead].u_int;
+    const uint32_t frame_bytes = channels * 2;
+    const uint32_t click_bytes = frames * frame_bytes;
+
+    // Silence the whole path, then rebuild both DMAs from zero.
+    i2s_channel_disable(audiopump_i2s_tx);
+    i2s_channel_disable(audiopump_i2s_rx);
+
+    // One block: `lead` frames of silence and then a hard step. The step is a
+    // step, not an impulse -- a single frame gets swallowed by the codec's
+    // reconstruction filter, and a step's leading edge is just as findable.
+    uint8_t *click = m_new(uint8_t, click_bytes);
+    memset(click, 0, click_bytes);
+    int16_t *s = (int16_t *)click;
+    const int16_t level = (int16_t)args[ARG_level].u_int;
+    for (uint32_t f = lead; f < frames; f++) {
+        for (uint32_t c = 0; c < channels; c++) {
+            // A few hundred microseconds of square wave: loud, broadband and
+            // unmistakable against a quiet room.
+            s[f * channels + c] = ((f - lead) / 8) % 2 ? level : (int16_t)-level;
+        }
+    }
+
+    size_t loaded = 0;
+    // `prime` blocks of silence ahead of the click model a TX ring that is
+    // already full -- which is what a live pump keeps it. prime=0 measures
+    // the path with both rings empty.
+    uint8_t *quiet = NULL;
+    if (args[ARG_prime].u_int > 0) {
+        quiet = m_new(uint8_t, click_bytes);
+        memset(quiet, 0, click_bytes);
+        for (int i = 0; i < args[ARG_prime].u_int; i++) {
+            size_t n = 0;
+            i2s_channel_preload_data(audiopump_i2s_tx, quiet, click_bytes, &n);
+            loaded += n;
+        }
+    }
+    size_t click_at = loaded;
+    size_t n = 0;
+    esp_err_t err = i2s_channel_preload_data(audiopump_i2s_tx, click,
+        click_bytes, &n);
+    loaded += n;
+
+    const uint64_t t_rx = audiopump_now_us();
+    if (err == ESP_OK) {
+        err = i2s_channel_enable(audiopump_i2s_rx);
+    }
+    const uint64_t t_tx = audiopump_now_us();
+    if (err == ESP_OK) {
+        err = i2s_channel_enable(audiopump_i2s_tx);
+    }
+    size_t got = 0;
+    if (err == ESP_OK) {
+        err = i2s_channel_read(audiopump_i2s_rx, cap.buf, cap.len, &got,
+            pdMS_TO_TICKS(args[ARG_timeout_ms].u_int));
+    }
+
+    mp_obj_t items[6] = {
+        mp_obj_new_int_from_uint((mp_uint_t)got),
+        // Frame index at which the step leaves the DAC, in the TX stream.
+        mp_obj_new_int_from_uint((mp_uint_t)((click_at + lead * frame_bytes)
+            / frame_bytes)),
+        mp_obj_new_int_from_uint((mp_uint_t)(loaded / frame_bytes)),
+        // Microseconds between enabling RX and enabling TX: the one piece of
+        // host timing in the measurement, reported rather than assumed away.
+        mp_obj_new_int_from_uint((mp_uint_t)(t_tx - t_rx)),
+        mp_obj_new_int((mp_int_t)err),
+        mp_obj_new_int_from_uint((mp_uint_t)frame_bytes),
+    };
+    m_del(uint8_t, click, click_bytes);
+    if (quiet != NULL) {
+        m_del(uint8_t, quiet, click_bytes);
+    }
+    return mp_obj_new_tuple(6, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_KW(audiopump_rt_probe_obj, 1,
+    audiopump_rt_probe);
 #endif
 
 static const mp_rom_map_elem_t audiopump_globals_table[] = {
@@ -813,14 +1320,21 @@ static const mp_rom_map_elem_t audiopump_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&audiopump_stop_obj) },
     { MP_ROM_QSTR(MP_QSTR_park), MP_ROM_PTR(&audiopump_park_obj) },
     { MP_ROM_QSTR(MP_QSTR_unpark), MP_ROM_PTR(&audiopump_unpark_obj) },
+    { MP_ROM_QSTR(MP_QSTR_retarget), MP_ROM_PTR(&audiopump_retarget_obj) },
     { MP_ROM_QSTR(MP_QSTR_drain), MP_ROM_PTR(&audiopump_drain_obj) },
     { MP_ROM_QSTR(MP_QSTR_reset), MP_ROM_PTR(&audiopump_reset_graph_obj) },
     { MP_ROM_QSTR(MP_QSTR_info), MP_ROM_PTR(&audiopump_info_obj) },
+    { MP_ROM_QSTR(MP_QSTR_running), MP_ROM_PTR(&audiopump_running_obj) },
+    { MP_ROM_QSTR(MP_QSTR_shutdown), MP_ROM_PTR(&audiopump_shutdown_obj) },
     #if AUDIOPUMP_ESP
     { MP_ROM_QSTR(MP_QSTR_i2s_start), MP_ROM_PTR(&audiopump_i2s_start_obj) },
     { MP_ROM_QSTR(MP_QSTR_i2s_stop), MP_ROM_PTR(&audiopump_i2s_stop_obj) },
     { MP_ROM_QSTR(MP_QSTR_i2s_dma_bytes),
       MP_ROM_PTR(&audiopump_i2s_dma_bytes_obj) },
+    { MP_ROM_QSTR(MP_QSTR_i2s_rx_bytes),
+      MP_ROM_PTR(&audiopump_i2s_rx_bytes_obj) },
+    { MP_ROM_QSTR(MP_QSTR_Input), MP_ROM_PTR(&audiopump_input_type) },
+    { MP_ROM_QSTR(MP_QSTR_rt_probe), MP_ROM_PTR(&audiopump_rt_probe_obj) },
     #endif
     { MP_ROM_QSTR(MP_QSTR_STATUS_BYTES),
       MP_ROM_INT(AUDIOPUMP_STATUS_BYTES) },
