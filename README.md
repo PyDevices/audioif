@@ -18,12 +18,35 @@ Three jobs, one loop, written against audioif's `audioif_sample_source_t`:
 - `audiopump.park()` / `unpark()` is the handoff: the pump finishes the block
   it is in, parks, and does not touch the graph until unparked. On esp32 it
   wakes on a direct-to-task notify, never `vTaskDelay` — this port's tick is
-  100 Hz.
-- On esp32, `audiopump.i2s_start(port, bclk, ws, dout, rate, ...)` opens a TX
-  channel the loop writes every block into, `i2s_stop()` closes it, and
-  `i2s_dma_bytes()` reports what the DMA actually clocked out.
-  `audiopump.drain(buf)` is the RAM ring's consumer, and `audiopump.info()`
-  reports what the graph says it is.
+  100 Hz. `audiopump.retarget(sample)` points the pump at a different tail
+  while it is parked, which is what a helper swapping the effect class needs
+  and what `Phaser`'s cascade rebuild breaks without.
+- `audiopump.shutdown()` stops the task, closes I2S and drops every root.
+  **It also happens by itself on a soft reset** — see below.
+  `audiopump.running()` says whether a pump is live.
+- On esp32, `audiopump.i2s_start(port, bclk, ws, dout, rate, ..., din=PIN)`
+  opens a TX channel the loop writes every block into, and with `din` the RX
+  half of the *same* channel pair, so one clock tree drives both directions.
+  `i2s_stop()` closes them; `i2s_dma_bytes()` and `i2s_rx_bytes()` report what
+  the two DMAs actually clocked. `audiopump.drain(buf)` is the RAM ring's
+  consumer, and `audiopump.info()` reports what the graph says it is.
+- `audiopump.Input(sample_rate=, channel_count=, frames=)` is an audiosample
+  whose `get_buffer` is an `i2s_channel_read`, so a live microphone is a
+  source like any other and `audioeffects.create(name, Input(...), rate)`
+  builds a graph on it. The read blocks, which is the pacing.
+- `audiopump.rt_probe(capture, ...)` preloads a step into the TX DMA before
+  either channel is enabled and captures RX from the same instant, so a
+  round-trip latency comes out in frames rather than in host time.
+
+## Dying with the VM
+
+The esp32 port has no soft-reset hook a user C module can register in —
+`soft_reset_exit` in `ports/esp32/main.c` calls a fixed list of `_deinit()`s
+and this port has no `MICROPY_BOARD_END_SOFT_RESET`. But two lines above that
+list it calls `gc_sweep_all()`, which runs `__del__` on **every** object that
+has one, reachable or not. So `audiopump` allocates one `Guard` with
+`mp_obj_malloc_with_finaliser`, roots it so an ordinary collection never
+touches it, and lets the soft reset finalise it. No port patch.
 
 `status` is a 192-byte `bytearray`, read back with `struct.unpack("<24Q", …)`:
 blocks, bytes, an FNV-1a 64 digest of every byte pulled, the last buffer
@@ -66,7 +89,7 @@ somewhere else.
 
 ## What it is not
 
-One global pump. Nothing staged, no safety around `deinit`, and — the one
-that matters — nothing tears it down on a soft reset, so the task outlives the
-heap that owns its graph and goes on playing memory nobody owns. Every one of
-those is a finding rather than an omission; see the notes.
+One global pump, and nothing staged. `deinit` still has no safety around it —
+park first, always. The tail is rooted but not the graph behind it, so the
+Python side has to keep holding the components. The soft-reset hole is closed;
+the rest are findings rather than omissions. See the notes.
