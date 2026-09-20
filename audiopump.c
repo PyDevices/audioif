@@ -165,6 +165,24 @@ static audioif_status_t audiopump_get(void *context,
     const uint8_t **buffer, uint32_t *buffer_length,
     audioif_buffer_result_t *result) {
     audiopump_ctx_t *ctx = context;
+    // The tail's deinit check, which nothing else does. This adapter calls
+    // the protocol DIRECTLY -- that is the whole point of resolving it once
+    // on the interpreter thread -- so it bypasses audiosample_get_buffer and
+    // the guard that lives there. The guard covers every node INSIDE the
+    // graph and not the one the pump is holding.
+    //
+    // Found by the storm: a class deinit()ing its own Mixer while the pump
+    // held it, and mix_down_one_voice writing into word_buffer=0x0. Under
+    // the lock now, deinit cannot land mid-pull; this catches the case where
+    // it landed between two pulls, which is legitimate and must be silence
+    // with a reason rather than a write through NULL.
+    if (audiosample_deinited((audiosample_base_t *)MP_OBJ_TO_PTR(ctx->sample))) {
+        audioif_pump_fault_set(AUDIOIF_PUMP_FAULT_DEINITED);
+        *buffer = NULL;
+        *buffer_length = 0;
+        *result = AUDIOIF_BUFFER_ERROR;
+        return AUDIOIF_STATUS_DEINITIALIZED;
+    }
     uint8_t *raw = NULL;
     audioio_get_buffer_result_t got = ctx->protocol->get_buffer(ctx->sample,
         single_channel_output, audio_channel, &raw, buffer_length);
