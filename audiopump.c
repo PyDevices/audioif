@@ -571,7 +571,15 @@ static void *audiopump_entry(void *arg) {
 // while this runs -- and audioif has no finalisers of its own outside
 // audiomp3, so nothing can deinit a node ahead of us.
 
-static void audiopump_teardown(void) {
+// `release_guard` is true only when the finaliser itself is calling: the guard
+// object is being swept, so the root must be dropped or it dangles into a heap
+// that is about to be re-inited -- and `arm_guard` would then see a non-NULL
+// slot and never make a live one, leaving the NEXT soft reset with nothing to
+// finalise. An explicit shutdown() keeps it: the object is still alive and
+// still rooted, and unrooting it there would leave it unreachable but not yet
+// swept, so the next gc.collect() would finalise it and tear down whatever
+// pump had been spawned in between. Two opposite failures, one flag.
+static void audiopump_teardown(bool release_guard) {
     audiopump_ctx.stop = true;
     audiopump_ctx.park_req = false;
     #if AUDIOPUMP_ESP
@@ -608,14 +616,12 @@ static void audiopump_teardown(void) {
     // Everything in here points into a heap that is about to be re-inited.
     memset(&audiopump_ctx, 0, sizeof(audiopump_ctx));
     audiopump_ctx.sink_fd = -1;
-    // Slots 0-2 only. The guard at [3] stays rooted for the life of the VM:
-    // unrooting it here would leave it unreachable but not yet swept, and the
-    // next gc.collect() would then finalise it -- tearing down whatever pump
-    // had been spawned in between. Which is the exact failure this object
-    // exists to prevent, arriving by the other door.
     MP_STATE_VM(audiopump_held)[0] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[1] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[2] = MP_OBJ_NULL;
+    if (release_guard) {
+        MP_STATE_VM(audiopump_held)[3] = MP_OBJ_NULL;
+    }
 }
 
 typedef struct {
@@ -624,7 +630,7 @@ typedef struct {
 
 static mp_obj_t audiopump_guard_del(mp_obj_t self_in) {
     (void)self_in;
-    audiopump_teardown();
+    audiopump_teardown(true);
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_guard_del_obj, audiopump_guard_del);
@@ -668,7 +674,7 @@ static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_running_obj, audiopump_running);
 
 // The explicit form of what the finaliser does. Safe to call twice.
 static mp_obj_t audiopump_shutdown(void) {
-    audiopump_teardown();
+    audiopump_teardown(false);
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_shutdown_obj, audiopump_shutdown);
