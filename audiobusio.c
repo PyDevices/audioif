@@ -77,6 +77,12 @@ typedef struct _audiobusio_i2sout_obj_t {
     // trigger here is the same shape: a scheduler node, re-armed while the
     // sample plays, plus an opportunistic fill on every `playing` read, which
     // is what `while i2s.playing: pass` gives us for free.
+    // --- the converted path, which is NOT the file path -------------------
+    // A RawSample that is u8/u16/mono is converted on the PUMP's thread now
+    // (audioif's `audiopump_convert_t`), so all the interpreter owns is this
+    // buffer, allocated once per play(). See "the converted path" below.
+    mp_obj_t conv_buf;
+    uint32_t conv_len;
     mp_obj_t ring;
     mp_obj_t ring_write;      // bound methods, resolved once: no allocation
     mp_obj_t ring_space;      // per fill, which happens a few hundred times a
@@ -155,6 +161,39 @@ static int audiobusio_pin_gpio(mp_obj_t pin_or_int, qstr what) {
 // The message is CircuitPython's own; the number it arrives at is ours, and it
 // is written down rather than discovered.
 
+// One DMA descriptor, in FRAMES, for a given sample rate. The channel is
+// opened with six of them, so this is the granularity at which
+// `i2s_channel_write` has to wait for the hardware -- and a descriptor fixed
+// at 240 frames is 5 ms at 48 kHz and THIRTY at 8 kHz.
+//
+// At the low rates that write times out once per descriptor and loses bytes.
+// Measured on the P4, two seconds a row, with the pull unchanged:
+//
+//     8000 Hz, 240 frames   67 timeouts, 63 432 of 64 000 bytes written
+//     8000 Hz,  64 frames    0 timeouts, 64 008
+//    16000 Hz, 240 frames   67 timeouts, 127 728 of 128 000
+//    16000 Hz,  80 frames    0 timeouts, 128 016
+//    22050 Hz, 240 frames   13 timeouts;  110 frames: 0
+//    48000 Hz, 240 frames    0 timeouts
+//
+// This is what starved CircuitPython's own `I2SOut` docstring example, whose
+// sine is at 8 kHz -- NOT the unsigned conversion it was blamed on. A signed
+// 16-bit STEREO sample at 8 kHz, which is converted by nothing at all,
+// starves the same 67.
+//
+// Sized in time it is zero at every rate, and 48 kHz still lands on the 240
+// that is already proven.
+static int audiobusio_dma_frame(int rate) {
+    int frames = rate / 200;            // one descriptor, 5 ms
+    if (frames < 64) {
+        frames = 64;                    // a floor: tiny descriptors cost IRQs
+    }
+    if (frames > 240) {
+        frames = 240;
+    }
+    return frames;
+}
+
 static audiobusio_i2sout_obj_t *audiobusio_owner(void) {
     mp_obj_t live = MP_STATE_VM(audiobusio_live);
     return live == MP_OBJ_NULL ? NULL : MP_OBJ_TO_PTR(live);
@@ -184,9 +223,21 @@ static void audiobusio_check(audiobusio_i2sout_obj_t *self) {
 // first program anybody runs. Mono is not in this list: a mono signed sample
 // opens a mono channel instead, which costs nothing and keeps the pull
 // zero-copy.
-static bool audiobusio_direct(mp_obj_t sample, audiosample_base_t *base) {
+//
+// THE CONVERSION MOVED. It used to happen here, on the interpreter, filling
+// the same ring the file path uses -- and on the P4 that cost 67 starved
+// blocks in 2 s playing CircuitPython's own docstring example, because the
+// ring is topped up from a scheduler node and the scheduler arrives when the
+// interpreter lets it. It is a few integer operations a sample; the pump
+// does it now, on its own thread, between the pull and the DMA. The ring is
+// left to the one source that genuinely needs an interpreter: a file.
+static bool audiobusio_file_backed(mp_obj_t sample) {
     const qstr name = mp_obj_get_type(sample)->name;
-    if (name == MP_QSTR_WaveFile || name == MP_QSTR_MP3Decoder) {
+    return name == MP_QSTR_WaveFile || name == MP_QSTR_MP3Decoder;
+}
+
+static bool audiobusio_direct(mp_obj_t sample, audiosample_base_t *base) {
+    if (audiobusio_file_backed(sample)) {
         return false;
     }
     return base->bits_per_sample == 16 && base->samples_signed != 0;
@@ -461,7 +512,7 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
     self->wire.channels = 2;
     self->wire.mclk_fs = 256;
     self->wire.dma_desc = 6;
-    self->wire.dma_frame = 240;
+    self->wire.dma_frame = audiobusio_dma_frame(self->wire.rate);
     self->wire.din = -1;
     self->wire.in_port = -1;
     self->wire.in_bclk = -1;
@@ -524,7 +575,39 @@ static void audiobusio_start_direct(audiobusio_i2sout_obj_t *self,
     // clock instead; on a board the DMA is the pace and pacing twice would
     // be a stall. `core = -1` lets the driver pin the task itself.
     (void)audiopump_c_spawn(sample, self->status, UINT64_MAX, sink, loop,
-        !board, -1, 200);
+        !board, -1, 200, NULL);
+}
+
+// The converted path: the same spawn, plus a scratch the pump converts each
+// block into. Nothing on the interpreter afterwards -- no ring, no scheduler
+// node, no fill on every `playing` read.
+static void audiobusio_start_converted(audiobusio_i2sout_obj_t *self,
+    mp_obj_t sample, bool loop, audiosample_base_t *base) {
+    const uint32_t in_frame = (uint32_t)base->channel_count
+        * (uint32_t)(base->bits_per_sample / 8);
+    const uint32_t frames = in_frame
+        ? (uint32_t)base->max_buffer_length / in_frame : 0;
+    if (frames == 0) {
+        mp_raise_ValueError(MP_ERROR_TEXT("sample has no frames"));
+    }
+    const uint32_t need = frames * 4;      // stereo signed 16-bit
+    if (self->conv_buf == MP_OBJ_NULL || self->conv_len < need) {
+        self->conv_buf = mp_obj_new_bytearray_by_ref(need,
+            m_new0(uint8_t, need));
+        self->conv_len = need;
+    }
+    self->sample = sample;
+    const audiopump_convert_t cfg = {
+        .scratch = self->conv_buf,
+        .bits = (uint8_t)base->bits_per_sample,
+        .channels = base->channel_count,
+        .is_signed = base->samples_signed != 0,
+    };
+    const bool board = audiopump_i2s_have();
+    mp_obj_t sink = board ? mp_const_true
+        : (self->sink != NULL ? self->sink_obj : mp_const_none);
+    (void)audiopump_c_spawn(sample, self->status, UINT64_MAX, sink, loop,
+        !board, -1, 200, &cfg);
 }
 
 static void audiobusio_start_fed(audiobusio_i2sout_obj_t *self,
@@ -600,6 +683,7 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
         audiopump_i2s_shutdown();
         self->wire.rate = (int)base->sample_rate;
         self->wire.channels = want_channels;
+        self->wire.dma_frame = audiobusio_dma_frame(self->wire.rate);
         (void)audiopump_i2s_open(&self->wire);
         self->rate = base->sample_rate;
     }
@@ -609,6 +693,8 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
     if (direct) {
         self->sample = sample;
         audiobusio_start_direct(self, sample, self->loop);
+    } else if (!audiobusio_file_backed(sample)) {
+        audiobusio_start_converted(self, sample, self->loop, base);
     } else {
         audiobusio_start_fed(self, sample, self->loop, base);
     }
