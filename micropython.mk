@@ -12,3 +12,4 @@ AUDIOIF_DIR ?= $(abspath $(AUDIOPUMP_MOD_DIR)/../audioif)
 
 CFLAGS_USERMOD += -I$(AUDIOIF_DIR)/src
 SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/_audioif.c
+SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiobusio.c
