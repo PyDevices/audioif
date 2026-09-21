@@ -1459,7 +1459,7 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     mp_map_t *kw_args) {
     enum { ARG_port, ARG_bclk, ARG_ws, ARG_dout, ARG_rate, ARG_bits,
            ARG_channels, ARG_mclk, ARG_mclk_fs, ARG_dma_desc, ARG_dma_frame,
-           ARG_din };
+           ARG_din, ARG_in_port, ARG_in_bclk, ARG_in_ws, ARG_in_mclk };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_port,      MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = 0 } },
         { MP_QSTR_bclk,      MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
@@ -1475,6 +1475,15 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
         // >= 0 opens the RX half of the SAME channel pair, so one clock tree
         // drives both directions.
         { MP_QSTR_din,       MP_ARG_INT,  { .u_int = -1 } },
+        // ... unless the capture device is on a DIFFERENT I2S peripheral,
+        // which is what the LilyGO T-Embed is: a MAX98357A on port 1 and an
+        // ES7210 on port 0, with their own pins. Then RX is a second
+        // channel with its own clock divider, and the two are NOT
+        // sample-locked -- see the note below the call.
+        { MP_QSTR_in_port,   MP_ARG_INT,  { .u_int = -1 } },
+        { MP_QSTR_in_bclk,   MP_ARG_INT,  { .u_int = -1 } },
+        { MP_QSTR_in_ws,     MP_ARG_INT,  { .u_int = -1 } },
+        { MP_QSTR_in_mclk,   MP_ARG_INT,  { .u_int = -1 } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
     mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
@@ -1486,6 +1495,14 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     audiopump_arm_guard();
 
     const bool duplex = args[ARG_din].u_int >= 0;
+    // Two ports means two clock dividers. They start from the same PLL, so
+    // they are nominally the same rate, but nothing locks them sample to
+    // sample: over minutes the capture and the playback drift apart and the
+    // pump, which is paced by the Input's read, ends up handing TX slightly
+    // more or slightly less than it consumes. A single-port duplex has no
+    // such thing -- there BCLK and WS are generated once.
+    const bool split = duplex && args[ARG_in_port].u_int >= 0
+        && args[ARG_in_port].u_int != args[ARG_port].u_int;
 
     i2s_chan_config_t chan_config = I2S_CHANNEL_DEFAULT_CONFIG(
         (i2s_port_t)args[ARG_port].u_int, I2S_ROLE_MASTER);
@@ -1493,8 +1510,17 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     chan_config.dma_frame_num = (uint32_t)args[ARG_dma_frame].u_int;
     chan_config.auto_clear = true;   // zeros on underrun, never stale data
     esp_err_t err = i2s_new_channel(&chan_config, &audiopump_i2s_tx,
-        duplex ? &audiopump_i2s_rx : NULL);
+        (duplex && !split) ? &audiopump_i2s_rx : NULL);
+    if (err == ESP_OK && split) {
+        i2s_chan_config_t rx_config = I2S_CHANNEL_DEFAULT_CONFIG(
+            (i2s_port_t)args[ARG_in_port].u_int, I2S_ROLE_MASTER);
+        rx_config.dma_desc_num = (uint32_t)args[ARG_dma_desc].u_int;
+        rx_config.dma_frame_num = (uint32_t)args[ARG_dma_frame].u_int;
+        rx_config.auto_clear = true;
+        err = i2s_new_channel(&rx_config, NULL, &audiopump_i2s_rx);
+    }
     if (err != ESP_OK) {
+        audiopump_i2s_close();
         audiopump_i2s_tx = NULL;
         audiopump_i2s_rx = NULL;
         mp_raise_OSError(MP_EIO);
@@ -1517,7 +1543,11 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
             .bclk = (gpio_num_t)args[ARG_bclk].u_int,
             .ws = (gpio_num_t)args[ARG_ws].u_int,
             .dout = (gpio_num_t)args[ARG_dout].u_int,
-            .din = duplex ? (gpio_num_t)args[ARG_din].u_int : I2S_GPIO_UNUSED,
+            // Not on the split path: there `din` belongs to the other
+            // peripheral, and claiming it here would route the microphone
+            // into the speaker's port as well.
+            .din = (duplex && !split) ? (gpio_num_t)args[ARG_din].u_int
+                                      : I2S_GPIO_UNUSED,
             .invert_flags = { false, false, false },
         },
     };
@@ -1529,11 +1559,25 @@ static mp_obj_t audiopump_i2s_start(size_t n_args, const mp_obj_t *pos_args,
     }
 
     err = i2s_channel_init_std_mode(audiopump_i2s_tx, &std_cfg);
-    if (err == ESP_OK && duplex) {
+    if (err == ESP_OK && duplex && !split) {
         // The same std config on both halves. On one port that is not a
         // convenience -- the IDF derives BCLK/WS once and the second channel
         // has to agree with it or the init is refused.
         err = i2s_channel_init_std_mode(audiopump_i2s_rx, &std_cfg);
+    } else if (err == ESP_OK && split) {
+        // Its own pins, its own MCLK. The ES7210 needs one and there is no
+        // MCLK on the speaker's wire at all, so this is not a variation on
+        // the TX config -- it is a second device.
+        i2s_std_config_t rx_cfg = std_cfg;
+        rx_cfg.gpio_cfg.bclk = (gpio_num_t)(args[ARG_in_bclk].u_int < 0
+            ? args[ARG_bclk].u_int : args[ARG_in_bclk].u_int);
+        rx_cfg.gpio_cfg.ws = (gpio_num_t)(args[ARG_in_ws].u_int < 0
+            ? args[ARG_ws].u_int : args[ARG_in_ws].u_int);
+        rx_cfg.gpio_cfg.dout = I2S_GPIO_UNUSED;
+        rx_cfg.gpio_cfg.din = (gpio_num_t)args[ARG_din].u_int;
+        rx_cfg.gpio_cfg.mclk = args[ARG_in_mclk].u_int < 0
+            ? I2S_GPIO_UNUSED : (gpio_num_t)args[ARG_in_mclk].u_int;
+        err = i2s_channel_init_std_mode(audiopump_i2s_rx, &rx_cfg);
     }
     if (err == ESP_OK) {
         i2s_event_callbacks_t cbs = { .on_sent = audiopump_on_sent };
