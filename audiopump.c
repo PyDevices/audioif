@@ -68,6 +68,36 @@
 #include "freertos/task.h"
 #include "driver/i2s_std.h"
 #define AUDIOPUMP_ESP (1)
+#define AUDIOPUMP_WIN (0)
+#elif defined(_WIN32)
+// The windows port, and it is a THIRD branch rather than a few #ifdefs
+// inside the POSIX one, because nothing in the POSIX branch survives here:
+//
+//   MinGW-w64's gcc on this box is thread-model=win32, so <pthread.h>
+//   compiles and pthread_create does not link. Even where winpthreads is
+//   present it is a shim over the same CreateThread this branch calls
+//   directly, with a DLL between the pump and the scheduler.
+//
+//   MicroPython's windows port has no `_thread` module at all, so the pump
+//   being a native C thread is not an optimisation here -- it is the only
+//   way a second thread exists in this interpreter.
+//
+//   mp_hal_delay_us() is DECLARED by py/mphal.h and DEFINED by no file the
+//   windows port compiles. Calling it links on unix and fails here, so the
+//   park spin below uses this branch's own microsecond sleep.
+//
+// WIN32_LEAN_AND_MEAN keeps <windows.h> from dragging in the RPC and OLE
+// headers, whose `small` and `interface` typedefs collide with ordinary C;
+// NOMINMAX keeps its min/max macros away from anything that uses those names.
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <process.h>
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#define AUDIOPUMP_ESP (0)
+#define AUDIOPUMP_WIN (1)
 #else
 #include <fcntl.h>
 #include <pthread.h>
@@ -75,6 +105,7 @@
 #include <time.h>
 #include <unistd.h>
 #define AUDIOPUMP_ESP (0)
+#define AUDIOPUMP_WIN (0)
 #endif
 
 // --- the runtime-neutral part ---------------------------------------------
@@ -186,15 +217,114 @@ typedef struct {
 
 static audiopump_ctx_t audiopump_ctx;
 
+#if AUDIOPUMP_WIN
+// QueryPerformanceCounter is the only monotonic microsecond clock Windows
+// has: GetTickCount64 is one scheduler tick granular (15.6 ms by default --
+// three blocks at 48 kHz/256), and timeGetTime is in winmm, which this box
+// has wedged. The frequency is fixed for the life of the boot, so it is read
+// once; audiopump_prepare() reads it on the interpreter thread before any
+// pump thread exists, so the pump never races the initialisation.
+//
+// The counter is divided BEFORE it is scaled. `ticks * 1000000` overflows a
+// signed 64-bit at 9.2e12 ticks, which on a 10 MHz QPC is ten days of
+// uptime -- an ordinary desktop reaches it, and the pump would start
+// reporting negative block times on a machine nobody had rebooted.
+static LARGE_INTEGER audiopump_qpc_freq;
+#endif
+
 static inline uint64_t audiopump_now_us(void) {
     #if AUDIOPUMP_ESP
     return (uint64_t)esp_timer_get_time();
+    #elif AUDIOPUMP_WIN
+    if (audiopump_qpc_freq.QuadPart == 0) {
+        QueryPerformanceFrequency(&audiopump_qpc_freq);
+    }
+    LARGE_INTEGER now;
+    QueryPerformanceCounter(&now);
+    const uint64_t freq = (uint64_t)audiopump_qpc_freq.QuadPart;
+    const uint64_t ticks = (uint64_t)now.QuadPart;
+    return (ticks / freq) * 1000000ULL + ((ticks % freq) * 1000000ULL) / freq;
     #else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000ULL + (uint64_t)(ts.tv_nsec / 1000);
     #endif
 }
+
+#if AUDIOPUMP_WIN
+// Hold for `wait_us`, accurately. Sleep()'s floor is the scheduler tick, so
+// a pump paced with it would stutter by three blocks at a time; a waitable
+// timer created with CREATE_WAITABLE_TIMER_HIGH_RESOLUTION is 100 ns
+// granular on Windows 10 1803 and later. Where the flag is refused -- an
+// older build, or a policy that disallows it -- the timer is created without
+// it and the last millisecond is spun out against QPC, which is what the
+// unix branch's nanosleep would have given for free.
+//
+// The handle belongs to whichever thread first paced; it is closed in
+// teardown, from the interpreter thread, after the pump has been joined.
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION (0x00000002)
+#endif
+static HANDLE audiopump_pace_timer;
+static bool audiopump_pace_coarse;
+
+static void audiopump_sleep_us(uint64_t wait_us) {
+    if (audiopump_pace_timer == NULL) {
+        audiopump_pace_timer = CreateWaitableTimerExW(NULL, NULL,
+            CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (audiopump_pace_timer == NULL) {
+            audiopump_pace_timer = CreateWaitableTimerExW(NULL, NULL, 0,
+                TIMER_ALL_ACCESS);
+            audiopump_pace_coarse = (audiopump_pace_timer != NULL);
+        }
+    }
+    const uint64_t deadline = audiopump_now_us() + wait_us;
+    // A coarse timer rounds UP to the tick, so leave it a millisecond of
+    // headroom and spin the rest. A high-resolution one gets the lot.
+    const uint64_t sleep_us = audiopump_pace_coarse
+        ? (wait_us > 1000 ? wait_us - 1000 : 0) : wait_us;
+    if (audiopump_pace_timer != NULL && sleep_us) {
+        LARGE_INTEGER due;
+        due.QuadPart = -(LONGLONG)(sleep_us * 10ULL);   // 100 ns, relative
+        if (SetWaitableTimer(audiopump_pace_timer, &due, 0, NULL, NULL,
+            FALSE)) {
+            WaitForSingleObject(audiopump_pace_timer, INFINITE);
+        }
+    } else if (audiopump_pace_timer == NULL && wait_us > 2000) {
+        // No timer at all: do not burn a core for a whole block. Sleep the
+        // whole milliseconds bar one and let the spin below close the gap.
+        Sleep((DWORD)((wait_us - 1000) / 1000ULL));
+    }
+    while (audiopump_now_us() < deadline) {
+        YieldProcessor();
+    }
+}
+#endif
+
+#if !AUDIOPUMP_ESP
+// The desktop sink is a file descriptor and the loop only ever writes to it.
+// On Windows the open carries _O_BINARY, and that is not a detail: without
+// it the CRT turns every 0x0A byte of PCM into 0x0D 0x0A on the way out, so
+// the file is longer than the audio, every frame after the first newline-
+// valued sample is shifted, and the byte-identity proof compares a mangled
+// file against a good one. It is the one difference between the two opens.
+static int audiopump_sink_open(const char *path) {
+    #if AUDIOPUMP_WIN
+    return _open(path, _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY,
+        _S_IREAD | _S_IWRITE);
+    #else
+    return open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    #endif
+}
+
+static void audiopump_sink_close(int fd) {
+    #if AUDIOPUMP_WIN
+    _close(fd);
+    #else
+    close(fd);
+    #endif
+}
+#endif
 
 // The protocol adapter, as a pair of functions with no MicroPython in them
 // beyond the already-resolved function pointers.
@@ -319,6 +449,8 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
     ctx->status[STATUS_RUNNING] = 1;
     #if AUDIOPUMP_ESP
     ctx->status[STATUS_TID] = (uint64_t)xPortGetCoreID();
+    #elif AUDIOPUMP_WIN
+    ctx->status[STATUS_TID] = (uint64_t)GetCurrentThreadId();
     #else
     ctx->status[STATUS_TID] = (uint64_t)(uintptr_t)pthread_self();
     #endif
@@ -341,6 +473,13 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
                 // whatever it is feeding. A direct-to-task notify wakes on
                 // the give, in a context switch.
                 ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+                #elif AUDIOPUMP_WIN
+                // SwitchToThread, not Sleep(0): Sleep(0) only yields to a
+                // thread of equal or higher priority ON THIS CORE, so a
+                // parked pump can spin a core against an interpreter the
+                // scheduler put elsewhere. SwitchToThread gives the rest of
+                // the quantum to any ready thread on any processor.
+                SwitchToThread();
                 #else
                 sched_yield();
                 #endif
@@ -515,7 +654,11 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         #else
         if (ctx->sink_fd >= 0 && length) {
             const uint64_t s0 = audiopump_now_us();
+            #if AUDIOPUMP_WIN
+            const int written = _write(ctx->sink_fd, buffer, (unsigned int)length);
+            #else
             ssize_t written = write(ctx->sink_fd, buffer, length);
+            #endif
             sink_us += audiopump_now_us() - s0;
             if (written > 0) {
                 sink_bytes += (uint64_t)written;
@@ -533,11 +676,15 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
                 + (uint64_t)ctx->frames * 1000000ULL / ctx->pace_rate;
             const uint64_t at = audiopump_now_us();
             if (due > at) {
+                #if AUDIOPUMP_WIN
+                audiopump_sleep_us(due - at);
+                #else
                 struct timespec ts;
                 const uint64_t wait = due - at;
                 ts.tv_sec = (time_t)(wait / 1000000ULL);
                 ts.tv_nsec = (long)((wait % 1000000ULL) * 1000ULL);
                 nanosleep(&ts, NULL);
+                #endif
             }
         }
         #endif
@@ -641,6 +788,11 @@ static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     ctx->events = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS];
     ctx->tap = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP];
     ctx->status = info.buf;
+    // Read the clock once here, on the interpreter thread, before any pump
+    // thread exists. On Windows that is what latches QueryPerformanceFrequency
+    // -- lazily, from whichever thread asks first -- and doing it here means
+    // the pump never races the interpreter for it.
+    (void)audiopump_now_us();
     ctx->blocks = (uint64_t)mp_obj_get_int(blocks_in);
     ctx->sink_fd = -1;
     ctx->sink_timeout_ms = 200;
@@ -663,7 +815,7 @@ static mp_obj_t audiopump_pull(size_t n_args, const mp_obj_t *args) {
     if (n_args > 3 && args[3] != mp_const_none) {
         // Opened here so the loop only ever does write(2).
         const char *path = mp_obj_str_get_str(args[3]);
-        ctx->sink_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        ctx->sink_fd = audiopump_sink_open(path);
         if (ctx->sink_fd < 0) {
             mp_raise_OSError(MP_ENOENT);
         }
@@ -679,7 +831,7 @@ static mp_obj_t audiopump_pull(size_t n_args, const mp_obj_t *args) {
     audiopump_run(ctx);
     #if !AUDIOPUMP_ESP
     if (ctx->sink_fd >= 0) {
-        close(ctx->sink_fd);
+        audiopump_sink_close(ctx->sink_fd);
         ctx->sink_fd = -1;
     }
     #endif
@@ -730,6 +882,25 @@ static void audiopump_task(void *arg) {
         vTaskSuspend(NULL);
     }
 }
+#elif AUDIOPUMP_WIN
+// _beginthreadex, not CreateThread. The loop's sink write is a CRT call and
+// a CRT thread wants the per-thread state _beginthreadex installs; and the
+// handle it returns belongs to the caller, so join() closes it. A
+// CreateThread handle dropped on the floor would be one handle leaked per
+// spawn, which in a player that stops and starts a note at a time is a leak
+// per note.
+//
+// No priority is raised. On a board the pump runs above the interpreter
+// because one core has to be given up; on a desktop there are cores to
+// spare, and a pump at ABOVE_NORMAL would starve the very interpreter that
+// has to reach shutdown().
+static HANDLE audiopump_thread;
+static bool audiopump_thread_live;
+
+static unsigned __stdcall audiopump_entry(void *arg) {
+    audiopump_run((audiopump_ctx_t *)arg);
+    return 0;
+}
 #else
 static pthread_t audiopump_thread;
 static bool audiopump_thread_live;
@@ -737,6 +908,32 @@ static bool audiopump_thread_live;
 static void *audiopump_entry(void *arg) {
     audiopump_run((audiopump_ctx_t *)arg);
     return NULL;
+}
+#endif
+
+#if !AUDIOPUMP_ESP
+static bool audiopump_thread_start(void) {
+    #if AUDIOPUMP_WIN
+    audiopump_thread = (HANDLE)_beginthreadex(NULL, 0, audiopump_entry,
+        &audiopump_ctx, 0, NULL);
+    return audiopump_thread != NULL;
+    #else
+    return pthread_create(&audiopump_thread, NULL, audiopump_entry,
+        &audiopump_ctx) == 0;
+    #endif
+}
+
+static void audiopump_thread_join(void) {
+    #if AUDIOPUMP_WIN
+    if (audiopump_thread != NULL) {
+        WaitForSingleObject(audiopump_thread, INFINITE);
+        CloseHandle(audiopump_thread);
+        audiopump_thread = NULL;
+    }
+    #else
+    pthread_join(audiopump_thread, NULL);
+    #endif
+    audiopump_thread_live = false;
 }
 #endif
 
@@ -797,12 +994,21 @@ static void audiopump_teardown(bool release_guard) {
     audiopump_i2s_close();
     #else
     if (audiopump_thread_live) {
-        pthread_join(audiopump_thread, NULL);
-        audiopump_thread_live = false;
+        audiopump_thread_join();
     }
     if (audiopump_ctx.sink_fd >= 0) {
-        close(audiopump_ctx.sink_fd);
+        audiopump_sink_close(audiopump_ctx.sink_fd);
     }
+    #if AUDIOPUMP_WIN
+    // The pace timer belongs to whichever thread first paced -- which is the
+    // pump, and it has just been joined. Closing it here, from the
+    // interpreter thread, is the only moment nobody is waiting on it.
+    if (audiopump_pace_timer != NULL) {
+        CloseHandle(audiopump_pace_timer);
+        audiopump_pace_timer = NULL;
+        audiopump_pace_coarse = false;
+    }
+    #endif
     #endif
     // Everything in here points into a heap that is about to be re-inited.
     memset(&audiopump_ctx, 0, sizeof(audiopump_ctx));
@@ -980,7 +1186,7 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     #else
     if (args[ARG_sink].u_obj != mp_const_none) {
         const char *path = mp_obj_str_get_str(args[ARG_sink].u_obj);
-        audiopump_ctx.sink_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        audiopump_ctx.sink_fd = audiopump_sink_open(path);
         if (audiopump_ctx.sink_fd < 0) {
             mp_raise_OSError(MP_ENOENT);
         }
@@ -991,8 +1197,7 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
             ((audiosample_base_t *)MP_OBJ_TO_PTR(args[ARG_sample].u_obj))
             ->sample_rate;
     }
-    if (pthread_create(&audiopump_thread, NULL, audiopump_entry,
-        &audiopump_ctx) != 0) {
+    if (!audiopump_thread_start()) {
         mp_raise_OSError(MP_EIO);
     }
     audiopump_thread_live = true;
@@ -1032,10 +1237,9 @@ static mp_obj_t audiopump_join(size_t n_args, const mp_obj_t *args) {
     if (!audiopump_thread_live) {
         return mp_const_true;
     }
-    pthread_join(audiopump_thread, NULL);
-    audiopump_thread_live = false;
+    audiopump_thread_join();
     if (audiopump_ctx.sink_fd >= 0) {
-        close(audiopump_ctx.sink_fd);
+        audiopump_sink_close(audiopump_ctx.sink_fd);
         audiopump_ctx.sink_fd = -1;
     }
     #endif
