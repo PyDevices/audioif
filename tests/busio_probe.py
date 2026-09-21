@@ -339,8 +339,61 @@ def leg_storm():
     check("50 x play/stop: the interpreter is still here", 2 + 2 == 4)
 
 
+# --- 8. the three that are ours, not CircuitPython's ----------------------
+
+def leg_ours():
+    """`retarget`, `status` and `main_clock_fs`.
+
+    CircuitPython has none of them and does not need them: one output, one
+    graph, and `play()` again is a fine way to start a different sound. A
+    POLICY layer over this class -- `audiodev`, which arbitrates two clients
+    through a root mixer -- has a new tail every time a client arrives or
+    leaves, and going through `play()` there is a stop, a join and a fresh
+    channel between two blocks a listener is in the middle of.
+    """
+    path = sink("ours")
+    out = audiobusio.I2SOut(1, 0, 9, sink=path, main_clock_fs=384)
+    check("ours: main_clock_fs is taken", True, "constructed")
+
+    check("ours: status is the pump's block",
+          len(out.status) == audiopump.STATUS_BYTES,
+          "%d bytes" % len(out.status))
+
+    try:
+        out.retarget(raw(330))
+        check("ours: retarget on a stopped output raises", False)
+    except RuntimeError as exc:
+        check("ours: retarget on a stopped output raises",
+              "Not playing" in str(exc), str(exc))
+
+    out.play(raw(220), loop=True)
+    time.sleep(0.2)
+    before = size(path)
+    mixer = audiomixer.Mixer(voice_count=1, sample_rate=RATE, channel_count=2,
+                             bits_per_sample=16, samples_signed=True,
+                             buffer_size=2048)
+    mixer.play(raw(330), voice=0, loop=True)
+    out.retarget(mixer, loop=True)
+    time.sleep(0.3)
+    after = size(path)
+    check("ours: it plays on through the swap", out.playing is True)
+    check("ours: and the bytes kept coming", after > before + 10000,
+          "%d bytes over the swap" % (after - before))
+    check("ours: the file was not reopened", after > before,
+          "%d then %d" % (before, after))
+
+    try:
+        out.retarget(b"not a sample")
+        check("ours: retarget refuses a non-sample", False)
+    except TypeError:
+        check("ours: retarget refuses a non-sample", True)
+
+    out.stop()
+    out.deinit()
+
+
 for leg in (leg_construct, leg_play, leg_loop, leg_pause, leg_graphs,
-            leg_wav, leg_storm):
+            leg_wav, leg_storm, leg_ours):
     print("-- %s" % leg.__name__)
     leg()
 
