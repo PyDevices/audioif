@@ -12,3 +12,5 @@ AUDIOIF_DIR ?= $(abspath $(AUDIOPUMP_MOD_DIR)/../audioif)
 CFLAGS_USERMOD += -I$(AUDIOIF_DIR)/src
 SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump.c
 SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_ring.c
+SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_events.c
+SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_tap.c

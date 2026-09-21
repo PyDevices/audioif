@@ -40,7 +40,20 @@
 #include "shared/audioif_pump_lock.h"
 #include "shared/audioif_sample.h"
 
+#include "audiopump_events.h"
 #include "audiopump_ring.h"
+#include "audiopump_tap.h"
+
+// The same acquire/release pair the push ring uses, and here for the same
+// reason: `volatile` orders the compiler, not the machine, and a 64-bit store
+// on RV32 or Xtensa is two 32-bit stores with a window between them.
+#if defined(__GNUC__) || defined(__clang__)
+#define AUDIOPUMP_LOAD_ACQ(p)     __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#define AUDIOPUMP_STORE_REL(p, v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#else
+#define AUDIOPUMP_LOAD_ACQ(p)     (*(volatile uint32_t *)(p))
+#define AUDIOPUMP_STORE_REL(p, v) (*(volatile uint32_t *)(p) = (v))
+#endif
 
 // AUDIOPUMP_ESP32 comes from micropython.cmake, not from the IDF: a user C
 // module is compiled without ESP_PLATFORM, and the POSIX branch below LINKS
@@ -105,6 +118,8 @@ enum {
     STATUS_LOCK_CTRL_HELD = 27, // worst us the audio stood still inside a swap
     STATUS_LOCK_PUMP_TAKES = 28,
     STATUS_LOCK_CTRL_TAKES = 29,
+    STATUS_FRAMES = 30,         // frames pulled since spawn(), what now() reads
+    STATUS_EVENT_US_MAX = 31,   // worst single apply pass at a block boundary
 };
 
 #define FNV_OFFSET (0xcbf29ce484222325ULL)
@@ -125,11 +140,32 @@ typedef struct {
     uint64_t *status;
     uint64_t blocks;
     // The RAM ring the interpreter drains. NULL when nobody asked for one.
+    //
+    // 32-BIT COUNTERS, as the push ring's are and for the reason it found:
+    // these two words are the protocol between the pump thread and the
+    // interpreter, and a 64-bit store is two stores on every 32-bit target we
+    // ship. `ring_w - ring_r` in unsigned 32-bit arithmetic is the level even
+    // across the wrap. The POSITIONS are tracked separately rather than as
+    // `w % ring_len`, because a ring whose length does not divide 2^32 jumps
+    // its position when the counter wraps -- at 48 kHz stereo that is once
+    // every 6.2 hours, which is the kind of bug a customer finds.
     uint8_t *ring;
     uint32_t ring_len;
-    volatile uint64_t ring_w;
-    volatile uint64_t ring_r;
-    volatile uint64_t drain_digest;
+    uint32_t ring_w;            // pump stores, interpreter loads
+    uint32_t ring_r;            // interpreter stores, pump loads
+    uint32_t ring_wpos;         // pump only
+    uint32_t ring_rpos;         // interpreter only
+    uint64_t ring_w_total;      // pump only: the status word
+    uint64_t ring_r_total;      // interpreter only
+    uint64_t drain_digest;      // interpreter only
+    // The clock, and what rides on it. `frames` is published with a release
+    // store and read by audiopump.now(); see audiopump_events.c for why it is
+    // 32 bits and what that costs.
+    uint32_t frames;
+    uint32_t frame_bytes;
+    uint32_t block_frames;
+    mp_obj_t events;            // an Events queue, or MP_OBJ_NULL
+    mp_obj_t tap;               // a Tap, or MP_OBJ_NULL
     volatile bool stop;
     volatile bool park_req;
     volatile bool parked;
@@ -137,6 +173,14 @@ typedef struct {
     bool to_sink;               // esp32: write every block to I2S
     uint32_t sink_timeout_ms;
     int sink_fd;                // unix only
+    // unix only: hold each block until its wall-clock moment, so the desktop
+    // pump runs at the rate a DMA sink would run it at. Nothing on the
+    // desktop paces the pump otherwise, and without a pace ANY statement
+    // about a Python-timed note being late is a statement about how fast this
+    // machine spins. Off by default, and never compiled on esp32, where the
+    // sink is the pace.
+    bool paced;
+    uint32_t pace_rate;
     volatile bool retarget_req; // re-read `sample` at the next block boundary
 } audiopump_ctx_t;
 
@@ -269,6 +313,7 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
     uint64_t sink_timeouts = 0;
     uint64_t parks = 0;
     uint64_t ring_ovf = 0;
+    uint64_t event_us_max = 0;
     audioif_buffer_result_t result = AUDIOIF_BUFFER_MORE_DATA;
 
     ctx->status[STATUS_RUNNING] = 1;
@@ -346,6 +391,24 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
             error = 4;
             break;
         }
+        // The timestamped events, applied at the top of the block and
+        // nowhere else -- inside the lock the pump already holds, so an
+        // insert from the interpreter either lands wholly before this pass or
+        // wholly after it. Every event whose frame falls inside the block
+        // about to be pulled goes now; one already behind goes now too and is
+        // counted late. That is block-accurate and no better: the nodes
+        // produce fixed-length blocks and splitting one is not a small
+        // change. See docs/spikes/live-audio-path-events.md.
+        if (ctx->events != MP_OBJ_NULL) {
+            const uint64_t e0 = audiopump_now_us();
+            (void)audiopump_events_apply(ctx->events, ctx->frames,
+                ctx->block_frames);
+            const uint64_t edt = audiopump_now_us() - e0;
+            if (edt > event_us_max) {
+                event_us_max = edt;
+                ctx->status[STATUS_EVENT_US_MAX] = event_us_max;
+            }
+        }
         audioif_status_t status = audioif_sample_get(&ctx->source, false, 0,
             &buffer, &length, &result);
         audioif_pump_lock_release_pump();
@@ -396,12 +459,12 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         // "the interpreter could not keep up" is a counter rather than a
         // corruption.
         if (ctx->ring != NULL && length) {
-            const uint64_t r = ctx->ring_r;
+            const uint32_t r = AUDIOPUMP_LOAD_ACQ(&ctx->ring_r);
             if (ctx->ring_w - r + length > ctx->ring_len) {
                 ring_ovf++;
                 ctx->status[STATUS_RING_OVF] = ring_ovf;
             } else {
-                uint32_t at = (uint32_t)(ctx->ring_w % ctx->ring_len);
+                uint32_t at = ctx->ring_wpos;
                 uint32_t first = ctx->ring_len - at;
                 if (first > length) {
                     first = length;
@@ -410,9 +473,31 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
                 if (length > first) {
                     memcpy(ctx->ring, buffer + first, length - first);
                 }
-                ctx->ring_w += length;
-                ctx->status[STATUS_RING_W] = ctx->ring_w;
+                ctx->ring_wpos = (at + length) % ctx->ring_len;
+                ctx->ring_w_total += length;
+                // Release, and last: the bytes are in place before the
+                // interpreter is told they are there.
+                AUDIOPUMP_STORE_REL(&ctx->ring_w, ctx->ring_w + length);
+                ctx->status[STATUS_RING_W] = ctx->ring_w_total;
             }
+        }
+
+        // The tap. One memcpy after the tail, out of the path: nothing the
+        // reader does can stall the audio, and a reader that falls behind
+        // loses old audio rather than new.
+        if (ctx->tap != MP_OBJ_NULL && length) {
+            audiopump_tap_write(ctx->tap, buffer, length);
+        }
+
+        // The clock. Published AFTER the block is in the ring and in the tap,
+        // so now() never names a frame the pump has not finished producing.
+        if (ctx->frame_bytes) {
+            const uint32_t nframes = length / ctx->frame_bytes;
+            if (nframes) {
+                ctx->block_frames = nframes;
+            }
+            AUDIOPUMP_STORE_REL(&ctx->frames, ctx->frames + nframes);
+            ctx->status[STATUS_FRAMES] = ctx->frames;
         }
 
         #if AUDIOPUMP_ESP
@@ -434,6 +519,25 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
             sink_us += audiopump_now_us() - s0;
             if (written > 0) {
                 sink_bytes += (uint64_t)written;
+            }
+        }
+        #endif
+
+        #if !AUDIOPUMP_ESP
+        // The pace, if one was asked for: hold until this block's moment.
+        // Absolute deadlines against the run's start, so a late block is
+        // caught up rather than accumulated -- the same reason the drum
+        // machine's step timer uses a deadline and not a sleep.
+        if (ctx->paced && ctx->pace_rate && ctx->frame_bytes) {
+            const uint64_t due = wall_start
+                + (uint64_t)ctx->frames * 1000000ULL / ctx->pace_rate;
+            const uint64_t at = audiopump_now_us();
+            if (due > at) {
+                struct timespec ts;
+                const uint64_t wait = due - at;
+                ts.tv_sec = (time_t)(wait / 1000000ULL);
+                ts.tv_nsec = (long)((wait % 1000000ULL) * 1000ULL);
+                nanosleep(&ts, NULL);
             }
         }
         #endif
@@ -482,7 +586,12 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
 // touches is rooted here: the graph tail, the status bytearray, the ring and
 // the guard object whose finaliser is the soft-reset teardown.
 // See the spike notes, "what the pump holds".
-MP_REGISTER_ROOT_POINTER(mp_obj_t audiopump_held[4]);
+// 4 is the event queue and 5 the tap: the pump holds a raw pointer to each,
+// and a queue holding a Note nobody else references any more is exactly the
+// case the collector would otherwise be right about.
+MP_REGISTER_ROOT_POINTER(mp_obj_t audiopump_held[6]);
+#define AUDIOPUMP_HELD_EVENTS (4)
+#define AUDIOPUMP_HELD_TAP (5)
 
 static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     mp_obj_t status_in, mp_obj_t ring_in, audiopump_ctx_t *ctx) {
@@ -515,6 +624,22 @@ static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     ctx->protocol = protocol;
     ctx->sample = sample;
     ctx->sample_type = (const void *)((mp_obj_base_t *)MP_OBJ_TO_PTR(sample))->type;
+    // The clock's units, off the graph rather than guessed. `block_frames` is
+    // only a seed: the loop replaces it with the length of the block it
+    // actually got, every block, so a graph whose tail produces something
+    // other than its declared maximum corrects itself on the first pull.
+    audiosample_base_t *base = MP_OBJ_TO_PTR(sample);
+    ctx->frame_bytes = (uint32_t)base->channel_count
+        * (uint32_t)(base->bits_per_sample / 8);
+    ctx->block_frames = ctx->frame_bytes
+        ? base->max_buffer_length / ctx->frame_bytes : 0;
+    if (ctx->block_frames == 0) {
+        ctx->block_frames = 1;
+    }
+    // Whatever was attached stays attached across a respawn: the roots are
+    // the authority, not the context, which prepare() has just memset.
+    ctx->events = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS];
+    ctx->tap = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP];
     ctx->status = info.buf;
     ctx->blocks = (uint64_t)mp_obj_get_int(blocks_in);
     ctx->sink_fd = -1;
@@ -685,6 +810,11 @@ static void audiopump_teardown(bool release_guard) {
     MP_STATE_VM(audiopump_held)[0] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[1] = MP_OBJ_NULL;
     MP_STATE_VM(audiopump_held)[2] = MP_OBJ_NULL;
+    // The queue and the tap go with everything else. A queue holds Notes and
+    // samples out of a heap that is about to be re-inited, and holding it
+    // past a soft reset would be the same bug as holding the graph.
+    MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS] = MP_OBJ_NULL;
+    MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP] = MP_OBJ_NULL;
     if (release_guard) {
         MP_STATE_VM(audiopump_held)[3] = MP_OBJ_NULL;
     }
@@ -769,7 +899,7 @@ static void audiopump_refuse_unpumpable(mp_obj_t sample) {
 static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
     mp_map_t *kw_args) {
     enum { ARG_sample, ARG_blocks, ARG_status, ARG_sink, ARG_ring, ARG_core,
-           ARG_prio, ARG_stack, ARG_psram, ARG_timeout_ms };
+           ARG_prio, ARG_stack, ARG_psram, ARG_timeout_ms, ARG_pace };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_sample,     MP_ARG_REQUIRED | MP_ARG_OBJ, { .u_obj = MP_OBJ_NULL } },
         { MP_QSTR_blocks,     MP_ARG_REQUIRED | MP_ARG_OBJ, { .u_obj = MP_OBJ_NULL } },
@@ -781,6 +911,8 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
         { MP_QSTR_stack,      MP_ARG_INT,  { .u_int = 16384 } },
         { MP_QSTR_psram,      MP_ARG_BOOL, { .u_bool = false } },
         { MP_QSTR_timeout_ms, MP_ARG_INT,  { .u_int = 200 } },
+        // unix only; see `paced` in the context struct.
+        { MP_QSTR_pace,       MP_ARG_BOOL, { .u_bool = false } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
     mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
@@ -852,6 +984,12 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
         if (audiopump_ctx.sink_fd < 0) {
             mp_raise_OSError(MP_ENOENT);
         }
+    }
+    if (args[ARG_pace].u_bool) {
+        audiopump_ctx.paced = true;
+        audiopump_ctx.pace_rate =
+            ((audiosample_base_t *)MP_OBJ_TO_PTR(args[ARG_sample].u_obj))
+            ->sample_rate;
     }
     if (pthread_create(&audiopump_thread, NULL, audiopump_entry,
         &audiopump_ctx) != 0) {
@@ -1006,12 +1144,12 @@ static mp_obj_t audiopump_drain(mp_obj_t out_in) {
     if (ctx->ring == NULL) {
         return MP_OBJ_NEW_SMALL_INT(0);
     }
-    uint64_t available = ctx->ring_w - ctx->ring_r;
+    uint32_t available = AUDIOPUMP_LOAD_ACQ(&ctx->ring_w) - ctx->ring_r;
     uint32_t take = (uint32_t)(available > out.len ? out.len : available);
     if (take == 0) {
         return MP_OBJ_NEW_SMALL_INT(0);
     }
-    uint32_t at = (uint32_t)(ctx->ring_r % ctx->ring_len);
+    uint32_t at = ctx->ring_rpos;
     uint32_t first = ctx->ring_len - at;
     if (first > take) {
         first = take;
@@ -1027,12 +1165,88 @@ static mp_obj_t audiopump_drain(mp_obj_t out_in) {
         digest *= FNV_PRIME;
     }
     ctx->drain_digest = digest;
-    ctx->ring_r += take;
-    ctx->status[STATUS_RING_R] = ctx->ring_r;
+    ctx->ring_rpos = (at + take) % ctx->ring_len;
+    ctx->ring_r_total += take;
+    // Release: the bytes are out before the space is given back, so the pump
+    // cannot land on top of them.
+    AUDIOPUMP_STORE_REL(&ctx->ring_r, ctx->ring_r + take);
+    ctx->status[STATUS_RING_R] = ctx->ring_r_total;
     ctx->status[STATUS_DRAIN_DIGEST] = digest;
     return mp_obj_new_int_from_uint(take);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_drain_obj, audiopump_drain);
+
+// --- the clock, the queue and the tap -------------------------------------
+
+// Frames the pump has PULLED since spawn(). Not frames heard: what is
+// audible is this minus whatever the sink is holding -- the ring depth on a
+// board, which the board half measured at 0.85-3.5 ms. Schedule against this
+// one, because it is the number the pump compares your event's frame against;
+// subtract the depth only when you are asking what a listener has heard.
+//
+// Wraps at 2^32 frames, 24.9 hours at 48 kHz. Nothing has to be done about
+// that in Python: `now() + n` is an ordinary int and `at()` masks it.
+static mp_obj_t audiopump_now(void) {
+    return mp_obj_new_int_from_uint(
+        AUDIOPUMP_LOAD_ACQ(&audiopump_ctx.frames));
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_now_obj, audiopump_now);
+
+// Attach or detach, and report. One pointer either way, so the lock is held
+// for a store -- but it IS held, because a pump reading the pointer half-way
+// through is the whole class of bug this spike is about.
+static mp_obj_t audiopump_set_events(size_t n_args, const mp_obj_t *args) {
+    if (n_args > 0) {
+        mp_obj_t q = args[0];
+        if (q != mp_const_none && !mp_obj_is_type(q, &audiopump_events_type)) {
+            mp_raise_TypeError(MP_ERROR_TEXT("expected an Events queue"));
+        }
+        if (q == mp_const_none) {
+            // Detach: the pump lets go first, then the root does.
+            audioif_pump_lock_acquire();
+            audiopump_ctx.events = MP_OBJ_NULL;
+            audioif_pump_lock_release();
+            MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS] = MP_OBJ_NULL;
+        } else {
+            // Attach: the root takes hold first, so the queue is reachable
+            // before the pump can reach it.
+            audiopump_arm_guard();
+            MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS] = q;
+            audioif_pump_lock_acquire();
+            audiopump_ctx.events = q;
+            audioif_pump_lock_release();
+        }
+    }
+    mp_obj_t held = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_EVENTS];
+    return held == MP_OBJ_NULL ? mp_const_none : held;
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_set_events_obj, 0, 1,
+    audiopump_set_events);
+
+static mp_obj_t audiopump_set_tap(size_t n_args, const mp_obj_t *args) {
+    if (n_args > 0) {
+        mp_obj_t t = args[0];
+        if (t != mp_const_none && !mp_obj_is_type(t, &audiopump_tap_type)) {
+            mp_raise_TypeError(MP_ERROR_TEXT("expected a Tap"));
+        }
+        if (t == mp_const_none) {
+            audioif_pump_lock_acquire();
+            audiopump_ctx.tap = MP_OBJ_NULL;
+            audioif_pump_lock_release();
+            MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP] = MP_OBJ_NULL;
+        } else {
+            audiopump_arm_guard();
+            MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP] = t;
+            audioif_pump_lock_acquire();
+            audiopump_ctx.tap = t;
+            audioif_pump_lock_release();
+        }
+    }
+    mp_obj_t held = MP_STATE_VM(audiopump_held)[AUDIOPUMP_HELD_TAP];
+    return held == MP_OBJ_NULL ? mp_const_none : held;
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_set_tap_obj, 0, 1,
+    audiopump_set_tap);
 
 // --- the I2S sink, opened from Python -------------------------------------
 
@@ -1492,6 +1706,21 @@ static const mp_rom_map_elem_t audiopump_globals_table[] = {
     // The push side. Every port, not just esp32: the ring is RAM and a
     // memcpy, so the unix build is where its correctness is settled.
     { MP_ROM_QSTR(MP_QSTR_Ring), MP_ROM_PTR(&audiopump_ring_type) },
+    // Sequenced music, and the way out to a meter. Same reasoning: RAM,
+    // arithmetic and a memcpy, so the unix build settles both.
+    { MP_ROM_QSTR(MP_QSTR_Events), MP_ROM_PTR(&audiopump_events_type) },
+    { MP_ROM_QSTR(MP_QSTR_Tap), MP_ROM_PTR(&audiopump_tap_type) },
+    { MP_ROM_QSTR(MP_QSTR_now), MP_ROM_PTR(&audiopump_now_obj) },
+    { MP_ROM_QSTR(MP_QSTR_events), MP_ROM_PTR(&audiopump_set_events_obj) },
+    { MP_ROM_QSTR(MP_QSTR_tap), MP_ROM_PTR(&audiopump_set_tap_obj) },
+    // The closed set, as module constants rather than strings: an op is
+    // compared on the pump thread and a qstr lookup there is a runtime call.
+    { MP_ROM_QSTR(MP_QSTR_PRESS), MP_ROM_INT(AUDIOPUMP_OP_PRESS) },
+    { MP_ROM_QSTR(MP_QSTR_RELEASE), MP_ROM_INT(AUDIOPUMP_OP_RELEASE) },
+    { MP_ROM_QSTR(MP_QSTR_RELEASE_ALL), MP_ROM_INT(AUDIOPUMP_OP_RELEASE_ALL) },
+    { MP_ROM_QSTR(MP_QSTR_PLAY), MP_ROM_INT(AUDIOPUMP_OP_PLAY) },
+    { MP_ROM_QSTR(MP_QSTR_STOP), MP_ROM_INT(AUDIOPUMP_OP_STOP) },
+    { MP_ROM_QSTR(MP_QSTR_LEVEL), MP_ROM_INT(AUDIOPUMP_OP_LEVEL) },
     { MP_ROM_QSTR(MP_QSTR_STATUS_BYTES),
       MP_ROM_INT(AUDIOPUMP_STATUS_BYTES) },
     { MP_ROM_QSTR(MP_QSTR_STATUS_WORDS),
