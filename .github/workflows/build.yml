@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          path: audiopump
+          path: audioif
 
       # The engine half. `main` until the live-audio-path line merges; the
       # driver cannot be built against an audiodsp that predates it.
@@ -49,7 +49,7 @@ jobs:
       # USER_C_MODULES is the PARENT directory: py.mk globs
       # $(USER_C_MODULES)/*/micropython.mk one level down, so both this
       # repository and audiodsp are picked up by sitting side by side. That
-      # is also how audiopump/micropython.mk finds audiodsp's headers --
+      # is also how audioif/micropython.mk finds audiodsp's headers --
       # AUDIODSP_DIR defaults to $(USERMOD_DIR)/../audiodsp.
       - name: Build the unix port with the engine and this driver
         run: |
@@ -75,7 +75,7 @@ jobs:
         run: |
           MP=./micropython/ports/unix/build-standard/micropython
           TMP="${RUNNER_TEMP:-/tmp}"
-          run () { "$MP" -X heapsize=256M "audiopump/tests/$@"; }
+          run () { "$MP" -X heapsize=256M "audioif/tests/$@"; }
           for planted in "busio_probe.py $TMP --fault deaf" \
                          "sink_probe.py $TMP --fault flip" \
                          "sink_probe.py $TMP --fault truncate"; do
@@ -95,6 +95,6 @@ jobs:
         run: |
           MP=./micropython/ports/unix/build-standard/micropython
           OUT="${RUNNER_TEMP:-/tmp}/cp_example.raw"
-          "$MP" -X heapsize=256M audiopump/tests/cp_example_probe.py "$OUT"
+          "$MP" -X heapsize=256M audioif/tests/cp_example_probe.py "$OUT"
           test -s "$OUT" || { echo "the example played nothing" >&2; exit 1; }
           echo "$(stat -c%s "$OUT") bytes out of the docstring example"
