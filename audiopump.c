@@ -40,6 +40,8 @@
 #include "shared/audioif_pump_lock.h"
 #include "shared/audioif_sample.h"
 
+#include "audiopump_ring.h"
+
 // AUDIOPUMP_ESP32 comes from micropython.cmake, not from the IDF: a user C
 // module is compiled without ESP_PLATFORM, and the POSIX branch below LINKS
 // on esp32 (newlib has pthread.h), so keying off the wrong macro gets you a
@@ -1487,6 +1489,9 @@ static const mp_rom_map_elem_t audiopump_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_Input), MP_ROM_PTR(&audiopump_input_type) },
     { MP_ROM_QSTR(MP_QSTR_rt_probe), MP_ROM_PTR(&audiopump_rt_probe_obj) },
     #endif
+    // The push side. Every port, not just esp32: the ring is RAM and a
+    // memcpy, so the unix build is where its correctness is settled.
+    { MP_ROM_QSTR(MP_QSTR_Ring), MP_ROM_PTR(&audiopump_ring_type) },
     { MP_ROM_QSTR(MP_QSTR_STATUS_BYTES),
       MP_ROM_INT(AUDIOPUMP_STATUS_BYTES) },
     { MP_ROM_QSTR(MP_QSTR_STATUS_WORDS),

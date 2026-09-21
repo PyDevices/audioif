@@ -27,6 +27,7 @@ add_library(usermod_audiopump INTERFACE)
 
 target_sources(usermod_audiopump INTERFACE
     ${AUDIOPUMP_MOD_DIR}/audiopump.c
+    ${AUDIOPUMP_MOD_DIR}/audiopump_ring.c
 )
 
 target_include_directories(usermod_audiopump INTERFACE
