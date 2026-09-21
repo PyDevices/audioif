@@ -87,6 +87,17 @@ typedef struct {
     uint32_t w;             // producer writes, consumer reads
     uint32_t r;             // consumer writes, producer reads
 
+    // Where in the buffer those indices point. Tracked, NOT recomputed as
+    // `w % cap`: the indices wrap at 2^32 and a capacity that does not divide
+    // 2^32 makes the position JUMP when they do -- the write lands somewhere
+    // else in the buffer and every byte after it is wrong. It happens once per
+    // 4 GB, about six hours of 48 kHz stereo, which is precisely the working
+    // day of a streaming player and nothing a short test will ever reach.
+    // `w - r` stays exact across the wrap because it is unsigned arithmetic;
+    // only the positions have to be carried.
+    uint32_t wpos;          // producer only
+    uint32_t rpos;          // consumer only
+
     // Handed to the graph. Two of them so a node downstream may still be
     // holding the previous block when the next pull comes -- the same reason
     // Input ping-pongs, and the reason single_buffer is false.
@@ -142,7 +153,7 @@ static audioio_get_buffer_result_t audiopump_ring_get_buffer(
         self->underruns++;
         self->starved += block;
     } else {
-        const uint32_t at = r % self->cap;
+        const uint32_t at = self->rpos;
         uint32_t first = self->cap - at;
         if (first > block) {
             first = block;
@@ -158,6 +169,7 @@ static audioio_get_buffer_result_t audiopump_ring_get_buffer(
         }
         self->out_digest = digest;
         self->read += block;
+        self->rpos = (at + block) % self->cap;
         // Release: the bytes are copied out before the space is given back,
         // so a producer that sees the room cannot land on top of them.
         AUDIOPUMP_RING_STORE_REL(&self->r, r + block);
@@ -191,7 +203,7 @@ static mp_obj_t audiopump_ring_write(mp_obj_t self_in, mp_obj_t buf_in) {
     }
 
     const uint8_t *src = info.buf;
-    const uint32_t at = w % self->cap;
+    const uint32_t at = self->wpos;
     uint32_t first = self->cap - at;
     if (first > n) {
         first = n;
@@ -208,6 +220,7 @@ static mp_obj_t audiopump_ring_write(mp_obj_t self_in, mp_obj_t buf_in) {
     }
     self->in_digest = digest;
     self->wrote += n;
+    self->wpos = (at + n) % self->cap;
 
     // Release, and last: everything above must be visible to the pump before
     // the bytes are claimed to be there.
@@ -270,6 +283,7 @@ static mp_obj_t audiopump_ring_clear(mp_obj_t self_in) {
     audiosample_check_for_deinit(&self->base);
     audioif_pump_lock_acquire();
     self->r = self->w;
+    self->rpos = self->wpos;
     audioif_pump_lock_release();
     return mp_const_none;
 }
@@ -339,6 +353,8 @@ static mp_obj_t audiopump_ring_make_new(const mp_obj_type_t *type,
     self->which = 0;
     self->w = 0;
     self->r = 0;
+    self->wpos = 0;
+    self->rpos = 0;
     self->underruns = 0;
     self->overruns = 0;
     self->pulls = 0;
