@@ -267,6 +267,62 @@ static void audiopump_lock_give(void) {
 #endif
 
 // --- the two waits --------------------------------------------------------
+//
+// `park_spin` is the PUMP's own wait, and the engine has two callers for it:
+// the park at a block boundary, and the wait for room in the output ring that
+// makes a desktop pump pace itself instead of dropping audio. Its contract
+// (shared/audioif_port.h) is that it returns when thread_wake() is called, and
+// that it may return early.
+//
+// Both desktop branches used to satisfy that contract by NOT WAITING AT ALL --
+// sched_yield() and SwitchToThread() return immediately, so the engine's
+// `while (park_req) park_spin(...)` was a tight loop burning a whole core for
+// as long as the pump was parked. That was invisible while the only parks were
+// microseconds long inside produce(); it is not invisible once a pump waits on
+// a ring for milliseconds at a time, and it is the reason an idle pump thread
+// could never cost ~0.
+//
+// So both are real blocking waits now, and the wake is real. The one property
+// each mechanism has to have is that a wake which arrives BEFORE the wait is
+// RETAINED -- otherwise a drain that runs between the engine's "is there room"
+// check and its sleep is a lost wakeup, and the pump stalls until the ceiling.
+// A FreeRTOS task notification counts, a Win32 auto-reset event latches one
+// signal, and the POSIX branch keeps a counter under the condvar's mutex.
+
+#if AUDIOIF_DRV_WIN
+// Auto-reset, so a SetEvent with nobody waiting is remembered and consumed by
+// the next wait. Created on the INTERPRETER thread in thread_start, before the
+// pump exists, so there is no lazy-init race between waker and waiter; closed
+// in teardown after the thread has been released.
+static HANDLE audiopump_wake_event;
+#elif AUDIOIF_DRV_POSIX
+// A condvar on CLOCK_MONOTONIC where the platform has it: a timed wait on
+// CLOCK_REALTIME jumps when the system clock is stepped, and an NTP correction
+// would turn a 20 ms ceiling into a stall or a spin. `signals` is what makes a
+// wake that arrives first survive until the wait.
+//
+// Statically initialised, so nothing on the audio path allocates and there is
+// nothing to create twice. The pthread_once only upgrades the clock.
+static pthread_mutex_t audiopump_wake_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t audiopump_wake_cond = PTHREAD_COND_INITIALIZER;
+static unsigned audiopump_wake_signals;
+static bool audiopump_wake_monotonic;
+static pthread_once_t audiopump_wake_once = PTHREAD_ONCE_INIT;
+
+static void audiopump_wake_make(void) {
+    #ifdef CLOCK_MONOTONIC
+    pthread_condattr_t attr;
+    if (pthread_condattr_init(&attr) != 0) {
+        return;
+    }
+    if (pthread_condattr_setclock(&attr, CLOCK_MONOTONIC) == 0
+        && pthread_cond_init(&audiopump_wake_cond, &attr) == 0) {
+        audiopump_wake_monotonic = true;
+    }
+    pthread_condattr_destroy(&attr);
+    #endif
+}
+#endif
 
 static void audiopump_park_spin(uint32_t max_us) {
     #if AUDIOIF_DRV_ESP
@@ -275,15 +331,40 @@ static void audiopump_park_spin(uint32_t max_us) {
     // direct-to-task notify wakes on the give, in a context switch.
     (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(max_us / 1000));
     #elif AUDIOIF_DRV_WIN
-    // SwitchToThread, not Sleep(0): Sleep(0) only yields to a thread of equal
-    // or higher priority ON THIS CORE, so a parked pump can spin a core
-    // against an interpreter the scheduler put elsewhere. SwitchToThread gives
-    // the rest of the quantum to any ready thread on any processor.
-    (void)max_us;
-    SwitchToThread();
+    if (audiopump_wake_event == NULL) {
+        // No event, so no wait that a wake could end. Yield rather than sleep:
+        // this is the old behaviour and it is what a pull() on the
+        // interpreter's own thread would want if it somehow got here.
+        (void)max_us;
+        SwitchToThread();
+        return;
+    }
+    DWORD ms = (DWORD)(max_us / 1000u);
+    if (ms == 0) {
+        ms = 1;
+    }
+    (void)WaitForSingleObject(audiopump_wake_event, ms);
     #else
-    (void)max_us;
-    sched_yield();
+    pthread_once(&audiopump_wake_once, audiopump_wake_make);
+    pthread_mutex_lock(&audiopump_wake_mutex);
+    if (audiopump_wake_signals == 0) {
+        struct timespec ts;
+        clock_gettime(audiopump_wake_monotonic ? CLOCK_MONOTONIC
+            : CLOCK_REALTIME, &ts);
+        ts.tv_sec += (time_t)(max_us / 1000000u);
+        ts.tv_nsec += (long)((max_us % 1000000u) * 1000u);
+        if (ts.tv_nsec >= 1000000000L) {
+            ts.tv_nsec -= 1000000000L;
+            ts.tv_sec += 1;
+        }
+        (void)pthread_cond_timedwait(&audiopump_wake_cond,
+            &audiopump_wake_mutex, &ts);
+    }
+    // Consumed whether it was a signal or a timeout: the callers are all
+    // `while (condition) park_spin()`, so an extra turn round a loop is free
+    // and a signal left behind would make the NEXT wait return at once.
+    audiopump_wake_signals = 0;
+    pthread_mutex_unlock(&audiopump_wake_mutex);
     #endif
 }
 
@@ -437,6 +518,12 @@ static bool audiopump_thread_start(void (*entry)(void *), void *arg,
     *where = core;
     #elif AUDIOIF_DRV_WIN
     (void)cfg;
+    // Before the thread, on the interpreter's thread: the pump waits on this
+    // handle and the interpreter signals it, so it must exist before either of
+    // them can look at it. Auto-reset and unsignalled.
+    if (audiopump_wake_event == NULL) {
+        audiopump_wake_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+    }
     audiopump_thread = (HANDLE)_beginthreadex(NULL, 0, audiopump_trampoline,
         NULL, 0, NULL);
     if (audiopump_thread == NULL) {
@@ -455,14 +542,28 @@ static bool audiopump_thread_start(void (*entry)(void *), void *arg,
     return true;
 }
 
+// The other end of park_spin. Called from the interpreter thread by stop(),
+// unpark(), park(), the teardown -- and, every tick, by the output ring's
+// drain when it has given the pump room to carry on.
 static void audiopump_thread_wake(void) {
     #if AUDIOIF_DRV_ESP
     if (audiopump_task_handle != NULL) {
         xTaskNotifyGive(audiopump_task_handle);
     }
+    #elif AUDIOIF_DRV_WIN
+    if (audiopump_wake_event != NULL) {
+        SetEvent(audiopump_wake_event);
+    }
+    #else
+    pthread_mutex_lock(&audiopump_wake_mutex);
+    audiopump_wake_signals = 1;
+    // Signal INSIDE the mutex. Outside it is the classic lost wakeup: the
+    // waiter can have tested the counter, not yet be on the queue, and miss
+    // the signal entirely -- which here costs a 20 ms stall per drain and
+    // reads as a pump that is mysteriously slow.
+    pthread_cond_signal(&audiopump_wake_cond);
+    pthread_mutex_unlock(&audiopump_wake_mutex);
     #endif
-    // Nothing to do on a desktop: the park spin there yields rather than
-    // blocking, so it sees `stop` and `park_req` on its next turn.
 }
 
 static void audiopump_thread_release(void) {
@@ -664,6 +765,13 @@ static void audiopump_driver_teardown(void) {
         CloseHandle(audiopump_pace_timer);
         audiopump_pace_timer = NULL;
         audiopump_pace_coarse = false;
+    }
+    // Same moment, same reason: the engine calls teardown() only after the
+    // thread has been released, so nothing is waiting on this handle and
+    // nothing will signal it until the next thread_start makes a new one.
+    if (audiopump_wake_event != NULL) {
+        CloseHandle(audiopump_wake_event);
+        audiopump_wake_event = NULL;
     }
     #endif
 }
