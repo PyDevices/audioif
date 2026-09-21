@@ -54,6 +54,13 @@ typedef struct _audiobusio_i2sout_obj_t {
     bool deinited;
     bool opened;              // a channel is open (esp32) / the object is live
     bool playing;             // play() has been called and stop() has not
+    // CircuitPython's `paused` is a flag its pause()/resume() set, and this
+    // one is too -- NOT a read of whether the pump has physically reached its
+    // park. unpark() clears park_req and wakes the thread; `ctx.parked` stays
+    // set until that thread's spin loop notices, so asking the pump made
+    // `i2s.resume(); i2s.paused` intermittently True. It passed four runs and
+    // failed the fifth.
+    bool paused;
     bool loop;
     audiopump_i2s_cfg_t wire; // what the constructor was given
     uint32_t rate;            // the rate the channel is currently clocked at
@@ -357,6 +364,7 @@ static void audiobusio_reap(audiobusio_i2sout_obj_t *self) {
     }
     (void)audiopump_c_join(2000);
     self->playing = false;
+    self->paused = false;
     self->sample = MP_OBJ_NULL;
     self->ring = MP_OBJ_NULL;
     self->ring_write = MP_OBJ_NULL;
@@ -373,6 +381,7 @@ static void audiobusio_halt(audiobusio_i2sout_obj_t *self) {
     audiopump_c_stop();
     (void)audiopump_c_join(5000);
     self->playing = false;
+    self->paused = false;
     self->sample = MP_OBJ_NULL;
     self->ring = MP_OBJ_NULL;
     self->ring_write = MP_OBJ_NULL;
@@ -657,6 +666,7 @@ static mp_obj_t audiobusio_i2sout_pause(mp_obj_t self_in) {
     // it clocks zeros -- so a pause is silence with the bus still up, where
     // CircuitPython disables the channel outright. See "what differs".
     (void)audiopump_c_park(200000);
+    self->paused = true;
     return mp_const_none;
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_pause_obj,
@@ -665,7 +675,8 @@ static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_pause_obj,
 static mp_obj_t audiobusio_i2sout_resume(mp_obj_t self_in) {
     audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
     audiobusio_check(self);
-    if (audiopump_c_parked()) {
+    if (self->paused) {
+        self->paused = false;
         audiopump_c_unpark();
     }
     return mp_const_none;
@@ -676,7 +687,7 @@ static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_resume_obj,
 static mp_obj_t audiobusio_i2sout_get_paused(mp_obj_t self_in) {
     audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
     audiobusio_check(self);
-    return mp_obj_new_bool(self->playing && audiopump_c_parked());
+    return mp_obj_new_bool(self->playing && self->paused);
 }
 static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_get_paused_obj,
     audiobusio_i2sout_get_paused);
