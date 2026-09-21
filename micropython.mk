@@ -1,16 +1,14 @@
-# MicroPython Make glue for audiopump (unix, windows).
+# MicroPython Make glue for the audio pump's platform driver (unix, windows).
 #
-# audiopump compiles against audioif's headers but declares no dependency on
-# its build: the symbols it calls (`audioif_sample_get`, and the protocol
-# struct's own function pointers) come from audioif's objects in the same
-# binary. AUDIOIF_DIR points at the audioif checkout; the default assumes the
-# usual workspace layout (audiopump and audioif as siblings).
+# The engine is not here any more: the pull loop, the ring, the events, the tap
+# and the lock all live in audioif and are built by audioif's own glue. This
+# builds the one file that knows what a thread, a mutex, a clock and a sink
+# are, and it compiles against audioif's headers -- AUDIOIF_DIR points at the
+# audioif checkout, and the default assumes the usual workspace layout (this
+# repo and audioif as siblings).
 
 AUDIOPUMP_MOD_DIR := $(USERMOD_DIR)
 AUDIOIF_DIR ?= $(abspath $(AUDIOPUMP_MOD_DIR)/../audioif)
 
 CFLAGS_USERMOD += -I$(AUDIOIF_DIR)/src
-SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump.c
-SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_ring.c
-SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_events.c
-SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/audiopump_tap.c
+SRC_USERMOD_C += $(AUDIOPUMP_MOD_DIR)/_audioif.c

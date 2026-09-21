@@ -1,9 +1,48 @@
-# audiopump
+# audiopump — the pump's platform driver
 
-A throwaway. It exists to answer questions for the live-audio-path spike —
-[`docs/spikes/live-audio-path-notes.md`](../docs/spikes/live-audio-path-notes.md)
-in the anchor — and it is not a PyDevices repository, not published, and not
-built by anyone's `cmods` unless they ask for it.
+**The engine is not here any more.** The portable half of the audio pump —
+the pull loop, `service()`, the push ring, the event queue, the tap, the
+output ring, the status words, the fault register, `retarget`/`park` and the
+finaliser guard — lives in **audioif** now, and ships with it on every port.
+The Python module is still called `audiopump` and its surface has not moved.
+
+What is here is the one file that knows what a platform is: `_audioif.c`. The
+thread (a FreeRTOS task pinned to the core the interpreter is not on, a
+`_beginthreadex` CRT thread on Windows, a pthread on unix), the recursive
+priority-inheriting mutex the pump lock is made of, the clock, the pacing, the
+two waits, and the hardware — the I2S channel, `Input` (the microphone as an
+audiosample) and the round-trip latency probe.
+
+It binds itself to the engine by defining `audioif_port_driver()`, declared in
+audioif's `src/shared/audioif_port.h`. Ask which driver bound from Python:
+
+```python
+>>> import audiopump
+>>> audiopump.driver()
+'esp32'          # or 'pthread', 'win32', 'none'
+```
+
+Its own module is **`_audioif`** — private by convention, the way `usbif`
+ships a C `_usbif` under a Python package; `audiodev` is the public face. It
+carries `i2s_start`, `i2s_stop`, `i2s_dma_bytes`, `i2s_rx_bytes`, `Input` and
+`rt_probe`. The engine's `lock_stats`, `lock_reset` and `fault` stayed on
+`audiopump`, because those are the engine's counters.
+
+On WebAssembly this file compiles to nothing at all: that build has no threads
+and no hardware, no driver binds, and `audiopump.driver()` says `"none"` —
+which is exactly true, and is the shape the engine's default hooks give.
+
+Why it is split: [live-audio-path-split.md](../docs/spikes/live-audio-path-split.md).
+
+Still a throwaway, still not a PyDevices repository, still not published, and
+still not built by anyone's `cmods` unless they ask for it. The rename that
+gives this repo the name `audioif` is
+[PyDevices/workspace#4](https://github.com/PyDevices/workspace/issues/4) and
+nothing about it has happened yet.
+
+---
+
+## What the engine's surface still is, for reference
 
 Three jobs, one loop, written against audioif's `audioif_sample_source_t`:
 

@@ -1,19 +1,19 @@
-# MicroPython CMake glue for audiopump (esp32).
+# MicroPython CMake glue for the audio pump's platform driver (esp32).
 # For Make-based ports (unix, windows), see micropython.mk in this dir.
 #
-# audiopump compiles against audioif's headers but declares no dependency on
-# its build: the symbols it calls (`audioif_sample_get`, and the protocol
-# struct's own function pointers) come from audioif's objects in the same
-# firmware. AUDIOIF_DIR points at the audioif checkout; the default assumes
-# the usual workspace layout (audiopump and audioif as siblings, or both
-# symlinked into cmods).
+# The engine is not here any more: the pull loop, the ring, the events, the tap
+# and the lock all live in audioif and are built by audioif's own glue. This
+# builds the one file that knows what a thread, a mutex, a clock and a sink
+# are. AUDIOPUMP_AUDIOIF_DIR points at the audioif checkout; the default
+# assumes the usual workspace layout (this repo and audioif as siblings, or
+# both symlinked into cmods).
 
 set(AUDIOPUMP_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 if(NOT DEFINED AUDIOPUMP_AUDIOIF_DIR)
-    if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audioif/src/shared/audioif_sample.h)
+    if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audioif/src/shared/audioif_port.h)
         set(AUDIOPUMP_AUDIOIF_DIR ${AUDIOPUMP_MOD_DIR}/../audioif)
-    elseif(DEFINED CMOD_DIR AND EXISTS ${CMOD_DIR}/audioif/src/shared/audioif_sample.h)
+    elseif(DEFINED CMOD_DIR AND EXISTS ${CMOD_DIR}/audioif/src/shared/audioif_port.h)
         set(AUDIOPUMP_AUDIOIF_DIR ${CMOD_DIR}/audioif)
     endif()
 endif()
@@ -26,10 +26,7 @@ endif()
 add_library(usermod_audiopump INTERFACE)
 
 target_sources(usermod_audiopump INTERFACE
-    ${AUDIOPUMP_MOD_DIR}/audiopump.c
-    ${AUDIOPUMP_MOD_DIR}/audiopump_ring.c
-    ${AUDIOPUMP_MOD_DIR}/audiopump_events.c
-    ${AUDIOPUMP_MOD_DIR}/audiopump_tap.c
+    ${AUDIOPUMP_MOD_DIR}/_audioif.c
 )
 
 target_include_directories(usermod_audiopump INTERFACE
@@ -42,6 +39,9 @@ target_include_directories(usermod_audiopump INTERFACE
 # ESP-IDF's newlib has pthread.h: you get an unpinned pump on a default
 # pthread stack and no I2S sink, with nothing failing to say so. displayif
 # hits the same thing (src/ports/esp32/micropython.cmake:24).
-target_compile_definitions(usermod_audiopump INTERFACE AUDIOPUMP_ESP32=1)
+#
+# What is new is that getting it wrong is now VISIBLE: audiopump.driver() says
+# "pthread" on a board that should say "esp32".
+target_compile_definitions(usermod_audiopump INTERFACE AUDIOIF_DRIVER_ESP32=1)
 
 target_link_libraries(usermod INTERFACE usermod_audiopump)
