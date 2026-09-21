@@ -79,7 +79,7 @@ typedef struct _audiobusio_i2sout_obj_t {
     // is what `while i2s.playing: pass` gives us for free.
     // --- the converted path, which is NOT the file path -------------------
     // A RawSample that is u8/u16/mono is converted on the PUMP's thread now
-    // (audioif's `audiopump_convert_t`), so all the interpreter owns is this
+    // (audiodsp's `audiopump_convert_t`), so all the interpreter owns is this
     // buffer, allocated once per play(). See "the converted path" below.
     mp_obj_t conv_buf;
     uint32_t conv_len;
@@ -212,7 +212,7 @@ static void audiobusio_check(audiobusio_i2sout_obj_t *self) {
 // Two reasons the pump cannot simply be pointed at the sample.
 //
 // A WaveFile or an MP3Decoder reads through the VFS inside get_buffer and the
-// pump thread has no interpreter to do that on -- audioif refuses one at the
+// pump thread has no interpreter to do that on -- audiodsp refuses one at the
 // door and says so.
 //
 // And a sample that is not already signed 16-bit has to be CONVERTED, because

@@ -12,7 +12,7 @@ same thing here as they do on a board.
 Every leg prints PASS or FAIL and the last line is the tally; the exit
 status is non-zero if anything failed.
 
-Needs a build carrying audioif's usermod AND this repository's, which is
+Needs a build carrying audiodsp's usermod AND this repository's, which is
 what `.github/workflows/build.yml` makes. On a desktop the bus is this
 driver's file sink, paced off the wall clock, so `playing`, `pause`,
 `resume` and the end of a sample mean here what they mean on a board --

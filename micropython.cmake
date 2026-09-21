@@ -2,24 +2,24 @@
 # For Make-based ports (unix, windows), see micropython.mk in this dir.
 #
 # The engine is not here any more: the pull loop, the ring, the events, the tap
-# and the lock all live in audioif and are built by audioif's own glue. This
+# and the lock all live in audiodsp and are built by audiodsp's own glue. This
 # builds the one file that knows what a thread, a mutex, a clock and a sink
-# are. AUDIOPUMP_AUDIOIF_DIR points at the audioif checkout; the default
-# assumes the usual workspace layout (this repo and audioif as siblings, or
+# are. AUDIOPUMP_AUDIODSP_DIR points at the audiodsp checkout; the default
+# assumes the usual workspace layout (this repo and audiodsp as siblings, or
 # both symlinked into cmods).
 
 set(AUDIOPUMP_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 
-if(NOT DEFINED AUDIOPUMP_AUDIOIF_DIR)
-    if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audioif/src/shared/audioif_port.h)
-        set(AUDIOPUMP_AUDIOIF_DIR ${AUDIOPUMP_MOD_DIR}/../audioif)
-    elseif(DEFINED CMOD_DIR AND EXISTS ${CMOD_DIR}/audioif/src/shared/audioif_port.h)
-        set(AUDIOPUMP_AUDIOIF_DIR ${CMOD_DIR}/audioif)
+if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
+    if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audiodsp/src/shared/audiodsp_port.h)
+        set(AUDIOPUMP_AUDIODSP_DIR ${AUDIOPUMP_MOD_DIR}/../audiodsp)
+    elseif(DEFINED CMOD_DIR AND EXISTS ${CMOD_DIR}/audiodsp/src/shared/audiodsp_port.h)
+        set(AUDIOPUMP_AUDIODSP_DIR ${CMOD_DIR}/audiodsp)
     endif()
 endif()
 
-if(NOT DEFINED AUDIOPUMP_AUDIOIF_DIR)
-    message(STATUS "audiopump: skipped -- audioif not found beside it")
+if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
+    message(STATUS "audiopump: skipped -- audiodsp not found beside it")
     return()
 endif()
 
@@ -31,7 +31,7 @@ target_sources(usermod_audiopump INTERFACE
 )
 
 target_include_directories(usermod_audiopump INTERFACE
-    ${AUDIOPUMP_AUDIOIF_DIR}/src
+    ${AUDIOPUMP_AUDIODSP_DIR}/src
 )
 
 # The IDF does NOT hand ESP_PLATFORM to user C modules -- it is a CMake
