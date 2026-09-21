@@ -345,6 +345,13 @@ static void audiobusio_arm(audiobusio_i2sout_obj_t *self) {
 // back and let a later play() have the pump. Called from every read of
 // `playing`, which is what `while i2s.playing: pass` polls.
 static void audiobusio_reap(audiobusio_i2sout_obj_t *self) {
+    // A port with no thread -- WebAssembly, or any build whose driver did not
+    // bind -- advances the loop only when somebody calls service(). Without
+    // this, `while i2s.playing: pass` is a hang rather than a wait: the pump
+    // is live, has pulled nothing, and never will.
+    if (self->playing && audiopump_c_service_mode()) {
+        audiopump_c_service(16);
+    }
     if (!self->playing || audiopump_is_running()) {
         return;
     }
