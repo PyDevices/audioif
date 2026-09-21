@@ -59,6 +59,15 @@
 // module is compiled without ESP_PLATFORM, and the POSIX branch below LINKS
 // on esp32 (newlib has pthread.h), so keying off the wrong macro gets you a
 // silently unpinned pump with no sink.
+//
+// AUDIOPUMP_WASM is the third case and it is a different axis: the
+// WebAssembly build we ship has no threads at all (no -pthread, no
+// SharedArrayBuffer), so `spawn()` cannot create one. Emscripten still has
+// <pthread.h> and pthread_create() still LINKS -- it just aborts the whole
+// module at runtime with "Tried to spawn a new thread, but this is not
+// supported" -- which is the same "compiles and links, silently wrong" trap
+// AUDIOPUMP_ESP32 exists for. So the branch is taken at compile time on
+// __EMSCRIPTEN__ and there is no pthread in the binary.
 #if defined(AUDIOPUMP_ESP32) || defined(ESP_PLATFORM)
 #include "esp_attr.h"
 #include "esp_heap_caps.h"
@@ -68,6 +77,13 @@
 #include "freertos/task.h"
 #include "driver/i2s_std.h"
 #define AUDIOPUMP_ESP (1)
+#define AUDIOPUMP_WASM (0)
+#elif defined(__EMSCRIPTEN__)
+#include <fcntl.h>
+#include <time.h>
+#include <unistd.h>
+#define AUDIOPUMP_ESP (0)
+#define AUDIOPUMP_WASM (1)
 #else
 #include <fcntl.h>
 #include <pthread.h>
@@ -75,7 +91,12 @@
 #include <time.h>
 #include <unistd.h>
 #define AUDIOPUMP_ESP (0)
+#define AUDIOPUMP_WASM (0)
 #endif
+
+// "A thread exists to run the loop on." False only on wasm, where the same
+// loop is driven from the main thread by audiopump.service().
+#define AUDIOPUMP_THREADED (!AUDIOPUMP_WASM)
 
 // --- the runtime-neutral part ---------------------------------------------
 
@@ -182,7 +203,48 @@ typedef struct {
     bool paced;
     uint32_t pace_rate;
     volatile bool retarget_req; // re-read `sample` at the next block boundary
+    // --- what the loop accumulates -------------------------------------
+    //
+    // These were locals in audiopump_run(). They live here so the SAME loop
+    // can be entered a block at a time from audiopump.service() on a port with
+    // no thread, and pick up exactly where it left off -- one digest, one
+    // block count, one wall clock across every call. The threaded ports still
+    // run the loop once, to completion, and never look at `service_mode`.
+    uint64_t acc_digest;
+    uint64_t acc_blocks;
+    uint64_t acc_bytes;
+    uint64_t acc_error;
+    uint64_t acc_pull_us;
+    uint64_t acc_sink_us;
+    uint64_t acc_park_us;
+    uint64_t acc_max_pull_us;
+    uint64_t acc_sink_bytes;
+    uint64_t acc_sink_timeouts;
+    uint64_t acc_parks;
+    uint64_t acc_ring_ovf;
+    uint64_t acc_event_us_max;
+    uint64_t wall_start;
+    audioif_buffer_result_t acc_result;
+    bool begun;                 // run_begin() has published the first words
+    // wasm: the loop is entered from Python and must never block. It stops
+    // when the output ring has no room for another block instead of dropping
+    // one -- which is the "make the ring block the pump" fix the desktop
+    // driver asks for, in the form a single-threaded port can have it.
+    bool service_mode;
+    uint32_t max_block_bytes;   // what the tail said it can hand back
+    uint64_t park_enter_us;     // wasm: when the park the loop returned on began
 } audiopump_ctx_t;
+
+// Why a service() call gave the thread back. Two bits, so the answer and the
+// block count fit in one small int and service() need not allocate.
+#define AUDIOPUMP_SERVICE_SHIFT (2)
+#define AUDIOPUMP_SERVICE_MASK (3)
+enum {
+    AUDIOPUMP_SERVICE_MORE = 0,   // budget spent; there is more to pull
+    AUDIOPUMP_SERVICE_FULL = 1,   // the ring has no room for another block
+    AUDIOPUMP_SERVICE_PARKED = 2, // a park was asked for
+    AUDIOPUMP_SERVICE_DONE = 3,   // the loop left; status says why
+};
 
 static audiopump_ctx_t audiopump_ctx;
 
@@ -298,37 +360,107 @@ static void audiopump_i2s_close(void) {
 }
 #endif
 
-// The loop. No mp_* call, no allocation, no libc that could take a lock the
-// interpreter also takes.
-static void audiopump_run(audiopump_ctx_t *ctx) {
-    uint64_t digest = FNV_OFFSET;
-    uint64_t blocks = 0;
-    uint64_t bytes = 0;
-    uint64_t error = 0;
-    uint64_t pull_us = 0;
-    uint64_t sink_us = 0;
-    uint64_t park_us = 0;
-    uint64_t max_pull_us = 0;
-    uint64_t sink_bytes = 0;
-    uint64_t sink_timeouts = 0;
-    uint64_t parks = 0;
-    uint64_t ring_ovf = 0;
-    uint64_t event_us_max = 0;
-    audioif_buffer_result_t result = AUDIOIF_BUFFER_MORE_DATA;
-
+// The loop, in three pieces: what it publishes before the first block, the
+// blocks themselves, and what it publishes after the last one. A threaded port
+// calls all three back to back (audiopump_run below) and never notices the
+// seam; wasm calls the middle one once per timer tick.
+//
+// No mp_* call, no allocation, no libc that could take a lock the interpreter
+// also takes -- in the middle piece. That rule is what makes heap_lock() a
+// gate, and splitting the function does not relax it.
+static void audiopump_run_begin(audiopump_ctx_t *ctx) {
+    ctx->acc_digest = FNV_OFFSET;
+    ctx->acc_result = AUDIOIF_BUFFER_MORE_DATA;
     ctx->status[STATUS_RUNNING] = 1;
     #if AUDIOPUMP_ESP
     ctx->status[STATUS_TID] = (uint64_t)xPortGetCoreID();
+    #elif AUDIOPUMP_WASM
+    // There is one thread and it is the interpreter's. Saying 0 is the
+    // honest answer and it is what the byte-identity probe asserts against:
+    // on wasm the pull is NOT off the interpreter thread and the notes say so.
+    ctx->status[STATUS_TID] = 0;
     #else
     ctx->status[STATUS_TID] = (uint64_t)(uintptr_t)pthread_self();
     #endif
-    const uint64_t wall_start = audiopump_now_us();
+    ctx->wall_start = audiopump_now_us();
+    ctx->begun = true;
+}
+
+static void audiopump_run_end(audiopump_ctx_t *ctx) {
+    ctx->status[STATUS_WALL_US] = audiopump_now_us() - ctx->wall_start;
+    ctx->status[STATUS_DIGEST] = ctx->acc_digest;
+    ctx->status[STATUS_LAST_RESULT] = (uint64_t)ctx->acc_result;
+    ctx->status[STATUS_ERROR] = ctx->acc_error;
+    #if AUDIOPUMP_ESP
+    ctx->status[STATUS_STACK_FREE] = (uint64_t)uxTaskGetStackHighWaterMark(NULL);
+    ctx->status[STATUS_DMA_BYTES] = audiopump_dma_bytes;
+    #endif
+    ctx->status[STATUS_RUNNING] = 0;
+    ctx->finished = true;
+}
+
+// Pull at most `budget` blocks. Returns one of AUDIOPUMP_SERVICE_*; a threaded
+// caller passes UINT64_MAX and only ever gets DONE.
+static int audiopump_run_blocks(audiopump_ctx_t *ctx, uint64_t budget) {
+    uint64_t digest = ctx->acc_digest;
+    uint64_t blocks = ctx->acc_blocks;
+    uint64_t bytes = ctx->acc_bytes;
+    uint64_t error = ctx->acc_error;
+    uint64_t pull_us = ctx->acc_pull_us;
+    uint64_t sink_us = ctx->acc_sink_us;
+    uint64_t park_us = ctx->acc_park_us;
+    uint64_t max_pull_us = ctx->acc_max_pull_us;
+    uint64_t sink_bytes = ctx->acc_sink_bytes;
+    uint64_t sink_timeouts = ctx->acc_sink_timeouts;
+    uint64_t parks = ctx->acc_parks;
+    uint64_t ring_ovf = ctx->acc_ring_ovf;
+    uint64_t event_us_max = ctx->acc_event_us_max;
+    audioif_buffer_result_t result = ctx->acc_result;
+    const uint64_t wall_start = ctx->wall_start;
+    (void)wall_start;   // the pace below is the only reader, and it is unix-only
+    uint64_t spent = 0;
+    int why = AUDIOPUMP_SERVICE_DONE;
 
     while (blocks < ctx->blocks && !ctx->stop) {
+        if (spent >= budget) {
+            why = AUDIOPUMP_SERVICE_MORE;
+            break;
+        }
+        // wasm: the ring is the pace. A block that will not fit is not
+        // dropped and not overwritten -- the loop stops and the caller comes
+        // back when its drain has made room. On a threaded port the ring
+        // still drops, because a thread that stopped here would have to spin.
+        if (ctx->service_mode && ctx->ring != NULL) {
+            const uint32_t level = ctx->ring_w - ctx->ring_r;
+            const uint32_t room = ctx->ring_len - level;
+            const uint32_t need = ctx->max_block_bytes ? ctx->max_block_bytes : 1;
+            if (room < need) {
+                why = AUDIOPUMP_SERVICE_FULL;
+                break;
+            }
+        }
         // The park, at the block boundary and nowhere else. The control
         // thread asks; the pump finishes the block it is in, says it has
         // parked, and waits. See docs/spikes/live-audio-path-handoff.md.
         if (ctx->park_req) {
+            #if AUDIOPUMP_WASM
+            // Nothing can clear park_req while this call holds the only
+            // thread, so waiting here is a hang, not a park. Give the thread
+            // back parked, count the park once however many service() calls
+            // arrive while it lasts, and charge the time when it ends.
+            if (ctx->service_mode) {
+                if (!ctx->parked) {
+                    parks++;
+                    ctx->parked = true;
+                    ctx->status[STATUS_PARKED] = 1;
+                    ctx->status[STATUS_PARKS] = parks;
+                    ctx->acc_parks = parks;
+                    ctx->park_enter_us = audiopump_now_us();
+                }
+                why = AUDIOPUMP_SERVICE_PARKED;
+                break;
+            }
+            #endif
             const uint64_t park_start = audiopump_now_us();
             parks++;
             ctx->parked = true;
@@ -341,6 +473,13 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
                 // whatever it is feeding. A direct-to-task notify wakes on
                 // the give, in a context switch.
                 ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(100));
+                #elif AUDIOPUMP_WASM
+                // Unreachable -- service_mode leaves above, and nothing else
+                // runs on this port to set park_req. Break rather than spin,
+                // so a pull() that somehow got here returns instead of
+                // hanging the browser tab. (sched_yield is not declared by
+                // emscripten's headers, which is how this was found.)
+                break;
                 #else
                 sched_yield();
                 #endif
@@ -353,6 +492,16 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
                 break;
             }
         }
+        #if AUDIOPUMP_WASM
+        // The other end of the park above: park_req has gone, so charge the
+        // time it lasted and let the block through.
+        if (ctx->service_mode && ctx->parked) {
+            ctx->parked = false;
+            ctx->status[STATUS_PARKED] = 0;
+            park_us += audiopump_now_us() - ctx->park_enter_us;
+            ctx->status[STATUS_PARK_US] = park_us;
+        }
+        #endif
 
         const uint8_t *buffer = NULL;
         uint32_t length = 0;
@@ -523,7 +672,7 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         }
         #endif
 
-        #if !AUDIOPUMP_ESP
+        #if !AUDIOPUMP_ESP && !AUDIOPUMP_WASM
         // The pace, if one was asked for: hold until this block's moment.
         // Absolute deadlines against the run's start, so a late block is
         // caught up rather than accumulated -- the same reason the drum
@@ -544,6 +693,7 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
 
         bytes += length;
         blocks++;
+        spent++;
         // Publish as we go so a watching interpreter sees progress.
         ctx->status[STATUS_BLOCKS] = blocks;
         ctx->status[STATUS_BYTES] = bytes;
@@ -568,16 +718,28 @@ static void audiopump_run(audiopump_ctx_t *ctx) {
         }
     }
 
-    ctx->status[STATUS_WALL_US] = audiopump_now_us() - wall_start;
-    ctx->status[STATUS_DIGEST] = digest;
-    ctx->status[STATUS_LAST_RESULT] = (uint64_t)result;
-    ctx->status[STATUS_ERROR] = error;
-    #if AUDIOPUMP_ESP
-    ctx->status[STATUS_STACK_FREE] = (uint64_t)uxTaskGetStackHighWaterMark(NULL);
-    ctx->status[STATUS_DMA_BYTES] = audiopump_dma_bytes;
-    #endif
-    ctx->status[STATUS_RUNNING] = 0;
-    ctx->finished = true;
+    ctx->acc_digest = digest;
+    ctx->acc_blocks = blocks;
+    ctx->acc_bytes = bytes;
+    ctx->acc_error = error;
+    ctx->acc_pull_us = pull_us;
+    ctx->acc_sink_us = sink_us;
+    ctx->acc_park_us = park_us;
+    ctx->acc_max_pull_us = max_pull_us;
+    ctx->acc_sink_bytes = sink_bytes;
+    ctx->acc_sink_timeouts = sink_timeouts;
+    ctx->acc_parks = parks;
+    ctx->acc_ring_ovf = ring_ovf;
+    ctx->acc_event_us_max = event_us_max;
+    ctx->acc_result = result;
+    return why;
+}
+
+// What every threaded port runs: one call, start to finish.
+static void audiopump_run(audiopump_ctx_t *ctx) {
+    audiopump_run_begin(ctx);
+    (void)audiopump_run_blocks(ctx, UINT64_MAX);
+    audiopump_run_end(ctx);
 }
 
 // --- the MicroPython side, all of it on the interpreter thread ------------
@@ -629,6 +791,10 @@ static void audiopump_prepare(mp_obj_t sample, mp_obj_t blocks_in,
     // actually got, every block, so a graph whose tail produces something
     // other than its declared maximum corrects itself on the first pull.
     audiosample_base_t *base = MP_OBJ_TO_PTR(sample);
+    // What one pull can hand back. The service loop needs it to know whether
+    // the ring has room for another block BEFORE it pulls one, because after
+    // the pull there is nowhere to put what it got.
+    ctx->max_block_bytes = (uint32_t)base->max_buffer_length;
     ctx->frame_bytes = (uint32_t)base->channel_count
         * (uint32_t)(base->bits_per_sample / 8);
     ctx->block_frames = ctx->frame_bytes
@@ -730,6 +896,11 @@ static void audiopump_task(void *arg) {
         vTaskSuspend(NULL);
     }
 }
+#elif AUDIOPUMP_WASM
+// No thread. `audiopump_service_live` is what `audiopump_thread_live` is on
+// unix: "spawn() has adopted a tail and nothing has torn it down yet". The
+// loop advances only inside audiopump.service().
+static bool audiopump_service_live;
 #else
 static pthread_t audiopump_thread;
 static bool audiopump_thread_live;
@@ -795,6 +966,13 @@ static void audiopump_teardown(bool release_guard) {
         }
     }
     audiopump_i2s_close();
+    #elif AUDIOPUMP_WASM
+    // Nothing to join: the loop only ever runs inside a service() call, and
+    // this is not one. `stop` above means the next service() leaves at once.
+    audiopump_service_live = false;
+    if (audiopump_ctx.sink_fd >= 0) {
+        close(audiopump_ctx.sink_fd);
+    }
     #else
     if (audiopump_thread_live) {
         pthread_join(audiopump_thread, NULL);
@@ -858,6 +1036,8 @@ static void audiopump_arm_guard(void) {
 static bool audiopump_is_running(void) {
     #if AUDIOPUMP_ESP
     return audiopump_task_handle != NULL && !audiopump_ctx.finished;
+    #elif AUDIOPUMP_WASM
+    return audiopump_service_live && !audiopump_ctx.finished;
     #else
     return audiopump_thread_live && !audiopump_ctx.finished;
     #endif
@@ -927,6 +1107,11 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
         mp_raise_ValueError(MP_ERROR_TEXT(
             "a pump is already spawned; call audiopump.shutdown() first"));
     }
+    #elif AUDIOPUMP_WASM
+    if (audiopump_service_live) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "a pump is already spawned; call audiopump.shutdown() first"));
+    }
     #else
     if (audiopump_thread_live) {
         mp_raise_ValueError(MP_ERROR_TEXT(
@@ -977,6 +1162,24 @@ static mp_obj_t audiopump_spawn(size_t n_args, const mp_obj_t *pos_args,
         mp_raise_OSError(MP_ENOMEM);
     }
     return mp_obj_new_int(core);
+    #elif AUDIOPUMP_WASM
+    // The shape a port with no thread gets: spawn() adopts the tail, publishes
+    // the first status words and returns. Not one block has been pulled. The
+    // loop advances only when audiopump.service() is called -- from the
+    // audiodev driver's timer in a browser, from a probe's while loop here.
+    if (args[ARG_sink].u_obj != mp_const_none) {
+        const char *path = mp_obj_str_get_str(args[ARG_sink].u_obj);
+        audiopump_ctx.sink_fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (audiopump_ctx.sink_fd < 0) {
+            mp_raise_OSError(MP_ENOENT);
+        }
+    }
+    audiopump_ctx.service_mode = true;
+    audiopump_service_live = true;
+    audiopump_run_begin(&audiopump_ctx);
+    // -2, not -1: a caller that prints what spawn() returned should be able to
+    // tell "no core affinity" from "no thread at all".
+    return mp_obj_new_int(-2);
     #else
     if (args[ARG_sink].u_obj != mp_const_none) {
         const char *path = mp_obj_str_get_str(args[ARG_sink].u_obj);
@@ -1027,6 +1230,23 @@ static mp_obj_t audiopump_join(size_t n_args, const mp_obj_t *args) {
     } else {
         vTaskDelete(handle);
     }
+    #elif AUDIOPUMP_WASM
+    (void)timeout_ms;
+    if (!audiopump_service_live) {
+        return mp_const_true;
+    }
+    // There is no thread to wait for and join() must not quietly become the
+    // driver: a join that pulled the rest of the graph itself would make every
+    // "the timer was late" measurement on this port a measurement of join().
+    // So it reports, and the caller keeps calling service().
+    if (!audiopump_ctx.finished) {
+        return mp_const_false;
+    }
+    audiopump_service_live = false;
+    if (audiopump_ctx.sink_fd >= 0) {
+        close(audiopump_ctx.sink_fd);
+        audiopump_ctx.sink_fd = -1;
+    }
     #else
     (void)timeout_ms;
     if (!audiopump_thread_live) {
@@ -1069,15 +1289,27 @@ static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_stop_obj, audiopump_stop);
 static mp_obj_t audiopump_park(size_t n_args, const mp_obj_t *args) {
     uint32_t timeout_us = n_args > 0
         ? (uint32_t)mp_obj_get_int(args[0]) : 100000;
+    (void)timeout_us;   // wasm has nothing to wait for; see below
     #if AUDIOPUMP_ESP
     if (audiopump_task_handle == NULL || audiopump_ctx.finished) {
         return mp_const_true;
     }
+    #elif AUDIOPUMP_WASM
+    if (!audiopump_service_live || audiopump_ctx.finished) {
+        return mp_const_true;
+    }
+    // The loop is not running -- this call IS the only thread -- so the pump
+    // is already at a block boundary by construction and park() is a store.
+    // The wait below would spin until the timeout and then report success
+    // anyway; saying so straight is the same answer without the 200 ms.
+    audiopump_ctx.park_req = true;
+    return mp_const_true;
     #else
     if (!audiopump_thread_live || audiopump_ctx.finished) {
         return mp_const_true;
     }
     #endif
+    #if !AUDIOPUMP_WASM
     audiopump_ctx.park_req = true;
     uint32_t waited = 0;
     while (!audiopump_ctx.parked && !audiopump_ctx.finished
@@ -1087,9 +1319,60 @@ static mp_obj_t audiopump_park(size_t n_args, const mp_obj_t *args) {
     }
     return (audiopump_ctx.parked || audiopump_ctx.finished)
         ? mp_const_true : mp_const_false;
+    #endif
 }
 static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_park_obj, 0, 1,
     audiopump_park);
+
+// --- the port with no thread ----------------------------------------------
+//
+// The same loop, entered from the interpreter. `max_blocks` caps how many
+// blocks one call produces; 0 means "as many as the output ring has room
+// for", which is the natural budget because the ring is what paces the pump
+// here.
+//
+// Returns ONE small int, `blocks << 2 | why`, and the packing is not
+// premature cleverness: on this port service() IS the pull's entry point, so
+// micropython.heap_lock() around it has to hold, and a two-element tuple is
+// an allocation per call. A small int is not. Unpack it with
+// `why = r & 3; blocks = r >> 2`.
+//
+// On a threaded port it is a no-op that returns MORE with no blocks: the
+// thread is already doing this, and a driver written against the wasm shape
+// should not have to know which port it is on.
+static mp_obj_t audiopump_service(size_t n_args, const mp_obj_t *args) {
+    uint64_t budget = n_args > 0 ? (uint64_t)mp_obj_get_int(args[0]) : 0;
+    if (budget == 0) {
+        budget = UINT64_MAX;
+    }
+    int why = AUDIOPUMP_SERVICE_MORE;
+    uint64_t before = audiopump_ctx.acc_blocks;
+    #if AUDIOPUMP_WASM
+    if (audiopump_service_live && !audiopump_ctx.finished) {
+        why = audiopump_run_blocks(&audiopump_ctx, budget);
+        if (why == AUDIOPUMP_SERVICE_DONE) {
+            audiopump_run_end(&audiopump_ctx);
+        }
+    } else {
+        why = AUDIOPUMP_SERVICE_DONE;
+        before = audiopump_ctx.acc_blocks;
+    }
+    #else
+    (void)budget;
+    #endif
+    const mp_uint_t done = (mp_uint_t)(audiopump_ctx.acc_blocks - before);
+    return MP_OBJ_NEW_SMALL_INT((done << AUDIOPUMP_SERVICE_SHIFT) | why);
+}
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(audiopump_service_obj, 0, 1,
+    audiopump_service);
+
+// True where spawn() puts the loop on a thread of its own. False on wasm,
+// where audiopump.service() is the driver. One question, asked once, rather
+// than every caller sniffing for i2s_start or sys.platform.
+static mp_obj_t audiopump_threaded(void) {
+    return mp_obj_new_bool(AUDIOPUMP_THREADED);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_threaded_obj, audiopump_threaded);
 
 // Point the pump at a different tail. The handoff page's registry entry, cut
 // down to the one thing the spike needs: a helper that swaps the effect class
@@ -1693,6 +1976,18 @@ static const mp_rom_map_elem_t audiopump_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_info), MP_ROM_PTR(&audiopump_info_obj) },
     { MP_ROM_QSTR(MP_QSTR_running), MP_ROM_PTR(&audiopump_running_obj) },
     { MP_ROM_QSTR(MP_QSTR_shutdown), MP_ROM_PTR(&audiopump_shutdown_obj) },
+    // The port with no thread, and the one question that tells a driver
+    // whether it has to call service() itself. Both exist on every port.
+    { MP_ROM_QSTR(MP_QSTR_service), MP_ROM_PTR(&audiopump_service_obj) },
+    { MP_ROM_QSTR(MP_QSTR_threaded), MP_ROM_PTR(&audiopump_threaded_obj) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_MORE), MP_ROM_INT(AUDIOPUMP_SERVICE_MORE) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_FULL), MP_ROM_INT(AUDIOPUMP_SERVICE_FULL) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_PARKED),
+      MP_ROM_INT(AUDIOPUMP_SERVICE_PARKED) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_DONE), MP_ROM_INT(AUDIOPUMP_SERVICE_DONE) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_MASK), MP_ROM_INT(AUDIOPUMP_SERVICE_MASK) },
+    { MP_ROM_QSTR(MP_QSTR_SERVICE_SHIFT),
+      MP_ROM_INT(AUDIOPUMP_SERVICE_SHIFT) },
     #if AUDIOPUMP_ESP
     { MP_ROM_QSTR(MP_QSTR_i2s_start), MP_ROM_PTR(&audiopump_i2s_start_obj) },
     { MP_ROM_QSTR(MP_QSTR_i2s_stop), MP_ROM_PTR(&audiopump_i2s_stop_obj) },
