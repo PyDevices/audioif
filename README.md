@@ -1,20 +1,14 @@
-# audiopump — the pump's platform driver
+# The audio pump's platform driver
 
-**The engine is not here any more.** The portable half of the audio pump —
-the pull loop, `service()`, the push ring, the event queue, the tap, the
-output ring, the status words, the fault register, `retarget`/`park` and the
-finaliser guard — lives in **audioif** now, and ships with it on every port.
-The Python module is still called `audiopump` and its surface has not moved.
+This is the hardware half of the live audio path: one C file that knows what
+a thread is, what a mutex is, where the clock comes from and where the audio
+goes. The portable half — the pull loop, `service()`, the push ring, the event
+queue, the tap, the output ring, the status words, the fault register,
+`retarget`/`park` and the finaliser guard — is in the DSP repo and ships with
+it on every port. The Python module is still `audiopump` and its surface has
+not moved.
 
-What is here is the one file that knows what a platform is: `_audioif.c`. The
-thread (a FreeRTOS task pinned to the core the interpreter is not on, a
-`_beginthreadex` CRT thread on Windows, a pthread on unix), the recursive
-priority-inheriting mutex the pump lock is made of, the clock, the pacing, the
-two waits, and the hardware — the I2S channel, `Input` (the microphone as an
-audiosample) and the round-trip latency probe.
-
-It binds itself to the engine by defining `audioif_port_driver()`, declared in
-audioif's `src/shared/audioif_port.h`. Ask which driver bound from Python:
+Ask a firmware whether this half is in it:
 
 ```python
 >>> import audiopump
@@ -22,113 +16,153 @@ audioif's `src/shared/audioif_port.h`. Ask which driver bound from Python:
 'esp32'          # or 'pthread', 'win32', 'none'
 ```
 
-Its own module is **`_audioif`** — private by convention, the way `usbif`
-ships a C `_usbif` under a Python package; `audiodev` is the public face. It
-carries `i2s_start`, `i2s_stop`, `i2s_dma_bytes`, `i2s_rx_bytes`, `Input` and
-`rt_probe`. The engine's `lock_stats`, `lock_reset` and `fault` stayed on
-`audiopump`, because those are the engine's counters.
+`'none'` means no driver bound. That is a real answer — the engine's default
+hooks are one thread and no hardware, which is how the WebAssembly build has
+always run — but a build that should say `'esp32'` and says `'none'` has a
+link problem, and now it says so out loud.
 
-On WebAssembly this file compiles to nothing at all: that build has no threads
-and no hardware, no driver binds, and `audiopump.driver()` says `"none"` —
-which is exactly true, and is the shape the engine's default hooks give.
+## `_audioif` — the module this half publishes
 
-Why it is split: [live-audio-path-split.md](../docs/spikes/live-audio-path-split.md).
+Private by convention, the way `usbif` ships a C `_usbif` under a Python
+package; `audiodev` is the public face. It carries the hardware and nothing
+else. The engine's counters — `lock_stats`, `lock_reset`, `fault` — stayed on
+`audiopump`, because they are the engine's.
 
-Still a throwaway, still not a PyDevices repository, still not published, and
-still not built by anyone's `cmods` unless they ask for it. The rename that
-gives this repo the name `audioif` is
-[PyDevices/workspace#4](https://github.com/PyDevices/workspace/issues/4) and
-nothing about it has happened yet.
+```python
+import audiopump, _audioif
 
----
-
-## What the engine's surface still is, for reference
-
-Three jobs, one loop, written against audioif's `audioif_sample_source_t`:
-
-- `audiopump.pull(sample, blocks, status[, path])` runs the loop on the
-  calling thread and allocates nothing, so `micropython.heap_lock()` around
-  it is a real gate on "the audio pull does not allocate".
-- `audiopump.spawn(sample, blocks, status, ...)` runs the same loop off the
-  interpreter thread — a plain pthread on unix, on esp32 a **FreeRTOS task
-  pinned to the core the interpreter is not on** — and `audiopump.join()`
-  waits for it. Keywords: `sink`, `ring`, `core`, `prio`, `stack`, `psram`,
-  `timeout_ms`.
-- `audiopump.park()` / `unpark()` is the handoff: the pump finishes the block
-  it is in, parks, and does not touch the graph until unparked. On esp32 it
-  wakes on a direct-to-task notify, never `vTaskDelay` — this port's tick is
-  100 Hz. `audiopump.retarget(sample)` points the pump at a different tail
-  while it is parked, which is what a helper swapping the effect class needs
-  and what `Phaser`'s cascade rebuild breaks without.
-- `audiopump.shutdown()` stops the task, closes I2S and drops every root.
-  **It also happens by itself on a soft reset** — see below.
-  `audiopump.running()` says whether a pump is live.
-- On esp32, `audiopump.i2s_start(port, bclk, ws, dout, rate, ..., din=PIN)`
-  opens a TX channel the loop writes every block into, and with `din` the RX
-  half of the *same* channel pair, so one clock tree drives both directions.
-  `i2s_stop()` closes them; `i2s_dma_bytes()` and `i2s_rx_bytes()` report what
-  the two DMAs actually clocked. `audiopump.drain(buf)` is the RAM ring's
-  consumer, and `audiopump.info()` reports what the graph says it is.
-- `audiopump.Input(sample_rate=, channel_count=, frames=)` is an audiosample
-  whose `get_buffer` is an `i2s_channel_read`, so a live microphone is a
-  source like any other and `audioeffects.create(name, Input(...), rate)`
-  builds a graph on it. The read blocks, which is the pacing.
-- `audiopump.rt_probe(capture, ...)` preloads a step into the TX DMA before
-  either channel is enabled and captures RX from the same instant, so a
-  round-trip latency comes out in frames rather than in host time.
-
-## Dying with the VM
-
-The esp32 port has no soft-reset hook a user C module can register in —
-`soft_reset_exit` in `ports/esp32/main.c` calls a fixed list of `_deinit()`s
-and this port has no `MICROPY_BOARD_END_SOFT_RESET`. But two lines above that
-list it calls `gc_sweep_all()`, which runs `__del__` on **every** object that
-has one, reachable or not. So `audiopump` allocates one `Guard` with
-`mp_obj_malloc_with_finaliser`, roots it so an ordinary collection never
-touches it, and lets the soft reset finalise it. No port patch.
-
-`status` is a 192-byte `bytearray`, read back with `struct.unpack("<24Q", …)`:
-blocks, bytes, an FNV-1a 64 digest of every byte pulled, the last buffer
-result, a running flag, an error code, and the thread id that ran it.
-`path` (unix) is a file the loop `write(2)`s each block to. The rest of the
-words are the ring, the sink and the timings; the enum in `audiopump.c` is the
-list.
-
-Building it for esp32 is the same symlink trick, into `cmods` itself so the
-board's other usermods come too — and the link must come out afterwards or the
-module joins every other build in the workspace:
-
-```bash
-ln -sfn ../audiopump ~/gh/pydevices/cmods/audiopump
-cd ~/gh/pydevices/cmods && ./build_mp.sh --port esp32 --board ESP32_GENERIC_P4 --variant PRE_REV3_C6_WIFI
-rm -f ~/gh/pydevices/cmods/audiopump
+cushion = _audioif.i2s_start(port, bclk, ws, dout, 48000,
+                             bits=16, channels=2, mclk=13, mclk_fs=256,
+                             dma_desc=4, dma_frame=128)
+audiopump.spawn(fx.output, 0x7FFFFFFF, status, sink=True)
+...
+audiopump.shutdown()          # closes the channel with the task
 ```
 
-The IDF does **not** define `ESP_PLATFORM` for a user C module, and the POSIX
-branch of this file compiles and links on esp32 anyway (newlib has
-`pthread.h`), so `micropython.cmake` defines `AUDIOPUMP_ESP32` itself. Getting
-that wrong gives you an unpinned pump with no I2S and nothing saying so.
+| call | what it does |
+|---|---|
+| `i2s_start(port, bclk, ws, dout, rate, …)` | Opens a TX channel the pull loop writes every block into, and returns the bytes the DMA holds when full — the block-to-wire latency floor. `bits`, `channels`, `mclk`, `mclk_fs`, `dma_desc`, `dma_frame` are keywords. |
+| `i2s_start(…, din=PIN)` | Opens the RX half of the **same** channel pair, so one clock tree drives capture and playback and the two DMAs cannot drift. |
+| `i2s_start(…, din=, in_port=, in_bclk=, in_ws=, in_mclk=)` | Opens RX on a **different** peripheral, for a board whose microphone is not on the speaker's port. See the warning below. |
+| `i2s_stop()` | Closes both channels. |
+| `i2s_dma_bytes()`, `i2s_rx_bytes()` | What the two DMAs actually clocked, from their ISRs. Bytes the DMA sent that the pump never wrote *are* the silence a listener heard, so these are how starvation gets measured at all. |
+| `Input(sample_rate=, channel_count=, frames=, timeout_ms=)` | An audiosample whose `get_buffer` is an I2S read, so a live microphone is a source like any other and `audioeffects.create(name, Input(…), rate)` builds a graph on it. The read blocks, and that is the pacing. `stats()` reports what it has read and what it has missed. |
+| `rt_probe(capture, frames=, lead=, prime=, level=, channels=, timeout_ms=)` | Round-trip latency in frames rather than in host time: it preloads a click into the TX DMA *before* either channel is enabled and captures RX from the same instant. Runs with no pump spawned — two owners of one channel is the failure that sounds like silence. |
+| `driver()` | The same name `audiopump.driver()` returns. |
 
-## Building it
+**Two ports are not sample-locked.** `din=` alone opens one channel pair, and
+there BCLK and WS are generated once, so capture and playback cannot drift.
+`in_port=` on a different peripheral is two clock dividers off one PLL: the
+same nominal rate, nothing locking them frame to frame. Measured on the LilyGO
+T-Embed S3, whose MAX98357A is on port 1 and whose ES7210 microphones are on
+port 0, `rx − tx` stayed at **0 bytes** across forty seconds at a 4 × 128 ring
+(0–512 bytes at 2 × 128). That is the honest claim: no drift at that
+timescale, not proof of indefinite lock. An hour-long run is what would settle
+it and it has not been done.
 
-It is a Make-port user C module. The workspace builds it through a slim
-usermod tree so nothing else in `cmods` changes:
+## What each port implements
+
+| | thread | mutex | clock | sink | microphone |
+|---|---|---|---|---|---|
+| **ESP32 family** | a FreeRTOS task pinned to the core the interpreter is not on, optionally with its stack in PSRAM | `xSemaphoreCreateRecursiveMutex`, which is priority-inheriting | `esp_timer_get_time` | the I2S channel, written from the pull loop | `Input`, single-port or two-port |
+| **unix** | `pthread` | recursive `pthread_mutex` | `clock_gettime` | a file the loop `write(2)`s each block to | — |
+| **Windows** | `_beginthreadex` | `CRITICAL_SECTION` | `QueryPerformanceCounter` | a file descriptor | — |
+| **WebAssembly** | none — **and none is needed** | — | — | — | — |
+
+WebAssembly is not a gap. That build has no threads (no `-pthread`, no
+`SharedArrayBuffer`) and no hardware to drive, and Emscripten's
+`pthread_create` *links* and then aborts the whole module at run time with
+"Tried to spawn a new thread, but this is not supported" — which would be the
+same compiles-links-silently-wrong trap in a new place. So this file compiles
+to nothing there, no driver binds, the engine's default hooks take over, and
+`audiopump.driver()` says `'none'`, which is exactly true.
+
+Two more things the desktop ports are honest about. There is no audio device
+on either: the sink is a file, and what plays it is `audiodev`'s own
+transport. And Windows has no `_thread` module at all, so the pump being a
+native C thread there is not an optimisation — it is the only way a second
+thread exists in that interpreter.
+
+## Building it into a firmware
+
+It is a user C module beside the engine. Both have to be on `USER_C_MODULES`,
+and the driver finds the engine's headers itself: `AUDIOIF_DIR` for Make
+ports, `AUDIOPUMP_AUDIOIF_DIR` for CMake ports, each defaulting to a sibling
+checkout.
+
+A Make port (unix, windows, webassembly) globs one level down, so point it at
+the parent of both:
 
 ```bash
 cd ~/gh/pydevices/cmods
-mkdir -p .ucmods_spike
-ln -sfn ../../audioif .ucmods_spike/audioif
-ln -sfn ../../audiopump .ucmods_spike/audiopump
-MP_MAKE_EXTRA="USER_C_MODULES=$PWD/.ucmods_spike BUILD=build-spike FROZEN_MANIFEST=" \
-  ./build_mp.sh --port unix --variant standard
+mkdir -p .ucmods_split
+ln -sfn ../../audioif    .ucmods_split/audioif
+ln -sfn ../../audiopump  .ucmods_split/audiopump
+MP_MAKE_EXTRA="USER_C_MODULES=$PWD/.ucmods_split BUILD=build-split FROZEN_MANIFEST=" \
+  ./build_mp.sh --port unix
 ```
 
-`AUDIOIF_DIR` defaults to the sibling `audioif` checkout; set it if yours is
-somewhere else.
+A CMake port (esp32) takes the directory itself, and the link must come out
+afterwards or the module joins every other build in the workspace:
+
+```bash
+ln -sfn ../audiopump ~/gh/pydevices/cmods/audiopump
+cd ~/gh/pydevices/cmods
+./build_mp.sh --port esp32 --board ESP32_GENERIC_P4 --variant PRE_REV3_C6_WIFI
+rm -f ~/gh/pydevices/cmods/audiopump
+```
+
+**`micropython.cmake` defines `AUDIOIF_DRIVER_ESP32` itself**, and that is not
+belt-and-braces. The IDF does not hand `ESP_PLATFORM` to a user C module, and
+the POSIX branch of this file compiles *and links* on esp32 because the IDF's
+newlib has `pthread.h` — so keying off the wrong macro gets you an unpinned
+pump on a default stack with no sink and nothing failing to say so. That cost
+the spike a whole firmware once, and it is most of the reason
+`audiopump.driver()` exists.
+
+## Adding a port
+
+RP2 is the obvious next one, and there is nothing to design: the engine's
+`src/shared/audioif_port.h` is the whole interface, every one of its sixteen
+hooks may be NULL, and a table of nothing but NULLs is a complete one-thread
+port. Fill in `thread_start` and the mutex first — those are what turn
+`service()` into a pump that runs by itself — then the sink.
+
+The page for it is the engine's own `docs/pump-ports.md`: what each hook must
+guarantee, how the weak-symbol binding works and the static-archive trap it
+dodges, and the portability gate that keeps platform includes out of the
+engine. The one rule to carry away before reading it is the binding rule:
+**put the hook table in the same C file as `MP_REGISTER_MODULE`**, or a static
+archive can let the engine's weak default win in silence.
+
+A new port belongs in this file, in a fifth branch beside the four above. The
+branches are whole rather than a few `#ifdef`s inside one another on purpose —
+nothing in the POSIX branch survives on Windows, and mixing them is how the
+esp32 trap happened.
+
+## Where this fits
+
+The split, what moved and what it cost:
+[live-audio-path-split.md](../docs/spikes/live-audio-path-split.md).
+
+Still a throwaway, still not a PyDevices repository, still not published, and
+still not built by anyone's `cmods` unless they ask for it. The rename is
+[PyDevices/workspace#4](https://github.com/PyDevices/workspace/issues/4) and
+nothing about it has happened yet.
 
 ## What it is not
 
-One global pump, and nothing staged. `deinit` still has no safety around it —
-park first, always. The tail is rooted but not the graph behind it, so the
-Python side has to keep holding the components. The soft-reset hole is closed;
-the rest are findings rather than omissions. See the notes.
+One global pump, and nothing staged. The tail is rooted but not the graph
+behind it, so the Python side has to keep holding the components. `deinit` has
+no safety around it beyond the engine's lock — build first, re-point, release
+last.
+
+The soft-reset hole is closed and worth knowing about, because it is the one
+piece of platform trickery that is not behind a hook. The esp32 port has no
+soft-reset callback a user C module can register in: `soft_reset_exit` calls a
+fixed list of `_deinit()`s and this port has no `MICROPY_BOARD_END_SOFT_RESET`.
+But two lines above that list it calls `gc_sweep_all()`, which runs `__del__`
+on **every** object that has one, reachable or not. So the engine allocates
+one `Guard` with a finaliser, roots it so an ordinary collection never touches
+it, and lets the soft reset finalise it — which reaches `teardown` here and
+closes the channel. No port patch, and Ctrl-D always leaves the board quiet.
