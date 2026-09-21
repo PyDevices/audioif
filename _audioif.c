@@ -42,6 +42,7 @@
 #include "audiocore/__init__.h"
 #include "audiopump/audiopump.h"
 #include "shared/audioif_port.h"
+#include "shared/audioif_pump_lock.h"
 #include "shared/audioif_sample.h"
 
 #include "audiopump_i2s.h"
@@ -377,12 +378,23 @@ static void audiopump_park_spin(uint32_t max_us) {
 // millisecond is spun out against QPC, which is what nanosleep would have
 // given for free.
 //
-// The handle belongs to whichever thread first paced; it is closed in
-// teardown, from the interpreter thread, after the pump has been joined.
+// ONE timer, and therefore one thread may wait on it. CreateWaitableTimerExW
+// without CREATE_WAITABLE_TIMER_MANUAL_RESET makes a SYNCHRONIZATION timer: a
+// signal releases exactly one waiter, and SetWaitableTimer from a second
+// thread cancels whatever the first was waiting for. Both of this hook's
+// callers are real -- the pump's pace, and the 10 ms teardown wait on the
+// interpreter thread -- and they overlap at every shutdown of a paced pump.
+// Two threads on one auto-reset timer is one of them waiting on INFINITE for
+// a signal that has already been taken: a hang, not a slow teardown.
+//
+// So the timer belongs to the thread that made it, and anybody else gets
+// Sleep plus the same closing spin. The only other caller waits 10 ms at a
+// time during teardown, where a scheduler tick of slop is invisible.
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION (0x00000002)
 #endif
 static HANDLE audiopump_pace_timer;
+static DWORD audiopump_pace_owner;
 static bool audiopump_pace_coarse;
 #endif
 
@@ -407,20 +419,24 @@ static void audiopump_sleep_us(uint64_t wait_us) {
                 TIMER_ALL_ACCESS);
             audiopump_pace_coarse = (audiopump_pace_timer != NULL);
         }
+        audiopump_pace_owner = (audiopump_pace_timer != NULL)
+            ? GetCurrentThreadId() : 0;
     }
+    // Whoever made it waits on it; see the note above the handle.
+    HANDLE timer = (audiopump_pace_owner == GetCurrentThreadId())
+        ? audiopump_pace_timer : NULL;
     const uint64_t deadline = audiopump_now_us() + wait_us;
     // A coarse timer rounds UP to the tick, so leave it a millisecond of
     // headroom and spin the rest. A high-resolution one gets the lot.
     const uint64_t sleep_us = audiopump_pace_coarse
         ? (wait_us > 1000 ? wait_us - 1000 : 0) : wait_us;
-    if (audiopump_pace_timer != NULL && sleep_us) {
+    if (timer != NULL && sleep_us) {
         LARGE_INTEGER due;
         due.QuadPart = -(LONGLONG)(sleep_us * 10ULL);   // 100 ns, relative
-        if (SetWaitableTimer(audiopump_pace_timer, &due, 0, NULL, NULL,
-            FALSE)) {
-            WaitForSingleObject(audiopump_pace_timer, INFINITE);
+        if (SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) {
+            WaitForSingleObject(timer, INFINITE);
         }
-    } else if (audiopump_pace_timer == NULL && wait_us > 2000) {
+    } else if (timer == NULL && wait_us > 2000) {
         // No timer at all: do not burn a core for a whole block. Sleep the
         // whole milliseconds bar one and let the spin below close the gap.
         Sleep((DWORD)((wait_us - 1000) / 1000ULL));
@@ -487,6 +503,262 @@ static void *audiopump_trampoline(void *arg) {
 }
 #endif
 
+// --- the watchdog ---------------------------------------------------------
+//
+// Off unless the build asks for it (-DAUDIOIF_PUMP_LOCK_LEDGER=1). A lock that
+// never comes back is invisible from outside the process: the run stops
+// printing and that is all anybody learns. This thread watches the lock's
+// take/give counters, and when nothing has moved for a few seconds it says who
+// owns the lock, how deep, who is queued behind them, where the pump loop is,
+// and -- the question "one core is busy" really asks -- which thread has been
+// burning CPU while nothing happened. Then it takes the process down, so a
+// campaign of runs does not need a timeout per run to make progress.
+#if AUDIOIF_PUMP_LOCK_LEDGER && AUDIOIF_DRV_WIN
+
+#include <stdio.h>
+
+static HANDLE audiopump_wd_thread;
+static HANDLE audiopump_wd_main;        // a real handle, not the pseudo one
+static DWORD audiopump_wd_main_tid;
+static volatile LONG audiopump_wd_quit;
+
+static uint64_t audiopump_wd_cpu_us(HANDLE thread) {
+    FILETIME create, exit, kernel, user;
+    if (thread == NULL || !GetThreadTimes(thread, &create, &exit, &kernel,
+        &user)) {
+        return 0;
+    }
+    ULARGE_INTEGER k, u;
+    k.LowPart = kernel.dwLowDateTime;
+    k.HighPart = kernel.dwHighDateTime;
+    u.LowPart = user.dwLowDateTime;
+    u.HighPart = user.dwHighDateTime;
+    return (k.QuadPart + u.QuadPart) / 10ULL;   // 100 ns units -> us
+}
+
+static const char *audiopump_wd_site(uint8_t site) {
+    switch (site) {
+        case 0: return "ctrl";
+        case 1: return "pump";
+        default: return "nest";
+    }
+}
+
+static const char *audiopump_wd_phase(uint32_t phase) {
+    switch (phase) {
+        case AUDIOIF_PUMP_PHASE_TOP: return "top";
+        case AUDIOIF_PUMP_PHASE_RING_WAIT: return "ring-wait";
+        case AUDIOIF_PUMP_PHASE_PARK: return "park";
+        case AUDIOIF_PUMP_PHASE_LOCK: return "lock-acquire";
+        case AUDIOIF_PUMP_PHASE_PULL: return "pull";
+        case AUDIOIF_PUMP_PHASE_DIGEST: return "digest";
+        case AUDIOIF_PUMP_PHASE_SINK: return "sink";
+        case AUDIOIF_PUMP_PHASE_PACE: return "pace";
+        case AUDIOIF_PUMP_PHASE_RESET: return "reset";
+        case AUDIOIF_PUMP_PHASE_END: return "end";
+        default: return "idle";
+    }
+}
+
+// A backtrace with no debugger on the box. Suspend the thread, read RIP out of
+// its context, then sweep its stack for words that point into this image --
+// which is every return address on it, plus some noise. Resolve the offsets
+// afterwards with `addr2line -e micropython.exe`. Crude, and it is the
+// difference between "a thread is stuck" and knowing in which function.
+static void audiopump_wd_where(const char *who, HANDLE thread) {
+    if (thread == NULL) {
+        return;
+    }
+    const uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
+    if (SuspendThread(thread) == (DWORD)-1) {
+        return;
+    }
+    if (GetThreadContext(thread, &ctx)) {
+        fprintf(stderr, "%s: base=%p rip=%p", who, (void *)base,
+            (void *)(uintptr_t)ctx.Rip);
+        if ((uintptr_t)ctx.Rip - base < 0x1000000) {
+            fprintf(stderr, " (+0x%llx)",
+                (unsigned long long)((uintptr_t)ctx.Rip - base));
+        }
+        fprintf(stderr, "\n%s: stack", who);
+        // Bounded by what is actually mapped: a suspended thread's stack is
+        // committed only as far as it has grown, and walking off the top of it
+        // is an access violation that eats the dump it was printing.
+        MEMORY_BASIC_INFORMATION mbi;
+        const uintptr_t sp = (uintptr_t)ctx.Rsp;
+        if (VirtualQuery((LPCVOID)sp, &mbi, sizeof(mbi)) == sizeof(mbi)
+            && mbi.State == MEM_COMMIT) {
+            const uintptr_t top = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+            unsigned shown = 0;
+            for (uintptr_t at = sp; at + sizeof(uintptr_t) <= top
+                 && shown < 24; at += sizeof(uintptr_t)) {
+                const uintptr_t w = *(const uintptr_t *)at;
+                if (w - base < 0x1000000) {
+                    fprintf(stderr, " +0x%llx",
+                        (unsigned long long)(w - base));
+                    shown++;
+                }
+            }
+        }
+        fprintf(stderr, "\n");
+    }
+    ResumeThread(thread);
+}
+
+static void audiopump_wd_dump(const char *why, uint64_t main_us,
+    uint64_t pump_us) {
+    audioif_pump_lock_ledger_t led;
+    audioif_pump_lock_ledger_read(&led);
+    // Unbuffered from here: everything below is being printed because the
+    // process is about to be taken down, and a buffered dump is no dump.
+    setvbuf(stderr, NULL, _IONBF, 0);
+    fprintf(stderr, "\n=== LEDGER (%s) ===\n", why);
+    fprintf(stderr, "main tid=%lu cpu=%llu us   pump tid=%lu cpu=%llu us\n",
+        (unsigned long)audiopump_wd_main_tid, (unsigned long long)main_us,
+        (unsigned long)(audiopump_thread != NULL
+            ? GetThreadId(audiopump_thread) : 0),
+        (unsigned long long)pump_us);
+    fprintf(stderr, "owner=%lu depth=%ld waiters=%ld takes=%llu gives=%llu "
+        "phase=%s\n", (unsigned long)led.owner, (long)led.depth,
+        (long)led.waiters, (unsigned long long)led.takes,
+        (unsigned long long)led.gives, audiopump_wd_phase(led.phase));
+    if (led.want_us) {
+        fprintf(stderr, "WAITING: tid=%lu site=%s for %llu us\n",
+            (unsigned long)led.want_tid, audiopump_wd_site(led.want_site),
+            (unsigned long long)(audiopump_now_us() - led.want_us));
+    }
+    if (led.bad_gives) {
+        const uintptr_t base = (uintptr_t)GetModuleHandleW(NULL);
+        fprintf(stderr, "UNBALANCED RELEASE: %llu of them; first from tid=%lu "
+            "site=%s caller=+0x%llx\n", (unsigned long long)led.bad_gives,
+            (unsigned long)led.bad_tid, audiopump_wd_site(led.bad_site),
+            (unsigned long long)((uintptr_t)led.bad_ra - base));
+    }
+    // The CRITICAL_SECTION's own fields. LockCount is -1 when the section is
+    // free; each waiter takes it further negative. RecursionCount and
+    // OwningThread are the pair that says who is inside and how deep. A
+    // section with no owner, a zero recursion count and waiters queued behind
+    // it is a section nobody is going to wake.
+    fprintf(stderr, "cs: LockCount=%ld RecursionCount=%ld OwningThread=%lu "
+        "LockSemaphore=%p SpinCount=%llu state=%ld\n",
+        (long)audiopump_cs.LockCount, (long)audiopump_cs.RecursionCount,
+        (unsigned long)(uintptr_t)audiopump_cs.OwningThread,
+        (void *)audiopump_cs.LockSemaphore,
+        (unsigned long long)audiopump_cs.SpinCount,
+        (long)audiopump_cs_state);
+    fprintf(stderr, "pump: blocks=%llu parked=%llu error=%llu "
+        "ring_waits=%llu fault=%llu\n",
+        (unsigned long long)audiopump_c_status(0),    // STATUS_BLOCKS
+        (unsigned long long)audiopump_c_status(7),    // STATUS_PARKED
+        (unsigned long long)audiopump_c_status(5),    // STATUS_ERROR
+        (unsigned long long)audiopump_c_status(32),   // STATUS_RING_WAITS
+        (unsigned long long)audiopump_c_status(24));  // STATUS_FAULT
+    audiopump_wd_where("main", audiopump_wd_main);
+    audiopump_wd_where("pump", audiopump_thread);
+    const uint32_t n = AUDIOIF_PUMP_LOCK_LEDGER_SLOTS;
+    const uint32_t start = led.next > n ? led.next - n : 0;
+    for (uint32_t i = start; i < led.next; i++) {
+        const audioif_pump_lock_event_t *e = &led.events[i % n];
+        static const char *what[] = { "want", "got ", "gave" };
+        fprintf(stderr, "  %10llu us tid=%-6lu %s %s depth=%-4d waiters=%-3d "
+            "from +0x%llx\n",
+            (unsigned long long)e->us, (unsigned long)e->tid,
+            audiopump_wd_site(e->site),
+            what[e->what < 3 ? e->what : 0], (int)e->depth, (int)e->waiters,
+            (unsigned long long)((uintptr_t)e->ra
+                - (uintptr_t)GetModuleHandleW(NULL)));
+    }
+    fflush(stderr);
+}
+
+static unsigned __stdcall audiopump_wd_loop(void *arg) {
+    (void)arg;
+    audioif_pump_lock_ledger_t led;
+    audioif_pump_lock_ledger_read(&led);
+    uint64_t last = led.takes + led.gives;
+    uint64_t last_main = audiopump_wd_cpu_us(audiopump_wd_main);
+    uint64_t last_pump = audiopump_wd_cpu_us(audiopump_thread);
+    unsigned still = 0;
+    while (!audiopump_wd_quit) {
+        Sleep(200);
+        audioif_pump_lock_ledger_read(&led);
+        // TWO stalls, and only the second one is the interesting one. A lock
+        // whose counters have stopped is a lock nobody is using; a lock whose
+        // counters are RACING while one thread has been queued behind them for
+        // seconds is the hang this exists to name.
+        if (led.bad_gives) {
+            audiopump_wd_dump("a release with nothing held",
+                audiopump_wd_cpu_us(audiopump_wd_main) - last_main,
+                audiopump_wd_cpu_us(audiopump_thread) - last_pump);
+            _exit(98);
+        }
+        const uint64_t stuck_us = led.want_us
+            ? audiopump_now_us() - led.want_us : 0;
+        if (stuck_us == 0) {
+            // Nobody is queued, so this is the baseline the CPU figures in the
+            // dump are measured against.
+            last_main = audiopump_wd_cpu_us(audiopump_wd_main);
+            last_pump = audiopump_wd_cpu_us(audiopump_thread);
+        }
+        if (stuck_us > 3000000ULL) {
+            audiopump_wd_dump("a waiter has been queued for 3 s",
+                audiopump_wd_cpu_us(audiopump_wd_main) - last_main,
+                audiopump_wd_cpu_us(audiopump_thread) - last_pump);
+            _exit(97);
+        }
+        const uint64_t now = led.takes + led.gives;
+        if (now != last) {
+            last = now;
+            still = 0;
+            last_main = audiopump_wd_cpu_us(audiopump_wd_main);
+            last_pump = audiopump_wd_cpu_us(audiopump_thread);
+            continue;
+        }
+        if (++still < 15) {         // three seconds of nothing
+            continue;
+        }
+        audiopump_wd_dump("the lock has not moved for 3 s",
+            audiopump_wd_cpu_us(audiopump_wd_main) - last_main,
+            audiopump_wd_cpu_us(audiopump_thread) - last_pump);
+        _exit(97);
+    }
+    return 0;
+}
+
+static void audiopump_wd_start(void) {
+    if (audiopump_wd_thread != NULL) {
+        return;
+    }
+    audiopump_wd_main_tid = GetCurrentThreadId();
+    DuplicateHandle(GetCurrentProcess(), GetCurrentThread(),
+        GetCurrentProcess(), &audiopump_wd_main, 0, FALSE,
+        DUPLICATE_SAME_ACCESS);
+    audiopump_wd_quit = 0;
+    audiopump_wd_thread = (HANDLE)_beginthreadex(NULL, 0, audiopump_wd_loop,
+        NULL, 0, NULL);
+}
+
+static void audiopump_wd_stop(void) {
+    if (audiopump_wd_thread == NULL) {
+        return;
+    }
+    audiopump_wd_quit = 1;
+    WaitForSingleObject(audiopump_wd_thread, 2000);
+    CloseHandle(audiopump_wd_thread);
+    audiopump_wd_thread = NULL;
+    if (audiopump_wd_main != NULL) {
+        CloseHandle(audiopump_wd_main);
+        audiopump_wd_main = NULL;
+    }
+}
+#else
+#define audiopump_wd_start() ((void)0)
+#define audiopump_wd_stop() ((void)0)
+#endif
+
 static bool audiopump_thread_start(void (*entry)(void *), void *arg,
     const audioif_port_thread_cfg_t *cfg, int *where) {
     audiopump_entry_fn = entry;
@@ -539,6 +811,7 @@ static bool audiopump_thread_start(void (*entry)(void *), void *arg,
     *where = -1;
     #endif
     audiopump_thread_live = true;
+    audiopump_wd_start();
     return true;
 }
 
@@ -571,6 +844,7 @@ static void audiopump_thread_release(void) {
         return;
     }
     audiopump_thread_live = false;
+    audiopump_wd_stop();
     #if AUDIOIF_DRV_ESP
     TaskHandle_t handle = audiopump_task_handle;
     audiopump_task_handle = NULL;
@@ -764,6 +1038,7 @@ static void audiopump_driver_teardown(void) {
     if (audiopump_pace_timer != NULL) {
         CloseHandle(audiopump_pace_timer);
         audiopump_pace_timer = NULL;
+        audiopump_pace_owner = 0;
         audiopump_pace_coarse = false;
     }
     // Same moment, same reason: the engine calls teardown() only after the
