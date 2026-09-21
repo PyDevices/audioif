@@ -449,7 +449,7 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
     size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
     enum { ARG_bit_clock, ARG_word_select, ARG_data, ARG_main_clock,
            ARG_left_justified, ARG_external_clock,
-           ARG_port, ARG_sample_rate, ARG_sink };
+           ARG_port, ARG_sample_rate, ARG_main_clock_fs, ARG_sink };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_bit_clock,      MP_ARG_OBJ | MP_ARG_REQUIRED,
           { .u_obj = MP_OBJ_NULL } },
@@ -473,6 +473,14 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
         // whatever the sample asks for.
         { MP_QSTR_sample_rate,    MP_ARG_INT | MP_ARG_KW_ONLY,
           { .u_int = 48000 } },
+        // How many bit clocks of MCLK per frame. 256 is what every board in
+        // this workspace straps and what CircuitPython's espressif port
+        // hard-codes, so it is the default -- but a codec that wants 384 has
+        // nowhere else to say so, and `audiodev`'s `I2SWire` has carried the
+        // number since before this module existed. Dropping it silently is
+        // a half-shifted clock that sounds like a bad cable.
+        { MP_QSTR_main_clock_fs,  MP_ARG_INT | MP_ARG_KW_ONLY,
+          { .u_int = 256 } },
         // Desktop only: the file the blocks are written to.
         { MP_QSTR_sink,           MP_ARG_OBJ | MP_ARG_KW_ONLY,
           { .u_obj = mp_const_none } },
@@ -510,7 +518,7 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
     self->wire.rate = args[ARG_sample_rate].u_int;
     self->wire.bits = 16;
     self->wire.channels = 2;
-    self->wire.mclk_fs = 256;
+    self->wire.mclk_fs = args[ARG_main_clock_fs].u_int;
     self->wire.dma_desc = 6;
     self->wire.dma_frame = audiobusio_dma_frame(self->wire.rate);
     self->wire.din = -1;
@@ -716,6 +724,95 @@ static mp_obj_t audiobusio_i2sout_stop(mp_obj_t self_in) {
 static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_stop_obj,
     audiobusio_i2sout_stop);
 
+// --- retarget: OURS, not CircuitPython's ----------------------------------
+//
+// CircuitPython has no way to change what an output is playing without
+// stopping it, because nothing above it ever needs one: one `I2SOut`, one
+// graph, and `play()` again is a fine way to start a different sound.
+//
+// `audiodev` needs one. It is the policy layer over this class -- two
+// clients, a root `audiomixer.Mixer` built for them, volume, the codec
+// session -- and every time a client arrives or leaves it has a NEW tail for
+// the same output. Going through `play()` there is a `stop()` + `join()` +
+// a fresh channel between two blocks of audio that a listener is in the
+// middle of, on every kit change and every note a second voice starts.
+//
+// So: one method, one word, listed beside `starved()` as ours. It is the
+// pump's own `retarget` with the object rooted here, which is the part a
+// caller reaching for `audiopump.retarget()` behind this class's back would
+// get wrong -- `self->sample` would still hold the OLD graph and the new one
+// would be unrooted while a thread pulls it.
+//
+// `loop` travels with the tail rather than staying as `play()` set it: a
+// root Mixer replaced by the one client still sounding is a different thing
+// to loop. Leaving it behind is exactly how a looping client left alone on a
+// live pump stopped at the end of its first lap.
+static mp_obj_t audiobusio_i2sout_retarget(size_t n_args,
+    const mp_obj_t *pos_args, mp_map_t *kw_args) {
+    enum { ARG_sample, ARG_loop };
+    static const mp_arg_t allowed[] = {
+        { MP_QSTR_sample, MP_ARG_OBJ | MP_ARG_REQUIRED,
+          { .u_obj = MP_OBJ_NULL } },
+        { MP_QSTR_loop,   MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = false } },
+    };
+    audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(pos_args[0]);
+    audiobusio_check(self);
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all(n_args - 1, pos_args + 1, kw_args, MP_ARRAY_SIZE(allowed),
+        allowed, args);
+
+    if (!self->playing) {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Not playing"));
+    }
+    mp_obj_t sample = args[ARG_sample].u_obj;
+    audiosample_base_t *base = audiosample_check(sample);   // raises TypeError
+    // The conversion scratch and the feeder's ring were both sized for the
+    // sample `play()` was handed, and neither can be resized under a running
+    // pump. A tail that needs either is a `play()`, not a swap -- said out
+    // loud rather than silently clipped or half-converted.
+    if (!audiobusio_direct(sample, base)) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "retarget takes a signed 16-bit sample; call play() instead"));
+    }
+    if (audiopump_i2s_have() && base->sample_rate != self->rate) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "retarget cannot retune the bus; call play() instead"));
+    }
+    audiopump_c_retarget(sample, args[ARG_loop].u_bool ? 1 : 0);
+    self->sample = sample;
+    self->loop = args[ARG_loop].u_bool;
+    // Whatever was feeding the old tail is not feeding this one. Dropping the
+    // ring here is what stops the scheduler node topping up a ring nothing
+    // pulls any more.
+    self->ring = MP_OBJ_NULL;
+    self->ring_write = MP_OBJ_NULL;
+    self->ring_space = MP_OBJ_NULL;
+    self->ring_level = MP_OBJ_NULL;
+    self->feed_buf = MP_OBJ_NULL;
+    self->feed_done = false;
+    self->feed_at = 0;
+    self->src = NULL;
+    self->src_left = 0;
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_KW(audiobusio_i2sout_retarget_obj, 2,
+    audiobusio_i2sout_retarget);
+
+// The pump's status block, as the bytearray the loop writes into. Ours, and
+// the reason it is here rather than behind `audiopump.STATUS_*` constants is
+// that this object owns the buffer: a caller that spawned through `play()`
+// has no other way to reach the two words that say WHY the pump stopped, and
+// `audiodev` turns those into the one sentence an app prints.
+static mp_obj_t audiobusio_i2sout_get_status(mp_obj_t self_in) {
+    audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiobusio_check(self);
+    return self->status;
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_get_status_obj,
+    audiobusio_i2sout_get_status);
+MP_PROPERTY_GETTER(audiobusio_i2sout_status_obj,
+    (mp_obj_t)&audiobusio_i2sout_get_status_obj);
+
 static mp_obj_t audiobusio_i2sout_get_playing(mp_obj_t self_in) {
     audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
     audiobusio_check(self);
@@ -799,12 +896,15 @@ static const mp_rom_map_elem_t audiobusio_i2sout_locals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___enter__), MP_ROM_PTR(&mp_identity_obj) },
     { MP_ROM_QSTR(MP_QSTR___exit__), MP_ROM_PTR(&audiobusio_i2sout_exit_obj) },
     { MP_ROM_QSTR(MP_QSTR_play), MP_ROM_PTR(&audiobusio_i2sout_play_obj) },
+    { MP_ROM_QSTR(MP_QSTR_retarget),
+      MP_ROM_PTR(&audiobusio_i2sout_retarget_obj) },
     { MP_ROM_QSTR(MP_QSTR_stop), MP_ROM_PTR(&audiobusio_i2sout_stop_obj) },
     { MP_ROM_QSTR(MP_QSTR_pause), MP_ROM_PTR(&audiobusio_i2sout_pause_obj) },
     { MP_ROM_QSTR(MP_QSTR_resume), MP_ROM_PTR(&audiobusio_i2sout_resume_obj) },
     { MP_ROM_QSTR(MP_QSTR_playing), MP_ROM_PTR(&audiobusio_i2sout_playing_obj) },
     { MP_ROM_QSTR(MP_QSTR_paused), MP_ROM_PTR(&audiobusio_i2sout_paused_obj) },
     { MP_ROM_QSTR(MP_QSTR_starved), MP_ROM_PTR(&audiobusio_i2sout_starved_obj) },
+    { MP_ROM_QSTR(MP_QSTR_status), MP_ROM_PTR(&audiobusio_i2sout_status_obj) },
 };
 static MP_DEFINE_CONST_DICT(audiobusio_i2sout_locals,
     audiobusio_i2sout_locals_table);
