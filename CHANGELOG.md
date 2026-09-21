@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## v0.1.0 (2026-09-21)
 
+- **This repository is `audioif`**, the audio hardware layer, and public. It was
+  the private `audiopump` driver repo until today; the name belonged to the DSP
+  repository, which is [audiodsp](https://github.com/PyDevices/audiodsp) now.
 - **First public shape.** The audio pump's platform driver: the `_audioif` C
   module (`i2s_start` with a one-port and a two-port form, `i2s_stop`,
   `i2s_dma_bytes`, `i2s_rx_bytes`, `Input`, `rt_probe`) and a

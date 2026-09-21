@@ -1,12 +1,18 @@
-# The audio pump's platform driver
+# audioif
 
-This is the hardware half of the live audio path: one C file that knows what
-a thread is, what a mutex is, where the clock comes from and where the audio
-goes. The portable half — the pull loop, `service()`, the push ring, the event
-queue, the tap, the output ring, the status words, the fault register,
-`retarget`/`park` and the finaliser guard — is in the DSP repo and ships with
-it on every port. The Python module is still `audiopump` and its surface has
-not moved.
+The audio hardware layer for PyDevices firmware: the platform drivers under the
+audio pump. It is one C module, `_audioif`, and a CircuitPython-shaped
+`audiobusio.I2SOut` on top of it — the part that knows what a thread is, what a
+mutex is, where the clock comes from and where the audio goes. It sits beside
+[`displayif`](https://github.com/PyDevices/displayif) and
+[`usbif`](https://github.com/PyDevices/usbif), and under `audiodev` in
+[pydevices](https://github.com/PyDevices/pydevices).
+
+The portable half — the pull loop, `service()`, the push ring, the event queue,
+the tap, the status words, the fault register, `retarget`/`park` and the
+finaliser guard — is the `audiopump` module in
+[audiodsp](https://github.com/PyDevices/audiodsp), and ships with it on every
+port. This repository binds to it by defining `audiodsp_port_driver()`.
 
 Ask a firmware whether this half is in it:
 
@@ -174,27 +180,22 @@ and the driver finds the engine's headers itself: `AUDIODSP_DIR` for Make
 ports, `AUDIOPUMP_AUDIODSP_DIR` for CMake ports, each defaulting to a sibling
 checkout.
 
-A Make port (unix, windows, webassembly) globs one level down, so point it at
-the parent of both:
+Clone it beside [audiodsp](https://github.com/PyDevices/audiodsp); both build
+files find the engine's headers at `../audiodsp`. In a
+[cmods](https://github.com/PyDevices/cmods) workspace that is two links, and
+every port's build picks both up:
 
 ```bash
-cd ~/gh/pydevices/cmods
-mkdir -p .ucmods_split
-ln -sfn ../../audiodsp    .ucmods_split/audiodsp
-ln -sfn ../../audiopump  .ucmods_split/audiopump
-MP_MAKE_EXTRA="USER_C_MODULES=$PWD/.ucmods_split BUILD=build-split FROZEN_MANIFEST=" \
-  ./build_mp.sh --port unix
-```
-
-A CMake port (esp32) takes the directory itself, and the link must come out
-afterwards or the module joins every other build in the workspace:
-
-```bash
-ln -sfn ../audiopump ~/gh/pydevices/cmods/audiopump
-cd ~/gh/pydevices/cmods
+cd cmods
+ln -s ../audiodsp audiodsp
+ln -s ../audioif  audioif
+./build_mp.sh --port unix
 ./build_mp.sh --port esp32 --board ESP32_GENERIC_P4 --variant PRE_REV3_C6_WIFI
-rm -f ~/gh/pydevices/cmods/audiopump
 ```
+
+Without this repository the firmware still builds and still plays: the engine's
+hooks default to one thread and no hardware, `audiopump.driver()` says
+`'none'`, and `audiodev` falls back to `machine.I2S` and says so once.
 
 **`micropython.cmake` defines `AUDIOIF_DRIVER_ESP32` itself**, and that is not
 belt-and-braces. The IDF does not hand `ESP_PLATFORM` to a user C module, and
@@ -229,9 +230,11 @@ esp32 trap happened.
 
 ## Where this fits
 
-This is `PyDevices/audiopump`. It is **private and unpublished**, and no
-`cmods` builds it unless you ask for it — the engine ships with audiodsp on
-every port and this half is opted into.
+This repository was the private `audiopump` driver repo until 2026-09-21. It
+took the name `audioif` when the DSP repository that used to carry it became
+[audiodsp](https://github.com/PyDevices/audiodsp) — so a link to
+`PyDevices/audioif` written before that date was about the DSP nodes, and wants
+`audiodsp` now.
 
 What the split cost: nothing that plays. The Python module `audiopump` kept
 its name and its whole surface and moved to audiodsp; `i2s_start`, `i2s_stop`,
@@ -241,12 +244,6 @@ on `audiopump`, because they are the engine's counters and not this half's.
 The lock's three platform branches are gone — it calls hooks now. Every
 digest in the merge's table matched afterwards, on unix, on Windows and on
 WebAssembly.
-
-The rename is
-[PyDevices/workspace#4](https://github.com/PyDevices/workspace/issues/4) and
-half of it has happened: the DSP repo became `audiodsp` on 2026-09-21. This
-repository takes the name it left behind, and goes public, once nothing living
-in the organization still uses that name for the DSP repo.
 
 ## What it is not
 
