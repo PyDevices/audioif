@@ -2,7 +2,7 @@
 
     <interpreter> tests/sink_probe.py [scratch-dir] [--fault WHICH]
 
-The engine (audioif) computes an FNV-1a 64 digest of every byte it pulls
+The engine (audiodsp) computes an FNV-1a 64 digest of every byte it pulls
 and leaves it in its status block. The sink is **this** repository: the one
 place a block stops being the engine's and becomes a platform's -- a file
 here, an I2S channel on a board. So the check is the engine's own digest

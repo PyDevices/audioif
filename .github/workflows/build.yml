@@ -3,12 +3,12 @@
 # its own that a runner could execute without building it, so the whole of CI
 # is: build an interpreter with it, then ask it to play something.
 #
-# It needs a checkout of `audioif` beside this one and nothing else. audioif
+# It needs a checkout of `audiodsp` beside this one and nothing else. audiodsp
 # carries the engine, the DSP nodes and the headers this driver compiles
 # against; MicroPython comes from upstream at the pinned version. No
 # workspace, no overlay, no board.
 #
-# When this repository becomes part of the public audioif, this job moves
+# When this repository becomes part of the public audiodsp, this job moves
 # there as a second cell of `clean-build.yml` and loses the extra checkout.
 name: Build and probe the driver
 
@@ -30,14 +30,14 @@ jobs:
           path: audiopump
 
       # The engine half. `main` until the live-audio-path line merges; the
-      # driver cannot be built against an audioif that predates it.
+      # driver cannot be built against an audiodsp that predates it.
       - uses: actions/checkout@v7
         with:
-          repository: PyDevices/audioif
-          path: audioif
+          repository: PyDevices/audiodsp
+          path: audiodsp
 
-      - name: Fetch audioif's pinned dependencies
-        working-directory: audioif
+      - name: Fetch audiodsp's pinned dependencies
+        working-directory: audiodsp
         run: ./scripts/fetch_deps.sh
 
       - uses: actions/checkout@v7
@@ -48,9 +48,9 @@ jobs:
 
       # USER_C_MODULES is the PARENT directory: py.mk globs
       # $(USER_C_MODULES)/*/micropython.mk one level down, so both this
-      # repository and audioif are picked up by sitting side by side. That
-      # is also how audiopump/micropython.mk finds audioif's headers --
-      # AUDIOIF_DIR defaults to $(USERMOD_DIR)/../audioif.
+      # repository and audiodsp are picked up by sitting side by side. That
+      # is also how audiopump/micropython.mk finds audiodsp's headers --
+      # AUDIODSP_DIR defaults to $(USERMOD_DIR)/../audiodsp.
       - name: Build the unix port with the engine and this driver
         run: |
           make -C micropython/mpy-cross -j2
@@ -70,7 +70,7 @@ jobs:
 
       # Every probe's planted fault runs FIRST and must fail. A probe whose
       # failing mode is never exercised is not a gate -- the same rule
-      # audioif's clean-build workflow runs its own probes under.
+      # audiodsp's clean-build workflow runs its own probes under.
       - name: The probes, and proof each one can fail
         run: |
           MP=./micropython/ports/unix/build-standard/micropython

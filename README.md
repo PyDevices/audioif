@@ -170,8 +170,8 @@ thread exists in that interpreter.
 ## Building it into a firmware
 
 It is a user C module beside the engine. Both have to be on `USER_C_MODULES`,
-and the driver finds the engine's headers itself: `AUDIOIF_DIR` for Make
-ports, `AUDIOPUMP_AUDIOIF_DIR` for CMake ports, each defaulting to a sibling
+and the driver finds the engine's headers itself: `AUDIODSP_DIR` for Make
+ports, `AUDIOPUMP_AUDIODSP_DIR` for CMake ports, each defaulting to a sibling
 checkout.
 
 A Make port (unix, windows, webassembly) globs one level down, so point it at
@@ -180,7 +180,7 @@ the parent of both:
 ```bash
 cd ~/gh/pydevices/cmods
 mkdir -p .ucmods_split
-ln -sfn ../../audioif    .ucmods_split/audioif
+ln -sfn ../../audiodsp    .ucmods_split/audiodsp
 ln -sfn ../../audiopump  .ucmods_split/audiopump
 MP_MAKE_EXTRA="USER_C_MODULES=$PWD/.ucmods_split BUILD=build-split FROZEN_MANIFEST=" \
   ./build_mp.sh --port unix
@@ -207,7 +207,7 @@ the spike a whole firmware once, and it is most of the reason
 ## Adding a port
 
 RP2 is the obvious next one, and there is nothing to design: the engine's
-`src/shared/audioif_port.h` is the whole interface, every one of its sixteen
+`src/shared/audiodsp_port.h` is the whole interface, every one of its sixteen
 hooks may be NULL, and a table of nothing but NULLs is a complete one-thread
 port. Fill in `thread_start` and the mutex first — those are what turn
 `service()` into a pump that runs by itself — then the sink, then `park_spin`.
@@ -230,11 +230,11 @@ esp32 trap happened.
 ## Where this fits
 
 This is `PyDevices/audiopump`. It is **private and unpublished**, and no
-`cmods` builds it unless you ask for it — the engine ships with audioif on
+`cmods` builds it unless you ask for it — the engine ships with audiodsp on
 every port and this half is opted into.
 
 What the split cost: nothing that plays. The Python module `audiopump` kept
-its name and its whole surface and moved to audioif; `i2s_start`, `i2s_stop`,
+its name and its whole surface and moved to audiodsp; `i2s_start`, `i2s_stop`,
 `i2s_dma_bytes`, `i2s_rx_bytes`, `Input` and `rt_probe` moved from
 `audiopump.*` to `_audioif.*`; `lock_stats`, `lock_reset` and `fault` stayed
 on `audiopump`, because they are the engine's counters and not this half's.
@@ -244,9 +244,9 @@ WebAssembly.
 
 The rename is
 [PyDevices/workspace#4](https://github.com/PyDevices/workspace/issues/4) and
-nothing about it has happened yet: the DSP repo becomes `audiodsp`, the name
-`audioif` is reused for the hardware layer, and this repository takes that
-name and goes public.
+half of it has happened: the DSP repo became `audiodsp` on 2026-09-21. This
+repository takes the name it left behind, and goes public, once nothing living
+in the organization still uses that name for the DSP repo.
 
 ## What it is not
 

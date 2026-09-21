@@ -4,7 +4,7 @@
 // _audioif - the audio pump's PLATFORM DRIVER, and the hardware layer of the
 // live audio path. The other half of the pump, the portable one, lives in the
 // DSP repo: the pull loop, the push ring, the event queue, the tap, the
-// status words, the fault register and the lock's contract are all `audioif`
+// status words, the fault register and the lock's contract are all `audiodsp`
 // and are built into every port it ships on.
 //
 // What is here is what that half is not allowed to know:
@@ -20,7 +20,7 @@
 //   the sink and the source -- a file descriptor on a desktop, an I2S channel
 //   and an `Input` that reads a microphone on a board.
 //
-// It binds by defining audioif_port_driver(), which overrides the weak
+// It binds by defining audiodsp_port_driver(), which overrides the weak
 // default in the engine at link time. The hook table is in THIS translation
 // unit, beside MP_REGISTER_MODULE, on purpose: the module table holds an
 // undefined reference to `_audioif_module`, so this object is pulled into the
@@ -41,9 +41,9 @@
 
 #include "audiocore/__init__.h"
 #include "audiopump/audiopump.h"
-#include "shared/audioif_port.h"
-#include "shared/audioif_pump_lock.h"
-#include "shared/audioif_sample.h"
+#include "shared/audiodsp_port.h"
+#include "shared/audiodsp_pump_lock.h"
+#include "shared/audiodsp_sample.h"
 
 #include "audiopump_i2s.h"
 
@@ -161,7 +161,7 @@ static uint64_t audiopump_now_us(void) {
 // Recursive on purpose: a node's pull legitimately re-enters helpers that
 // lock, and a control-path entry legitimately calls another locked helper.
 // Recursive means neither has to know about the other. See the contract in
-// audioif's shared/audioif_pump_lock.h -- this is only the machine under it.
+// audiodsp's shared/audiodsp_pump_lock.h -- this is only the machine under it.
 
 #if AUDIOIF_DRV_ESP
 
@@ -272,7 +272,7 @@ static void audiopump_lock_give(void) {
 // `park_spin` is the PUMP's own wait, and the engine has two callers for it:
 // the park at a block boundary, and the wait for room in the output ring that
 // makes a desktop pump pace itself instead of dropping audio. Its contract
-// (shared/audioif_port.h) is that it returns when thread_wake() is called, and
+// (shared/audiodsp_port.h) is that it returns when thread_wake() is called, and
 // that it may return early.
 //
 // Both desktop branches used to satisfy that contract by NOT WAITING AT ALL --
@@ -505,7 +505,7 @@ static void *audiopump_trampoline(void *arg) {
 
 // --- the watchdog ---------------------------------------------------------
 //
-// Off unless the build asks for it (-DAUDIOIF_PUMP_LOCK_LEDGER=1). A lock that
+// Off unless the build asks for it (-DAUDIODSP_PUMP_LOCK_LEDGER=1). A lock that
 // never comes back is invisible from outside the process: the run stops
 // printing and that is all anybody learns. This thread watches the lock's
 // take/give counters, and when nothing has moved for a few seconds it says who
@@ -513,7 +513,7 @@ static void *audiopump_trampoline(void *arg) {
 // and -- the question "one core is busy" really asks -- which thread has been
 // burning CPU while nothing happened. Then it takes the process down, so a
 // campaign of runs does not need a timeout per run to make progress.
-#if AUDIOIF_PUMP_LOCK_LEDGER && AUDIOIF_DRV_WIN
+#if AUDIODSP_PUMP_LOCK_LEDGER && AUDIOIF_DRV_WIN
 
 #include <stdio.h>
 
@@ -546,16 +546,16 @@ static const char *audiopump_wd_site(uint8_t site) {
 
 static const char *audiopump_wd_phase(uint32_t phase) {
     switch (phase) {
-        case AUDIOIF_PUMP_PHASE_TOP: return "top";
-        case AUDIOIF_PUMP_PHASE_RING_WAIT: return "ring-wait";
-        case AUDIOIF_PUMP_PHASE_PARK: return "park";
-        case AUDIOIF_PUMP_PHASE_LOCK: return "lock-acquire";
-        case AUDIOIF_PUMP_PHASE_PULL: return "pull";
-        case AUDIOIF_PUMP_PHASE_DIGEST: return "digest";
-        case AUDIOIF_PUMP_PHASE_SINK: return "sink";
-        case AUDIOIF_PUMP_PHASE_PACE: return "pace";
-        case AUDIOIF_PUMP_PHASE_RESET: return "reset";
-        case AUDIOIF_PUMP_PHASE_END: return "end";
+        case AUDIODSP_PUMP_PHASE_TOP: return "top";
+        case AUDIODSP_PUMP_PHASE_RING_WAIT: return "ring-wait";
+        case AUDIODSP_PUMP_PHASE_PARK: return "park";
+        case AUDIODSP_PUMP_PHASE_LOCK: return "lock-acquire";
+        case AUDIODSP_PUMP_PHASE_PULL: return "pull";
+        case AUDIODSP_PUMP_PHASE_DIGEST: return "digest";
+        case AUDIODSP_PUMP_PHASE_SINK: return "sink";
+        case AUDIODSP_PUMP_PHASE_PACE: return "pace";
+        case AUDIODSP_PUMP_PHASE_RESET: return "reset";
+        case AUDIODSP_PUMP_PHASE_END: return "end";
         default: return "idle";
     }
 }
@@ -610,8 +610,8 @@ static void audiopump_wd_where(const char *who, HANDLE thread) {
 
 static void audiopump_wd_dump(const char *why, uint64_t main_us,
     uint64_t pump_us) {
-    audioif_pump_lock_ledger_t led;
-    audioif_pump_lock_ledger_read(&led);
+    audiodsp_pump_lock_ledger_t led;
+    audiodsp_pump_lock_ledger_read(&led);
     // Unbuffered from here: everything below is being printed because the
     // process is about to be taken down, and a buffered dump is no dump.
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -658,10 +658,10 @@ static void audiopump_wd_dump(const char *why, uint64_t main_us,
         (unsigned long long)audiopump_c_status(24));  // STATUS_FAULT
     audiopump_wd_where("main", audiopump_wd_main);
     audiopump_wd_where("pump", audiopump_thread);
-    const uint32_t n = AUDIOIF_PUMP_LOCK_LEDGER_SLOTS;
+    const uint32_t n = AUDIODSP_PUMP_LOCK_LEDGER_SLOTS;
     const uint32_t start = led.next > n ? led.next - n : 0;
     for (uint32_t i = start; i < led.next; i++) {
-        const audioif_pump_lock_event_t *e = &led.events[i % n];
+        const audiodsp_pump_lock_event_t *e = &led.events[i % n];
         static const char *what[] = { "want", "got ", "gave" };
         fprintf(stderr, "  %10llu us tid=%-6lu %s %s depth=%-4d waiters=%-3d "
             "from +0x%llx\n",
@@ -676,15 +676,15 @@ static void audiopump_wd_dump(const char *why, uint64_t main_us,
 
 static unsigned __stdcall audiopump_wd_loop(void *arg) {
     (void)arg;
-    audioif_pump_lock_ledger_t led;
-    audioif_pump_lock_ledger_read(&led);
+    audiodsp_pump_lock_ledger_t led;
+    audiodsp_pump_lock_ledger_read(&led);
     uint64_t last = led.takes + led.gives;
     uint64_t last_main = audiopump_wd_cpu_us(audiopump_wd_main);
     uint64_t last_pump = audiopump_wd_cpu_us(audiopump_thread);
     unsigned still = 0;
     while (!audiopump_wd_quit) {
         Sleep(200);
-        audioif_pump_lock_ledger_read(&led);
+        audiodsp_pump_lock_ledger_read(&led);
         // TWO stalls, and only the second one is the interesting one. A lock
         // whose counters have stopped is a lock nobody is using; a lock whose
         // counters are RACING while one thread has been queued behind them for
@@ -760,7 +760,7 @@ static void audiopump_wd_stop(void) {
 #endif
 
 static bool audiopump_thread_start(void (*entry)(void *), void *arg,
-    const audioif_port_thread_cfg_t *cfg, int *where) {
+    const audiodsp_port_thread_cfg_t *cfg, int *where) {
     audiopump_entry_fn = entry;
     audiopump_entry_arg = arg;
     #if AUDIOIF_DRV_ESP
@@ -1053,7 +1053,7 @@ static void audiopump_driver_teardown(void) {
 
 // --- the table, and the binding -------------------------------------------
 
-static const audioif_port_ops_t audiopump_driver_ops = {
+static const audiodsp_port_ops_t audiopump_driver_ops = {
     .name = AUDIOIF_DRV_NAME,
     .lock_take = audiopump_lock_take,
     .lock_give = audiopump_lock_give,
@@ -1082,7 +1082,7 @@ static const audioif_port_ops_t audiopump_driver_ops = {
 // The override. Strong here, weak in the engine; and this definition sits in
 // the same object as _audioif_module below, which the firmware's module table
 // always references, so no archive can leave it out.
-const audioif_port_ops_t *audioif_port_driver(void) {
+const audiodsp_port_ops_t *audiodsp_port_driver(void) {
     return &audiopump_driver_ops;
 }
 
