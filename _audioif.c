@@ -1578,18 +1578,30 @@ static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_driver_name_obj,
 // esp32 port's own `_thread` lock is a binary semaphore, which has no owner at
 // all and would answer a different question convincingly.
 //
-// Returns (held_by_other, free_for_all): 1 where the give was ACCEPTED, 0
-// where FreeRTOS refused it. Two zeros means the boards were never exposed.
+// Returns (held_by_other, free_for_all, owner_control): 1 where the give was
+// ACCEPTED, 0 where FreeRTOS refused it. The third is a control that MUST
+// read 1 -- a task giving back a mutex it took itself -- because 0 is what
+// the FreeRTOS source predicts for the first two, so a probe that never ran
+// would agree with the expected answer perfectly.
 
 #if AUDIOIF_DRV_ESP
 
 typedef struct {
     SemaphoreHandle_t done;
     volatile int result;
+    bool take_first;
 } audiopump_lock_probe_t;
 
 static void audiopump_lock_probe_task(void *arg) {
     audiopump_lock_probe_t *ctx = (audiopump_lock_probe_t *)arg;
+    // The CONTROL leg: this task takes the mutex itself, so the give that
+    // follows is an owner's and MUST be accepted. Without it a probe that
+    // never ran, or one whose give was broken for some unrelated reason,
+    // returns the same zeros as the real answer -- and zero is the answer
+    // the FreeRTOS source predicts, so the two would be indistinguishable.
+    if (ctx->take_first) {
+        xSemaphoreTakeRecursive(audiopump_mutex, portMAX_DELAY);
+    }
     // xQueueGiveMutexRecursive compares the holder against the CURRENT task
     // and returns pdFAIL without asserting when they differ, so this is safe
     // to run: it is a question, not a corruption.
@@ -1598,8 +1610,8 @@ static void audiopump_lock_probe_task(void *arg) {
     vTaskDelete(NULL);
 }
 
-static int audiopump_lock_probe_once(void) {
-    audiopump_lock_probe_t ctx = { NULL, -1 };
+static int audiopump_lock_probe_once_take(bool take_first) {
+    audiopump_lock_probe_t ctx = { NULL, -1, take_first };
     ctx.done = xSemaphoreCreateBinary();
     if (ctx.done == NULL) {
         return -1;
@@ -1615,6 +1627,10 @@ static int audiopump_lock_probe_once(void) {
     return ctx.result;
 }
 
+static int audiopump_lock_probe_once(void) {
+    return audiopump_lock_probe_once_take(false);
+}
+
 static mp_obj_t audiopump_lock_probe(void) {
     audiopump_lock_ensure();
     if (audiopump_mutex == NULL) {
@@ -1628,11 +1644,16 @@ static mp_obj_t audiopump_lock_probe(void) {
     //    shape audiodsp#107's nodes were actually in -- a release with no
     //    take anywhere, not a release of somebody else's take.
     const int freed = audiopump_lock_probe_once();
-    mp_obj_t items[2] = {
+    // 3. The control, which must come back 1: a task that TOOK the mutex
+    //    gives it back. A probe that cannot produce a 1 has not been shown
+    //    to be able to answer anything, and 0 is what the source predicts.
+    const int owner = audiopump_lock_probe_once_take(true);
+    mp_obj_t items[3] = {
         MP_OBJ_NEW_SMALL_INT(held),
         MP_OBJ_NEW_SMALL_INT(freed),
+        MP_OBJ_NEW_SMALL_INT(owner),
     };
-    return mp_obj_new_tuple(2, items);
+    return mp_obj_new_tuple(3, items);
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_lock_probe_obj,
     audiopump_lock_probe);
