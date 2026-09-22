@@ -1662,6 +1662,104 @@ static mp_obj_t audiopump_driver_name(void) {
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_driver_name_obj,
     audiopump_driver_name);
 
+// --- lock_probe: does FreeRTOS refuse a non-owner's give? -------------------
+//
+// audiodsp#107 fixed two nodes that released the pump lock without ever
+// having taken it. On Windows that corrupted the CRITICAL_SECTION; glibc
+// refuses a non-owner's unlock with EPERM, which was measured. That FreeRTOS
+// refuses it too -- which is why neither ESP32 board ever showed the defect --
+// was read out of its source and never run (audiodsp#117).
+//
+// This runs it. The interpreter takes the real pump mutex, a second task
+// tries to give it, and the BaseType_t that comes back is the answer. It is a
+// diagnostic and nothing in the audio path calls it; it is here rather than in
+// a test script because the mutex is a static in this file and the question is
+// about a task that is not the owner, which Python cannot arrange -- the
+// esp32 port's own `_thread` lock is a binary semaphore, which has no owner at
+// all and would answer a different question convincingly.
+//
+// Returns (held_by_other, free_for_all, owner_control): 1 where the give was
+// ACCEPTED, 0 where FreeRTOS refused it. The third is a control that MUST
+// read 1 -- a task giving back a mutex it took itself -- because 0 is what
+// the FreeRTOS source predicts for the first two, so a probe that never ran
+// would agree with the expected answer perfectly.
+
+#if AUDIOIF_DRV_ESP
+
+typedef struct {
+    SemaphoreHandle_t done;
+    volatile int result;
+    bool take_first;
+} audiopump_lock_probe_t;
+
+static void audiopump_lock_probe_task(void *arg) {
+    audiopump_lock_probe_t *ctx = (audiopump_lock_probe_t *)arg;
+    // The CONTROL leg: this task takes the mutex itself, so the give that
+    // follows is an owner's and MUST be accepted. Without it a probe that
+    // never ran, or one whose give was broken for some unrelated reason,
+    // returns the same zeros as the real answer -- and zero is the answer
+    // the FreeRTOS source predicts, so the two would be indistinguishable.
+    if (ctx->take_first) {
+        xSemaphoreTakeRecursive(audiopump_mutex, portMAX_DELAY);
+    }
+    // xQueueGiveMutexRecursive compares the holder against the CURRENT task
+    // and returns pdFAIL without asserting when they differ, so this is safe
+    // to run: it is a question, not a corruption.
+    ctx->result = (xSemaphoreGiveRecursive(audiopump_mutex) == pdTRUE) ? 1 : 0;
+    xSemaphoreGive(ctx->done);
+    vTaskDelete(NULL);
+}
+
+static int audiopump_lock_probe_once_take(bool take_first) {
+    audiopump_lock_probe_t ctx = { NULL, -1, take_first };
+    ctx.done = xSemaphoreCreateBinary();
+    if (ctx.done == NULL) {
+        return -1;
+    }
+    TaskHandle_t task = NULL;
+    if (xTaskCreate(audiopump_lock_probe_task, "lockprobe", 3072, &ctx, 5,
+            &task) != pdPASS) {
+        vSemaphoreDelete(ctx.done);
+        return -1;
+    }
+    xSemaphoreTake(ctx.done, pdMS_TO_TICKS(2000));
+    vSemaphoreDelete(ctx.done);
+    return ctx.result;
+}
+
+static int audiopump_lock_probe_once(void) {
+    return audiopump_lock_probe_once_take(false);
+}
+
+static mp_obj_t audiopump_lock_probe(void) {
+    audiopump_lock_ensure();
+    if (audiopump_mutex == NULL) {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("no mutex"));
+    }
+    // 1. The interpreter holds it; another task tries to give it.
+    xSemaphoreTakeRecursive(audiopump_mutex, portMAX_DELAY);
+    const int held = audiopump_lock_probe_once();
+    xSemaphoreGiveRecursive(audiopump_mutex);
+    // 2. Nobody holds it; another task tries to give it anyway. This is the
+    //    shape audiodsp#107's nodes were actually in -- a release with no
+    //    take anywhere, not a release of somebody else's take.
+    const int freed = audiopump_lock_probe_once();
+    // 3. The control, which must come back 1: a task that TOOK the mutex
+    //    gives it back. A probe that cannot produce a 1 has not been shown
+    //    to be able to answer anything, and 0 is what the source predicts.
+    const int owner = audiopump_lock_probe_once_take(true);
+    mp_obj_t items[3] = {
+        MP_OBJ_NEW_SMALL_INT(held),
+        MP_OBJ_NEW_SMALL_INT(freed),
+        MP_OBJ_NEW_SMALL_INT(owner),
+    };
+    return mp_obj_new_tuple(3, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_lock_probe_obj,
+    audiopump_lock_probe);
+
+#endif
+
 static const mp_rom_map_elem_t audioif_driver_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__audioif) },
     // What this driver says it is. audiopump.driver() asks the ENGINE the same
@@ -1681,6 +1779,8 @@ static const mp_rom_map_elem_t audioif_driver_globals_table[] = {
       MP_ROM_PTR(&audiopump_i2s_starved_bytes_obj) },
     { MP_ROM_QSTR(MP_QSTR_Input), MP_ROM_PTR(&audiopump_input_type) },
     { MP_ROM_QSTR(MP_QSTR_rt_probe), MP_ROM_PTR(&audiopump_rt_probe_obj) },
+    { MP_ROM_QSTR(MP_QSTR_lock_probe),
+      MP_ROM_PTR(&audiopump_lock_probe_obj) },
     #endif
 };
 static MP_DEFINE_CONST_DICT(audioif_driver_globals,
