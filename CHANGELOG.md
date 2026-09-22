@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+- **`audiobusio.I2SOut.starved()` reports silence on the wire, in bytes.** It
+  used to return the engine's sink-refusal count, which needs the pump running
+  and the DMA full -- the one case that is not an underrun -- so it read 0
+  through a stall that plainly starved the wire, on both chips. It now reports
+  audio that should have played and did not, taking whichever of two witnesses
+  is further on: the DMA's own byte count, which is right when the ring runs
+  dry and `auto_clear` clocks zeros, and the wall clock, which is right when
+  the DMA itself stops -- which is what a flash erase does on the ESP32-S3,
+  measured at 1.14 seconds of audio lost from one 32 kB write with the pump
+  sitting level with the DMA throughout. Neither witness alone sees both. The
+  old number keeps its meaning under its real name, `sink_timeouts()`, and
+  `_audioif` gains `i2s_sink_bytes()` and `i2s_starved_bytes()` so the
+  subtraction is checkable from Python. Silence that was asked for -- a
+  stopped or paused output -- is not charged: the count restarts wherever
+  feeding legitimately begins, and arms for one ring period so the wait for
+  the pump's first block reads as the latency it is.
+  ([#8](https://github.com/PyDevices/audioif/issues/8))
+
 ## v0.1.0 (2026-09-21)
 
 - **This repository is `audioif`**, the audio hardware layer, and public. It was

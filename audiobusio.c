@@ -698,6 +698,11 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
 
     audiosample_reset_buffer(sample, false, 0);
     self->loop = args[ARG_loop].u_bool;
+    // `starved()` counts THIS performance. Whatever the channel clocked while
+    // nothing was playing -- between a stop and this play, most of all --
+    // is silence somebody asked for, and charging it here would make the
+    // number grow with how long the board sat idle.
+    audiopump_i2s_starved_reset();
     if (direct) {
         self->sample = sample;
         audiobusio_start_direct(self, sample, self->loop);
@@ -860,6 +865,10 @@ static mp_obj_t audiobusio_i2sout_resume(mp_obj_t self_in) {
     audiobusio_check(self);
     if (self->paused) {
         self->paused = false;
+        // A pause clocks zeros deliberately, so the gap it opened between
+        // what the DMA sent and what we fed it is not an underrun. Level up
+        // before the pump comes back to the sink and charges it as one.
+        audiopump_i2s_starved_reset();
         audiopump_c_unpark();
     }
     return mp_const_none;
@@ -881,14 +890,44 @@ MP_PROPERTY_GETTER(audiobusio_i2sout_paused_obj,
 // A player that wants to know whether a block was ever late has nowhere else
 // to look, and printing the whole status bytearray is what every probe in
 // this spike had to do before.
+//
+// **Bytes of silence.** This used to return the engine's SINK_TIMEOUTS --
+// how many times the sink refused a block -- and that number had never been
+// seen to move, on either chip, including through a stall that plainly
+// starved the wire: 32 kB written to flash while a 48 kHz loop played, the
+// two-second leg taking 7.3 s and clocking 40 283 frames a second instead of
+// 47 928, and `starved()` reading 0 before and 0 after (audioif#8). It could
+// not have read anything else. A refusal needs the pump running and the DMA
+// full, which is the one situation that is NOT an underrun.
+//
+// It now reports audio that should have played and did not, in bytes --
+// divide by the frame size and the rate for milliseconds. `_audioif` takes
+// two witnesses to get it, because on this board neither the DMA's position
+// nor the wall clock sees both ways the wire goes quiet; the measurement that
+// settles it is written down on `audiopump_i2s_starved()`.
+//
+// `sink_timeouts()` below keeps the old number under its real name, because
+// it is not worthless -- it says the pump produced a block the DMA had no
+// room for, which is the opposite failure and worth telling apart.
 static mp_obj_t audiobusio_i2sout_starved(mp_obj_t self_in) {
+    audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
+    audiobusio_check(self);
+    return mp_obj_new_int_from_ull(audiopump_i2s_starved());
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_starved_obj,
+    audiobusio_i2sout_starved);
+
+// Blocks the sink refused: the pump had audio ready and the DMA had no room
+// for it. The opposite of `starved()` and a different fault -- this one means
+// the pump is ahead, that one means the wire ran dry.
+static mp_obj_t audiobusio_i2sout_sink_timeouts(mp_obj_t self_in) {
     audiobusio_i2sout_obj_t *self = MP_OBJ_TO_PTR(self_in);
     audiobusio_check(self);
     return mp_obj_new_int_from_ull(
         audiopump_c_status(AUDIOPUMP_STATUS_SINK_TIMEOUTS));
 }
-static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_starved_obj,
-    audiobusio_i2sout_starved);
+static MP_DEFINE_CONST_FUN_OBJ_1(audiobusio_i2sout_sink_timeouts_obj,
+    audiobusio_i2sout_sink_timeouts);
 
 static const mp_rom_map_elem_t audiobusio_i2sout_locals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___del__), MP_ROM_PTR(&audiobusio_i2sout_deinit_obj) },
@@ -904,6 +943,8 @@ static const mp_rom_map_elem_t audiobusio_i2sout_locals_table[] = {
     { MP_ROM_QSTR(MP_QSTR_playing), MP_ROM_PTR(&audiobusio_i2sout_playing_obj) },
     { MP_ROM_QSTR(MP_QSTR_paused), MP_ROM_PTR(&audiobusio_i2sout_paused_obj) },
     { MP_ROM_QSTR(MP_QSTR_starved), MP_ROM_PTR(&audiobusio_i2sout_starved_obj) },
+    { MP_ROM_QSTR(MP_QSTR_sink_timeouts),
+      MP_ROM_PTR(&audiobusio_i2sout_sink_timeouts_obj) },
     { MP_ROM_QSTR(MP_QSTR_status), MP_ROM_PTR(&audiobusio_i2sout_status_obj) },
 };
 static MP_DEFINE_CONST_DICT(audiobusio_i2sout_locals,
