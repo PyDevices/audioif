@@ -37,6 +37,7 @@
 #include "py/mperrno.h"
 #include "py/mphal.h"
 #include "py/obj.h"
+#include "py/objstr.h"
 #include "py/runtime.h"
 
 #include "audiocore/__init__.h"
@@ -1760,8 +1761,18 @@ static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_lock_probe_obj,
 
 #endif
 
+
+// _audioif.__revision__: which audioif this firmware was built from. The build
+// passes AUDIOIF_REVISION (git describe) as a compile definition; a build with no
+// git says "unknown" rather than guessing.
+#ifndef AUDIOIF_REVISION
+#define AUDIOIF_REVISION "unknown"
+#endif
+static const MP_DEFINE_STR_OBJ(_audioif_revision_obj, AUDIOIF_REVISION);
+
 static const mp_rom_map_elem_t audioif_driver_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__audioif) },
+    { MP_ROM_QSTR(MP_QSTR___revision__), MP_ROM_PTR(&_audioif_revision_obj) },
     // What this driver says it is. audiopump.driver() asks the ENGINE the same
     // question, through the binding; the two agreeing is the proof the
     // binding took.

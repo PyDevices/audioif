@@ -56,3 +56,16 @@ target_include_directories(usermod_audiopump INTERFACE
 target_compile_definitions(usermod_audiopump INTERFACE AUDIOIF_DRIVER_ESP32=1)
 
 target_link_libraries(usermod INTERFACE usermod_audiopump)
+
+# --- which audioif this firmware was built from ----------------------
+# Computed at build time from this repo's own git, never stored; "unknown" when
+# there is no git (a tarball). Read on a target as <module>.__revision__.
+execute_process(
+    COMMAND git -C ${AUDIOPUMP_MOD_DIR} describe --always --dirty --abbrev=7
+    OUTPUT_VARIABLE AUDIOIF_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+if(NOT AUDIOIF_REVISION)
+    set(AUDIOIF_REVISION "unknown")
+endif()
+target_compile_definitions(usermod_audiopump INTERFACE AUDIOIF_REVISION=\"${AUDIOIF_REVISION}\")
