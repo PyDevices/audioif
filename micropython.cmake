@@ -10,6 +10,16 @@
 
 set(AUDIOPUMP_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 
+# esp32 is the only CMake port this driver has: _audioif.c includes ESP-IDF's
+# driver/i2s_std.h, and cmods links every usermod it finds into every build.
+# Without this guard an rp2 (or any non-IDF CMake) build fails at the last
+# file with "driver/i2s_std.h: No such file" whether or not it wanted the
+# pump (#15). cameraif carries the same guard for the same reason.
+if(NOT ESP_PLATFORM)
+    message(STATUS "audioif: skipped -- the platform driver is esp32-only on CMake ports")
+    return()
+endif()
+
 if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
     if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audiodsp/src/shared/audiodsp_port.h)
         set(AUDIOPUMP_AUDIODSP_DIR ${AUDIOPUMP_MOD_DIR}/../audiodsp)
