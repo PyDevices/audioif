@@ -29,11 +29,14 @@ jobs:
         with:
           path: audioif
 
-      # The engine half. `main` until the live-audio-path line merges; the
-      # driver cannot be built against an audiodsp that predates it.
+      # The engine half, at a release tag rather than its default branch, so a
+      # change on audiodsp's main cannot redden this repository's (#6). v0.5.1
+      # is the first release carrying the pump; move the ref when the driver
+      # needs something newer from the engine.
       - uses: actions/checkout@v7
         with:
           repository: PyDevices/audiodsp
+          ref: v0.5.1
           path: audiodsp
 
       - name: Fetch audiodsp's pinned dependencies
