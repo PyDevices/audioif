@@ -3,13 +3,13 @@
 # every planted fault first, so a probe whose failing mode is never exercised
 # is not mistaken for a gate.
 #
-#   tests/run_probes.sh                      # ../cmods/bin/micropython
-#   tests/run_probes.sh ../cmods/bin/micropython.exe
+#   tests/run_probes.sh                      # ../bin/micropython (the workspace anchor's)
+#   tests/run_probes.sh ../bin/micropython.exe
 #   tests/run_probes.sh <interpreter> <scratch-dir>
 #
 # Unlike the workflow beside it, which builds an interpreter from scratch and
 # therefore knows exactly what is in it, this runs whatever binary you point
-# it at -- and a `cmods/bin/` binary is built by hand and goes stale silently.
+# it at -- and a `bin/` binary is built by hand and goes stale silently.
 # On 2026-09-03 that cost a week of green gates in this workspace: a binary
 # built thirteen minutes before a C change certified that change for a week
 # (cmods#27). So the first thing here is a refusal, not a probe: the binary's
@@ -20,19 +20,19 @@
 # is about code you are not looking at.
 #
 # AUDIOIF_SKIP_PROVENANCE=1 skips the check. It is for a checkout with no
-# cmods beside it, not for a run that would rather not know.
+# the workspace beside it, not for a run that would rather not know.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo=$(cd "$here/.." && pwd)
 workspace=$(cd "$repo/.." && pwd)
 
-mp=${1:-$workspace/cmods/bin/micropython}
+mp=${1:-$workspace/bin/micropython}
 tmp=${2:-${TMPDIR:-/tmp}}
 
 [[ -x "$mp" ]] || { echo "no interpreter at $mp" >&2; exit 1; }
 
-provenance="$workspace/cmods/scripts/provenance.py"
+provenance="$workspace/tools/provenance.py"
 if [[ "${AUDIOIF_SKIP_PROVENANCE:-0}" == 1 ]]; then
     echo "provenance: skipped by the environment -- this binary may contain any audioif"
 elif [[ ! -f "$provenance" ]]; then
@@ -45,7 +45,7 @@ elif ! python3 "$provenance" check "$mp" --source audioif; then
     echo >&2
     echo "error: $mp does not contain this repository's HEAD, so its probes" >&2
     echo "  would certify a driver that is not the one on disk." >&2
-    echo "  Rebuild it:  cd $workspace/cmods && ./build_interpreters.sh --only mp-unix" >&2
+    echo "  Rebuild it:  $workspace/tools/build_interpreters.sh --only mp-unix" >&2
     exit 1
 fi
 echo

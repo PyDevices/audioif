@@ -181,16 +181,20 @@ ports, `AUDIOPUMP_AUDIODSP_DIR` for CMake ports, each defaulting to a sibling
 checkout.
 
 Clone it beside [audiodsp](https://github.com/PyDevices/audiodsp); both build
-files find the engine's headers at `../audiodsp`. In a
-[cmods](https://github.com/PyDevices/cmods) workspace that is two links, and
-every port's build picks both up:
+files find the engine's headers at `../audiodsp`. A manifest that includes
+both repositories' `manifest.py` (each carries `c_module(".")`) builds both;
+[micropython-pydevices](https://github.com/PyDevices/micropython-pydevices)
+keeps that preset as `manifests/audio.py`, with the boards, so from a
+MicroPython checkout beside the repositories it is upstream's own make:
 
 ```bash
-cd cmods
-ln -s ../audiodsp audiodsp
-ln -s ../audioif  audioif
-./build_mp.sh --port unix
-./build_mp.sh --port esp32 --board ESP32_GENERIC_P4 --variant PRE_REV3_C6_WIFI
+cd micropython/ports/unix
+make VARIANT_DIR=../../../micropython-pydevices/variants/unix/pydevices \
+     FROZEN_MANIFEST=../../../micropython-pydevices/manifests/audio.py
+cd ../esp32   # after `source ../../../esp-idf/export.sh`
+make BOARD_DIR=../../../micropython-pydevices/boards/esp32/WAVESHARE_ESP32_P4_PANEL \
+     BOARD_VARIANT=PRE_REV3_C6_WIFI \
+     FROZEN_MANIFEST=../../../micropython-pydevices/manifests/audio.py
 ```
 
 Without this repository the firmware still builds and still plays: the engine's
