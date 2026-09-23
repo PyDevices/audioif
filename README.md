@@ -8,6 +8,9 @@ mutex is, where the clock comes from and where the audio goes. It sits beside
 [`usbif`](https://github.com/PyDevices/usbif), and under `audiodev` in
 [pydevices](https://github.com/PyDevices/pydevices).
 
+New here? Read the [newcomer's guide](docs/newcomers.md) for the portable
+pump-to-driver boundary, normal I2S API, and firmware integration map.
+
 The portable half — the pull loop, `service()`, the push ring, the event queue,
 the tap, the status words, the fault register, `retarget`/`park` and the
 finaliser guard — is the `audiopump` module in
