@@ -42,7 +42,7 @@ The portable engine belongs in [audiodsp](https://github.com/PyDevices/audiodsp)
 | `audiopump_i2s.h` | I2S driver interface shared by native pieces. |
 | `micropython.mk`, `micropython.cmake` | Make/CMake user-module integration. |
 | `manifest.py` | Native module declaration for combined manifests. |
-| `tests/` | Driver, bus, sink, latency, and stall probes. |
+| `tests/` | Desktop probes (`run_probes.sh`) plus S3 drift and stall witnesses. |
 
 ## Building and target boundaries
 
