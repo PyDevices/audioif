@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.1 (2026-09-24)
 
 - **`audiobusio.I2SOut.starved()` reports silence on the wire, in bytes.** It
   used to return the engine's sink-refusal count, which needs the pump running
@@ -19,6 +19,24 @@
   feeding legitimately begins, and arms for one ring period so the wait for
   the pump's first block reads as the latency it is.
   ([#8](https://github.com/PyDevices/audioif/issues/8))
+- **`_audioif.lock_probe()`** asks FreeRTOS whether it refuses a give of the
+  pump mutex from a task that does not own it, and one with nobody holding it.
+  ESP32 only; nothing in the audio path calls it.
+  ([#14](https://github.com/PyDevices/audioif/pull/14))
+- **`__revision__`** says which audioif a firmware was built from: a
+  `git describe` of this repository, or `unknown` without git.
+  ([#17](https://github.com/PyDevices/audioif/pull/17))
+- **One `include()` line adds this module to your own MicroPython 1.29 build.**
+  `manifest.py` names the C module with `c_module()`, and the README shows the
+  line. ([#19](https://github.com/PyDevices/audioif/pull/19))
+- `micropython.cmake` skips the driver on CMake ports other than esp32, so an
+  rp2 build that includes it no longer fails on ESP-IDF's I2S header.
+  ([#15](https://github.com/PyDevices/audioif/issues/15))
+- `tests/run_probes.sh` runs CI's probes against a desktop interpreter, and
+  refuses one that was not built from this checkout's HEAD. CI builds against
+  audiodsp v0.5.1 rather than its default branch.
+  ([#6](https://github.com/PyDevices/audioif/issues/6))
+- A newcomer's guide in `docs/newcomers.md`.
 
 ## v0.1.0 (2026-09-21)
 
