@@ -178,16 +178,44 @@ thread exists in that interpreter.
 
 ## Building it into a firmware
 
-It is a user C module beside the engine. Both have to be on `USER_C_MODULES`,
-and the driver finds the engine's headers itself: `AUDIODSP_DIR` for Make
-ports, `AUDIOPUMP_AUDIODSP_DIR` for CMake ports, each defaulting to a sibling
-checkout.
+It is a user C module that sits beside the engine, so a firmware that has it
+also has [audiodsp](https://github.com/PyDevices/audiodsp). On MicroPython 1.29
+or later, clone the two side by side and include both manifests in the
+manifest your build already uses:
 
-Clone it beside [audiodsp](https://github.com/PyDevices/audiodsp); both build
-files find the engine's headers at `../audiodsp`. A manifest that includes
-both repositories' `manifest.py` (each carries `c_module(".")`) builds both;
+```python
+include("/path/to/audiodsp/manifest.py")
+include("/path/to/audioif/manifest.py")
+```
+
+On unix that manifest is `ports/unix/variants/standard/manifest.py`; on esp32
+it is usually `ports/esp32/boards/manifest.py`, unless your board brings its
+own. Build as usual. audiodsp's README says how to fetch its `ulab` and `mp3`
+dependencies first. This repository's manifest freezes no Python; it only names
+the C module, which gives you `audiobusio` and `_audioif`. The driver finds the
+engine's headers at `../audiodsp`; keep the sibling layout, because on esp32 a
+build that cannot see audiodsp skips this module with only a CMake status line
+to say so. Tested on the unix port against MicroPython v1.29.0, where
+`audiopump.driver()` answers `'pthread'`.
+
+The platform driver is unix, Windows and esp32. Any other CMake port (rp2, say)
+skips it by design.
+
+If you would rather not edit the MicroPython tree, write a manifest of your own
+and pass it as `FROZEN_MANIFEST=`. That replaces the port's default, so include
+the default too (`include("$(PORT_DIR)/variants/standard/manifest.py")` on
+unix, `include("$(PORT_DIR)/boards/manifest.py")` on esp32) or you lose
+`asyncio` and the port's other frozen modules.
+
+**Older than 1.29?** Manifests there have no `c_module()`; use
+`USER_C_MODULES` with both repositories. On esp32 that is
+`USER_C_MODULES="/path/to/audiodsp;/path/to/audioif"`. On a Make port it is
+the directory that contains both, which builds every module in it.
+`AUDIODSP_DIR` (Make) and `AUDIOPUMP_AUDIODSP_DIR` (CMake) override where the
+headers are looked for.
+
 [micropython-pydevices](https://github.com/PyDevices/micropython-pydevices)
-keeps that preset as `manifests/audio.py`, with the boards, so from a
+keeps this pairing as `manifests/audio.py`, with the boards, so from a
 MicroPython checkout beside the repositories it is upstream's own make:
 
 ```bash
