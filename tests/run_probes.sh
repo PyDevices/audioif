@@ -11,8 +11,8 @@
 # therefore knows exactly what is in it, this runs whatever binary you point
 # it at -- and a `bin/` binary is built by hand and goes stale silently.
 # On 2026-09-03 that cost a week of green gates in this workspace: a binary
-# built thirteen minutes before a C change certified that change for a week
-# (cmods#27). So the first thing here is a refusal, not a probe: the binary's
+# built thirteen minutes before a C change certified that change for a week.
+# So the first thing here is a refusal, not a probe: the binary's
 # provenance stamp has to name THIS repository's HEAD, or nothing runs.
 #
 # A stale binary is not a smaller version of a current one. It is a different
