@@ -5,13 +5,12 @@
 # and the lock all live in audiodsp and are built by audiodsp's own glue. This
 # builds the one file that knows what a thread, a mutex, a clock and a sink
 # are. AUDIOPUMP_AUDIODSP_DIR points at the audiodsp checkout; the default
-# assumes the usual workspace layout (this repo and audiodsp as siblings, or
-# both symlinked into cmods).
+# assumes this repo and audiodsp are checked out as siblings.
 
 set(AUDIOPUMP_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 
 # esp32 is the only CMake port this driver has: _audioif.c includes ESP-IDF's
-# driver/i2s_std.h, and cmods links every usermod it finds into every build.
+# driver/i2s_std.h, and a multi-module build links every usermod into every port.
 # Without this guard an rp2 (or any non-IDF CMake) build fails at the last
 # file with "driver/i2s_std.h: No such file" whether or not it wanted the
 # pump (#15). cameraif carries the same guard for the same reason.
