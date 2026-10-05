@@ -214,18 +214,13 @@ the directory that contains both, which builds every module in it.
 `AUDIODSP_DIR` (Make) and `AUDIOPUMP_AUDIODSP_DIR` (CMake) override where the
 headers are looked for.
 
-[micropython-pydevices](https://github.com/PyDevices/micropython-pydevices)
-keeps this pairing as `manifests/audio.py`, with the boards, so from a
-MicroPython checkout beside the repositories it is upstream's own make:
+[micropython-pydevices](https://github.com/PyDevices/micropython-pydevices)'
+`build_mp.py` builds the pairing on any port, with upstream's own boards:
 
 ```bash
-cd micropython/ports/unix
-make VARIANT_DIR=../../../micropython-pydevices/variants/unix/pydevices \
-     FROZEN_MANIFEST=../../../micropython-pydevices/manifests/audio.py
-cd ../esp32   # after `source ../../../esp-idf/export.sh`
-make BOARD_DIR=../../../micropython-pydevices/boards/esp32/WAVESHARE_ESP32_P4_PANEL \
-     BOARD_VARIANT=PRE_REV3_C6_WIFI \
-     FROZEN_MANIFEST=../../../micropython-pydevices/manifests/audio.py
+micropython-pydevices/build_mp.py --port unix --variant pydevices --modules audiodsp,audioif
+micropython-pydevices/build_mp.py --port esp32 --board ESP32_GENERIC_P4 --variant C6_WIFI \
+    --flash 16MB --modules audiodsp,audioif
 ```
 
 Without this repository the firmware still builds and still plays: the engine's
