@@ -291,3 +291,5 @@ on **every** object that has one, reachable or not. So the engine allocates
 one `Guard` with a finaliser, roots it so an ordinary collection never touches
 it, and lets the soft reset finalise it — which reaches `teardown` here and
 closes the channel. No port patch, and Ctrl-D always leaves the board quiet.
+
+What's planned next is in [ROADMAP.md](ROADMAP.md).
