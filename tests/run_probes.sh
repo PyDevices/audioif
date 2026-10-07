@@ -3,7 +3,7 @@
 # every planted fault first, so a probe whose failing mode is never exercised
 # is not mistaken for a gate.
 #
-#   tests/run_probes.sh                      # ../bin/micropython (the workspace anchor's)
+#   tests/run_probes.sh                      # ../bin/micropython (beside the sibling checkouts)
 #   tests/run_probes.sh ../bin/micropython.exe
 #   tests/run_probes.sh <interpreter> <scratch-dir>
 #
