@@ -40,6 +40,37 @@ typedef struct {
     int in_mclk;
 } audiopump_i2s_cfg_t;
 
+// Who is holding the open channel. The output (`audiobusio.I2SOut`, or
+// `_audioif.i2s_start`) and the capture reader (`_audioif.rx_open`) each hold
+// it, and it closes when the last one lets go. That is what lets a board whose
+// speaker and microphone share one port record while it plays: both are the
+// two halves of ONE channel pair, opened once, on one clock.
+#define AUDIOPUMP_I2S_HOLD_OUT (1)
+#define AUDIOPUMP_I2S_HOLD_IN  (2)
+
+// One DMA descriptor, in frames, for a given rate: 5 ms, between 64 and 240.
+// The output and the capture reader both open the channel, so they must size
+// it the same way; the measurement above audiobusio_dma_frame in audiobusio.c
+// says why it is sized in time.
+static inline int audiopump_i2s_dma_frame(int rate) {
+    int frames = rate / 200;
+    if (frames < 64) {
+        frames = 64;
+    }
+    if (frames > 240) {
+        frames = 240;
+    }
+    return frames;
+}
+
+// True while the capture reader holds the channel. The output must not retune
+// it then: the microphone is clocked by the same BCLK, so a new rate would
+// change the recording's rate under it.
+bool audiopump_i2s_input_held(void);
+
+// The rate the open channel is clocked at, or 0 when nothing is open.
+uint32_t audiopump_i2s_live_rate(void);
+
 // True where this build has an I2S peripheral at all -- false on every
 // desktop port, which is how audiobusio decides what it is.
 bool audiopump_i2s_have(void);
@@ -47,12 +78,19 @@ bool audiopump_i2s_have(void);
 // True while a channel is open.
 bool audiopump_i2s_is_open(void);
 
-// Open TX (and RX when `din` >= 0) and enable the channel. Raises, so it
-// needs an nlr handler above it. Returns how many bytes the DMA holds when
-// full -- the block-to-wire latency floor.
+// Open TX (and RX when `din` >= 0) and enable the channel, for the OUTPUT.
+// Raises, so it needs an nlr handler above it. Returns how many bytes the DMA
+// holds when full -- the block-to-wire latency floor.
+//
+// If the capture reader already holds an open channel, the output joins it
+// instead, provided it is the same port, pins and rate; anything else raises,
+// because the only way to give the output what it asked for would be to
+// reopen the channel under a running recording.
 uint32_t audiopump_i2s_open(const audiopump_i2s_cfg_t *cfg);
 
-// Close it. Safe to call when nothing is open.
+// The output lets go. The channel closes unless the capture reader still
+// holds it, in which case TX goes on clocking zeros and RX keeps recording.
+// Safe to call when nothing is open.
 void audiopump_i2s_shutdown(void);
 
 // Silence on the wire since the count was armed: audio that should have

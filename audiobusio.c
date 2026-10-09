@@ -83,6 +83,8 @@ typedef struct _audiobusio_i2sout_obj_t {
     // buffer, allocated once per play(). See "the converted path" below.
     mp_obj_t conv_buf;
     uint32_t conv_len;
+    bool converting;          // the pump converts every block into conv_buf
+    uint8_t tail_channels;    // channel count of what the pump is pulling
     mp_obj_t ring;
     mp_obj_t ring_write;      // bound methods, resolved once: no allocation
     mp_obj_t ring_space;      // per fill, which happens a few hundred times a
@@ -184,14 +186,7 @@ static int audiobusio_pin_gpio(mp_obj_t pin_or_int, qstr what) {
 // Sized in time it is zero at every rate, and 48 kHz still lands on the 240
 // that is already proven.
 static int audiobusio_dma_frame(int rate) {
-    int frames = rate / 200;            // one descriptor, 5 ms
-    if (frames < 64) {
-        frames = 64;                    // a floor: tiny descriptors cost IRQs
-    }
-    if (frames > 240) {
-        frames = 240;
-    }
-    return frames;
+    return audiopump_i2s_dma_frame(rate);
 }
 
 static audiobusio_i2sout_obj_t *audiobusio_owner(void) {
@@ -205,6 +200,27 @@ static void audiobusio_check(audiobusio_i2sout_obj_t *self) {
             "Object has been deinitialized and can no longer be used. "
             "Create a new object."));
     }
+}
+
+// --- sharing the wire with a microphone ----------------------------------
+//
+// On a board whose codec and microphone sit on one I2S port, the output and
+// the recorder are the two halves of one channel pair and share its clocks.
+// Two things this output normally does to the channel would then change the
+// recording under the recorder, so it stops doing them:
+//
+// It no longer opens a MONO channel for a mono sample. A mono slot mode would
+// make the RX half mono too, so the channel stays stereo and a mono sample
+// goes the converted path instead, which copies it to both slots on the
+// pump's thread -- exactly what CircuitPython's output does with mono.
+//
+// And it does not retune the bus to a sample at another rate while the
+// recorder holds the channel: that would move the microphone's rate, and the
+// recording would carry on at the wrong speed with nothing to say so. It
+// raises instead, naming both rates. With no recorder open it retunes as
+// always, and the RX half follows.
+static bool audiobusio_stereo_locked(audiobusio_i2sout_obj_t *self) {
+    return self->wire.din >= 0 || audiopump_i2s_input_held();
 }
 
 // --- the feeder -----------------------------------------------------------
@@ -449,7 +465,8 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
     size_t n_args, size_t n_kw, const mp_obj_t *all_args) {
     enum { ARG_bit_clock, ARG_word_select, ARG_data, ARG_main_clock,
            ARG_left_justified, ARG_external_clock,
-           ARG_port, ARG_sample_rate, ARG_main_clock_fs, ARG_sink };
+           ARG_port, ARG_sample_rate, ARG_main_clock_fs, ARG_sink,
+           ARG_data_in };
     static const mp_arg_t allowed[] = {
         { MP_QSTR_bit_clock,      MP_ARG_OBJ | MP_ARG_REQUIRED,
           { .u_obj = MP_OBJ_NULL } },
@@ -483,6 +500,12 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
           { .u_int = 256 } },
         // Desktop only: the file the blocks are written to.
         { MP_QSTR_sink,           MP_ARG_OBJ | MP_ARG_KW_ONLY,
+          { .u_obj = mp_const_none } },
+        // The microphone's data pin, on a board whose codec and microphone
+        // share this output's clocks. The channel is then opened as a TX/RX
+        // pair, so `_audioif.rx_open()` can record while this plays; see
+        // "sharing the wire with a microphone" below.
+        { MP_QSTR_data_in,        MP_ARG_OBJ | MP_ARG_KW_ONLY,
           { .u_obj = mp_const_none } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
@@ -521,7 +544,8 @@ static mp_obj_t audiobusio_i2sout_make_new(const mp_obj_type_t *type,
     self->wire.mclk_fs = args[ARG_main_clock_fs].u_int;
     self->wire.dma_desc = 6;
     self->wire.dma_frame = audiobusio_dma_frame(self->wire.rate);
-    self->wire.din = -1;
+    self->wire.din = audiobusio_pin_gpio(args[ARG_data_in].u_obj,
+        MP_QSTR_data_in);
     self->wire.in_port = -1;
     self->wire.in_bclk = -1;
     self->wire.in_ws = -1;
@@ -598,7 +622,12 @@ static void audiobusio_start_converted(audiobusio_i2sout_obj_t *self,
     if (frames == 0) {
         mp_raise_ValueError(MP_ERROR_TEXT("sample has no frames"));
     }
-    const uint32_t need = frames * 4;      // stereo signed 16-bit
+    // Stereo signed 16-bit, and twice what this sample needs: a `retarget()`
+    // keeps the conversion, and the tail it swaps in -- a root Mixer that
+    // audiodev builds when a second client arrives -- is sized at twice its
+    // first voice's block. The scratch cannot be resized under a running
+    // pump, so it is sized for that here rather than refused there.
+    const uint32_t need = frames * 4 * 2;
     if (self->conv_buf == MP_OBJ_NULL || self->conv_len < need) {
         self->conv_buf = mp_obj_new_bytearray_by_ref(need,
             m_new0(uint8_t, need));
@@ -673,6 +702,15 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
     mp_obj_t sample = args[ARG_sample].u_obj;
     audiosample_base_t *base = audiosample_check(sample);   // raises TypeError
 
+    // Before anything stops: a refusal must leave what is playing playing.
+    if (audiopump_i2s_have() && audiopump_i2s_input_held()
+        && base->sample_rate != self->rate) {
+        mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT(
+            "a microphone is recording at %u Hz on this I2S channel; a "
+            "%u Hz sample would change its rate"),
+            (unsigned)self->rate, (unsigned)base->sample_rate);
+    }
+
     // CircuitPython stops whatever was playing. So do we, and the join is
     // what makes the pump free for the new graph.
     audiobusio_halt(self);
@@ -683,7 +721,8 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
     // moment -- the pump has been joined -- which is the only moment it is
     // safe to reopen. The slot count moves with it: a mono signed sample
     // opens a mono channel rather than being copied into a stereo one.
-    const bool direct = audiobusio_direct(sample, base);
+    const bool direct = audiobusio_direct(sample, base)
+        && !(audiobusio_stereo_locked(self) && base->channel_count != 2);
     const int want_channels = direct ? (int)base->channel_count : 2;
     if (audiopump_i2s_have()
         && (base->sample_rate != self->rate
@@ -703,13 +742,17 @@ static mp_obj_t audiobusio_i2sout_play(size_t n_args, const mp_obj_t *pos_args,
     // is silence somebody asked for, and charging it here would make the
     // number grow with how long the board sat idle.
     audiopump_i2s_starved_reset();
+    self->converting = false;
+    self->tail_channels = base->channel_count;
     if (direct) {
         self->sample = sample;
         audiobusio_start_direct(self, sample, self->loop);
     } else if (!audiobusio_file_backed(sample)) {
         audiobusio_start_converted(self, sample, self->loop, base);
+        self->converting = true;
     } else {
         audiobusio_start_fed(self, sample, self->loop, base);
+        self->tail_channels = 2;      // the pump pulls the stereo ring
     }
     self->playing = true;
     #if MICROPY_ENABLE_SCHEDULER
@@ -782,6 +825,20 @@ static mp_obj_t audiobusio_i2sout_retarget(size_t n_args,
     if (audiopump_i2s_have() && base->sample_rate != self->rate) {
         mp_raise_ValueError(MP_ERROR_TEXT(
             "retarget cannot retune the bus; call play() instead"));
+    }
+    // The pump writes what it pulls (or what it converts it to) straight into
+    // a channel whose slot count was set for the old tail. A tail with another
+    // channel count would play at twice or half speed, so it is refused.
+    if (base->channel_count != self->tail_channels) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "retarget cannot change the channel count; call play() instead"));
+    }
+    if (self->converting && base->channel_count
+        && (base->max_buffer_length / (2u * base->channel_count)) * 4u
+            > self->conv_len) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "retarget: this sample's block is too big for the conversion "
+            "buffer; call play() instead"));
     }
     audiopump_c_retarget(sample, args[ARG_loop].u_bool ? 1 : 0);
     self->sample = sample;
