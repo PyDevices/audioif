@@ -55,7 +55,7 @@ clocking zeros rather than disabling the channel, and `left_justified` and
 `external_clock` raise `NotImplementedError` rather than half-shifting a bus
 in silence.
 
-### The six keywords and methods that are ours
+### The seven keywords and methods that are ours
 
 | | what it is for |
 |---|---|
@@ -63,6 +63,7 @@ in silence.
 | `sample_rate=` | The rate the bus is opened at, before anything plays. The first `play()` retunes it to whatever the sample asks for. |
 | `main_clock_fs=` | Bit clocks of MCLK per frame. 256 is what every board in this workspace straps and what CircuitPython's espressif port hard-codes, so it is the default — but a codec wanting 384 has nowhere else to say so, and `audiodev`'s `I2SWire` has carried the number since before this class existed. Dropping it silently is a half-shifted clock that sounds like a bad cable. |
 | `sink=` | Desktop only: the file the blocks are written to, which is what makes the whole lifecycle testable with no board. |
+| `data_in=` | The microphone's data pin, on a board whose microphone shares this output's clocks. The channel opens as a TX/RX pair so `_audioif.rx_open()` can record while this plays (see below). The channel then stays stereo, so a mono sample is copied to both slots on the pump's thread, and while a recorder is open a sample at another rate is refused rather than retuning the bus under the recording. |
 | `retarget(sample, loop=…)` | Swap the tail **without a gap** — no `stop()`, no join, no channel close and re-open between two blocks a listener is in the middle of. |
 | `.status` | The pump's status `bytearray`, which is the only way a caller that spawned through `play()` can reach the two words that say why the pump stopped. |
 
@@ -137,7 +138,12 @@ audiopump.shutdown()          # closes the channel with the task
 | `i2s_start(port, bclk, ws, dout, rate, …)` | Opens a TX channel the pull loop writes every block into, and returns the bytes the DMA holds when full — the block-to-wire latency floor. `bits`, `channels`, `mclk`, `mclk_fs`, `dma_desc`, `dma_frame` are keywords. |
 | `i2s_start(…, din=PIN)` | Opens the RX half of the **same** channel pair, so one clock tree drives capture and playback and the two DMAs cannot drift. |
 | `i2s_start(…, din=, in_port=, in_bclk=, in_ws=, in_mclk=)` | Opens RX on a **different** peripheral, for a board whose microphone is not on the speaker's port. See the warning below. |
-| `i2s_stop()` | Closes both channels. |
+| `i2s_stop()` | Closes both channels, a recording included. |
+| `rx_open(port, bclk, ws, dout, din, rate, mclk=, mclk_fs=, ring=, take=)` | Records from the RX half while an output plays on the same port. Opens the channel pair if nothing has (TX then clocks zeros until an output joins), or joins the one `I2SOut(..., data_in=)` opened; the output and the recorder each hold the channel and it closes when the last lets go. The RX interrupt copies every DMA block into a ring of `ring` bytes, taking the left slot, the right, their average or both (`take` 0, 1, 2, 3). A recorder at another rate than the open channel is refused by name. |
+| `rx_read(buf)` | Copies whole frames from that ring into `buf` and returns the bytes copied, 0 when nothing is waiting. Never blocks. |
+| `rx_close()` | Stops recording. The channel closes only if no output holds it. |
+| `rx_stats()` | `(frames captured, frames dropped, bytes waiting)`. Dropped frames are a reader that fell further behind than `ring`. |
+| `i2s_state()` | `None` with no channel open, else `(rate, channels, has_rx, holders)`, holders 1 the output, 2 the recorder, 3 both. A board asks before touching a clock pin the channel may be driving. |
 | `i2s_dma_bytes()`, `i2s_rx_bytes()` | What the two DMAs actually clocked, from their ISRs. Bytes the DMA sent that the pump never wrote *are* the silence a listener heard, so these are how starvation gets measured at all. |
 | `Input(sample_rate=, channel_count=, frames=, timeout_ms=)` | An audiosample whose `get_buffer` is an I2S read, so a live microphone is a source like any other and `audioeffects.create(name, Input(…), rate)` builds a graph on it. The read blocks, and that is the pacing. `stats()` reports what it has read and what it has missed. |
 | `rt_probe(capture, frames=, lead=, prime=, level=, channels=, timeout_ms=)` | Round-trip latency in frames rather than in host time: it preloads a click into the TX DMA *before* either channel is enabled and captures RX from the same instant. Runs with no pump spawned — two owners of one channel is the failure that sounds like silence. |

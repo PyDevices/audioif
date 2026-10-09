@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Record while you play, on one I2S port.** `_audioif.rx_open()` reads the RX
+  half of the channel pair while `audiobusio.I2SOut` plays on the TX half, so a
+  board whose speaker codec and microphone share a port (the ESP32-P4 boards)
+  can do both at once. The output and the recorder each hold the channel and it
+  closes when the last one lets go. `I2SOut` takes `data_in=` to open the pair,
+  keeps the channel stereo while it can carry a recording, and refuses a sample
+  at another rate while a recorder is open instead of retuning the bus under
+  it. `retarget()` now also refuses a tail with another channel count, which
+  used to play at twice or half speed.
+
 ## v0.1.1 (2026-09-24)
 
 - **`audiobusio.I2SOut.starved()` reports silence on the wire, in bytes.** It

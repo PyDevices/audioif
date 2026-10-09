@@ -938,6 +938,128 @@ static volatile uint32_t audiopump_byte_rate;
 static volatile uint64_t audiopump_starved_t0;
 static volatile uint64_t audiopump_starved_fed0;
 
+// Who holds the open channel (AUDIOPUMP_I2S_HOLD_*), and what it was opened
+// with. A second holder joins only if it asks for the same wire.
+static uint8_t audiopump_i2s_holds;
+static audiopump_i2s_cfg_t audiopump_i2s_live;
+
+// --- capture: the RX half, handed to the interpreter ------------------------
+//
+// The capture half of the channel pair, as PCM Python can read. `Input` above
+// it is an audiosample the PUMP pulls on its own task; a recorder on the
+// interpreter thread has no way to reach that. This is the other way out: the
+// RX DMA's interrupt copies every finished descriptor into a ring, and
+// `rx_read()` empties it.
+//
+// Why the interrupt, and not a bigger DMA. The channel pair is allocated with
+// one config, so the RX DMA is exactly as deep as TX's -- six descriptors of
+// 5 ms, which is the output's latency floor and is chosen for the output. A
+// recorder that reads every 50 ms from Python would lose most of what that
+// holds. The ring decouples the two: TX keeps its 30 ms, RX gets as much
+// history as the reader asks for.
+//
+// It takes one slot, the other, their average, or both, because a codec with
+// two microphones on one wire (the ES7210 puts MIC1 left and MIC2 right) and a
+// mono recorder want a choice the hardware does not make. The conversion is
+// done here, in the interrupt, so the ring holds what the reader will get.
+//
+// Single producer (the interrupt) and single consumer (the interpreter), so
+// the ring itself needs no lock. The spinlock below is only for taking the
+// ring away while an interrupt on the other core might be inside it.
+#define AUDIOPUMP_TAKE_LEFT  (0)
+#define AUDIOPUMP_TAKE_RIGHT (1)
+#define AUDIOPUMP_TAKE_MIX   (2)
+#define AUDIOPUMP_TAKE_BOTH  (3)
+
+typedef struct {
+    uint8_t *buf;
+    uint32_t len;               // bytes, a whole number of output frames
+    uint32_t wpos;              // the interrupt's
+    uint32_t rpos;              // the interpreter's
+    volatile uint32_t written;  // bytes ever written; differences are exact
+    volatile uint32_t taken;    // bytes ever read
+    volatile uint32_t frames;   // frames that reached the ring
+    volatile uint32_t dropped;  // frames the ring had no room for
+    uint8_t take;
+    uint8_t out_frame;          // 2 for one channel out, 4 for two
+    volatile bool armed;
+} audiopump_cap_t;
+
+static audiopump_cap_t audiopump_cap;
+static portMUX_TYPE audiopump_cap_mux = portMUX_INITIALIZER_UNLOCKED;
+
+// In the interrupt. `in` is the finished descriptor: signed 16-bit stereo,
+// because the channel is opened stereo whenever there is an RX half to read.
+// A full ring keeps what it has and counts the rest, so a slow reader loses
+// the newest audio rather than corrupting the oldest.
+static IRAM_ATTR void audiopump_cap_push(const int16_t *in, uint32_t frames) {
+    audiopump_cap_t *c = &audiopump_cap;
+    const uint32_t taken = __atomic_load_n(&c->taken, __ATOMIC_ACQUIRE);
+    const uint32_t room = (c->len - (c->written - taken)) / c->out_frame;
+    const uint32_t n = frames < room ? frames : room;
+    uint8_t *buf = c->buf;
+    uint32_t pos = c->wpos;
+    for (uint32_t f = 0; f < n; f++) {
+        const int16_t l = in[2 * f];
+        const int16_t r = in[2 * f + 1];
+        int16_t *out = (int16_t *)(void *)(buf + pos);
+        if (c->out_frame == 4) {
+            out[0] = l;
+            out[1] = r;
+        } else if (c->take == AUDIOPUMP_TAKE_LEFT) {
+            out[0] = l;
+        } else if (c->take == AUDIOPUMP_TAKE_RIGHT) {
+            out[0] = r;
+        } else {
+            out[0] = (int16_t)(((int32_t)l + (int32_t)r) >> 1);
+        }
+        pos += c->out_frame;
+        if (pos >= c->len) {
+            pos = 0;
+        }
+    }
+    c->wpos = pos;
+    c->frames += n;
+    c->dropped += frames - n;
+    __atomic_store_n(&c->written, c->written + n * c->out_frame,
+        __ATOMIC_RELEASE);
+}
+
+// On the interpreter. Whole frames only; returns bytes copied.
+static uint32_t audiopump_cap_pull(uint8_t *dst, uint32_t want) {
+    audiopump_cap_t *c = &audiopump_cap;
+    if (c->buf == NULL) {
+        return 0;
+    }
+    want -= want % c->out_frame;
+    const uint32_t written = __atomic_load_n(&c->written, __ATOMIC_ACQUIRE);
+    const uint32_t have = written - c->taken;
+    const uint32_t n = want < have ? want : have;
+    const uint32_t first = n < c->len - c->rpos ? n : c->len - c->rpos;
+    memcpy(dst, c->buf + c->rpos, first);
+    memcpy(dst + first, c->buf, n - first);
+    uint32_t pos = c->rpos + n;
+    if (pos >= c->len) {
+        pos -= c->len;
+    }
+    c->rpos = pos;
+    __atomic_store_n(&c->taken, c->taken + n, __ATOMIC_RELEASE);
+    return n;
+}
+
+// Take the ring away. The interrupt checks `armed` inside the same spinlock,
+// so once this returns nothing is writing into the buffer it frees.
+static void audiopump_cap_release(void) {
+    portENTER_CRITICAL(&audiopump_cap_mux);
+    audiopump_cap.armed = false;
+    uint8_t *buf = audiopump_cap.buf;
+    audiopump_cap.buf = NULL;
+    portEXIT_CRITICAL(&audiopump_cap_mux);
+    if (buf != NULL) {
+        heap_caps_free(buf);
+    }
+}
+
 static IRAM_ATTR bool audiopump_on_sent(i2s_chan_handle_t handle,
     i2s_event_data_t *event, void *user_ctx) {
     (void)handle;
@@ -951,10 +1073,23 @@ static IRAM_ATTR bool audiopump_on_recv(i2s_chan_handle_t handle,
     (void)handle;
     (void)user_ctx;
     audiopump_rx_bytes += event->size;
+    if (audiopump_cap.armed) {
+        portENTER_CRITICAL_ISR(&audiopump_cap_mux);
+        if (audiopump_cap.armed && audiopump_cap.buf != NULL) {
+            audiopump_cap_push((const int16_t *)event->dma_buf,
+                (uint32_t)(event->size / 4));
+        }
+        portEXIT_CRITICAL_ISR(&audiopump_cap_mux);
+    }
     return false;
 }
 
 static void audiopump_i2s_close(void) {
+    // Everything goes, whoever was holding it: this is the teardown a soft
+    // reset and `i2s_stop()` take. The ring first, so no interrupt is inside
+    // it when the channel stops.
+    audiopump_cap_release();
+    audiopump_i2s_holds = 0;
     if (audiopump_i2s_rx != NULL) {
         i2s_channel_disable(audiopump_i2s_rx);
     }
@@ -1166,7 +1301,58 @@ const audiodsp_port_ops_t *audiodsp_port_driver(void) {
 // beside every other board decision -- exactly as usbif_i2s.c does it.
 
 #if AUDIOIF_DRV_ESP
+static uint32_t audiopump_i2s_open_raw(const audiopump_i2s_cfg_t *cfg);
+
+static uint32_t audiopump_i2s_depth(void) {
+    return audiopump_dma_depth;
+}
+
+// The pins and the clock, which two holders of one channel have to agree on.
+// Raises naming the first thing that differs, because "Peripheral in use"
+// would send a caller looking for a second owner that does not exist.
+static void audiopump_i2s_check_join(const audiopump_i2s_cfg_t *want,
+    bool want_rx) {
+    const audiopump_i2s_cfg_t *live = &audiopump_i2s_live;
+    if (want->port != live->port || want->bclk != live->bclk
+        || want->ws != live->ws
+        || (want->dout >= 0 && want->dout != live->dout)
+        || (want->din >= 0 && want->din != live->din)) {
+        mp_raise_msg(&mp_type_RuntimeError, MP_ERROR_TEXT("Peripheral in use"));
+    }
+    if (want_rx && live->din < 0) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "the I2S channel was opened without its microphone pin; open the "
+            "output with data_in= to record while it plays"));
+    }
+    if (want->rate != live->rate) {
+        mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT(
+            "the I2S channel is clocked at %d Hz and this asks for %d Hz; "
+            "playback and capture share the clock, so they must share the rate"),
+            live->rate, want->rate);
+    }
+    if (want->bits != live->bits || want->channels != live->channels) {
+        mp_raise_ValueError(MP_ERROR_TEXT(
+            "the I2S channel is open with another sample width or slot count"));
+    }
+}
+
+// The OUTPUT's open. Joins a channel the capture reader holds; refuses a
+// second output, as it always has.
 uint32_t audiopump_i2s_open(const audiopump_i2s_cfg_t *cfg) {
+    if (audiopump_i2s_tx != NULL) {
+        if (audiopump_i2s_holds & AUDIOPUMP_I2S_HOLD_OUT) {
+            mp_raise_ValueError(MP_ERROR_TEXT("i2s already open"));
+        }
+        audiopump_i2s_check_join(cfg, false);
+        audiopump_i2s_holds |= AUDIOPUMP_I2S_HOLD_OUT;
+        return audiopump_i2s_depth();
+    }
+    const uint32_t depth = audiopump_i2s_open_raw(cfg);
+    audiopump_i2s_holds = AUDIOPUMP_I2S_HOLD_OUT;
+    return depth;
+}
+
+static uint32_t audiopump_i2s_open_raw(const audiopump_i2s_cfg_t *cfg) {
     if (audiopump_i2s_tx != NULL) {
         mp_raise_ValueError(MP_ERROR_TEXT("i2s already open"));
     }
@@ -1298,6 +1484,7 @@ uint32_t audiopump_i2s_open(const audiopump_i2s_cfg_t *cfg) {
         audiopump_i2s_close();
         mp_raise_OSError(MP_EIO);
     }
+    audiopump_i2s_live = *cfg;
     // Bytes the DMA holds when full: the block-to-wire latency floor.
     return chan_config.dma_desc_num * chan_config.dma_frame_num
         * (uint32_t)(bits / 8) * (uint32_t)(cfg->channels == 1 ? 1 : 2);
@@ -1395,6 +1582,189 @@ static mp_obj_t audiopump_i2s_starved_bytes(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_i2s_starved_bytes_obj,
     audiopump_i2s_starved_bytes);
+
+// --- rx_open / rx_read: recording while the output plays -------------------
+//
+//     _audioif.rx_open(0, 12, 10, 9, 11, 24000, mclk=13, ring=20000, take=2)
+//     n = _audioif.rx_read(buf)          # never blocks; whole frames
+//     _audioif.rx_close()
+//
+// Opens the channel pair if nothing has (TX then clocks zeros until an output
+// joins), or joins the one `audiobusio.I2SOut(..., data_in=)` opened. Either
+// way the output and the recorder are the two halves of one channel and one
+// clock, so neither can take the port away from the other: closing the
+// output leaves the recording running, and closing the recorder leaves the
+// output playing.
+//
+// `dout` is the speaker's pin even for a recorder that never plays, because
+// the pair is allocated together and an output arriving later has to find
+// its half already wired.
+static mp_obj_t audiopump_rx_open(size_t n_args, const mp_obj_t *pos_args,
+    mp_map_t *kw_args) {
+    enum { ARG_port, ARG_bclk, ARG_ws, ARG_dout, ARG_din, ARG_rate, ARG_mclk,
+           ARG_mclk_fs, ARG_ring, ARG_take };
+    static const mp_arg_t allowed[] = {
+        { MP_QSTR_port,     MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = 0 } },
+        { MP_QSTR_bclk,     MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
+        { MP_QSTR_ws,       MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
+        { MP_QSTR_dout,     MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
+        { MP_QSTR_din,      MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = -1 } },
+        { MP_QSTR_rate,     MP_ARG_REQUIRED | MP_ARG_INT, { .u_int = 48000 } },
+        { MP_QSTR_mclk,     MP_ARG_INT, { .u_int = -1 } },
+        { MP_QSTR_mclk_fs,  MP_ARG_INT, { .u_int = 256 } },
+        // Bytes of history the reader may fall behind by before audio is
+        // dropped. In the reader's format, so 20000 is 416 ms of one channel
+        // at 24 kHz.
+        { MP_QSTR_ring,     MP_ARG_INT, { .u_int = 20000 } },
+        // 0 left slot, 1 right, 2 their average (one channel out), 3 both.
+        { MP_QSTR_take,     MP_ARG_INT, { .u_int = AUDIOPUMP_TAKE_MIX } },
+    };
+    mp_arg_val_t args[MP_ARRAY_SIZE(allowed)];
+    mp_arg_parse_all(n_args, pos_args, kw_args, MP_ARRAY_SIZE(allowed),
+        allowed, args);
+
+    if (audiopump_i2s_holds & AUDIOPUMP_I2S_HOLD_IN) {
+        mp_raise_ValueError(MP_ERROR_TEXT("capture already open"));
+    }
+    const int take = args[ARG_take].u_int;
+    if (take < AUDIOPUMP_TAKE_LEFT || take > AUDIOPUMP_TAKE_BOTH) {
+        mp_raise_ValueError(MP_ERROR_TEXT("take must be 0, 1, 2 or 3"));
+    }
+    if (args[ARG_din].u_int < 0 || args[ARG_dout].u_int < 0) {
+        mp_raise_ValueError(MP_ERROR_TEXT("rx_open needs both dout and din"));
+    }
+    const uint8_t out_frame = take == AUDIOPUMP_TAKE_BOTH ? 4 : 2;
+    uint32_t len = (uint32_t)args[ARG_ring].u_int;
+    len -= len % out_frame;
+    if (len < 64u * out_frame) {
+        mp_raise_ValueError(MP_ERROR_TEXT("ring is too small"));
+    }
+
+    const int rate = args[ARG_rate].u_int;
+    const audiopump_i2s_cfg_t cfg = {
+        .port = args[ARG_port].u_int,
+        .bclk = args[ARG_bclk].u_int,
+        .ws = args[ARG_ws].u_int,
+        .dout = args[ARG_dout].u_int,
+        .rate = rate,
+        .bits = 16,
+        .channels = 2,
+        .mclk = args[ARG_mclk].u_int,
+        .mclk_fs = args[ARG_mclk_fs].u_int,
+        .dma_desc = 6,
+        .dma_frame = audiopump_i2s_dma_frame(rate),
+        .din = args[ARG_din].u_int,
+        .in_port = -1,
+        .in_bclk = -1,
+        .in_ws = -1,
+        .in_mclk = -1,
+    };
+    if (audiopump_i2s_tx != NULL) {
+        audiopump_i2s_check_join(&cfg, true);
+    }
+
+    // The ring before the channel, so a refusal for memory leaves nothing
+    // open. Internal RAM first: the interrupt copies into it.
+    uint8_t *buf = heap_caps_malloc_prefer(len, 2,
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT, MALLOC_CAP_8BIT);
+    if (buf == NULL) {
+        mp_raise_msg(&mp_type_MemoryError,
+            MP_ERROR_TEXT("no memory for the capture ring"));
+    }
+    portENTER_CRITICAL(&audiopump_cap_mux);
+    audiopump_cap.buf = buf;
+    audiopump_cap.len = len;
+    audiopump_cap.wpos = 0;
+    audiopump_cap.rpos = 0;
+    audiopump_cap.written = 0;
+    audiopump_cap.taken = 0;
+    audiopump_cap.frames = 0;
+    audiopump_cap.dropped = 0;
+    audiopump_cap.take = (uint8_t)take;
+    audiopump_cap.out_frame = out_frame;
+    audiopump_cap.armed = audiopump_i2s_tx != NULL;
+    portEXIT_CRITICAL(&audiopump_cap_mux);
+
+    if (audiopump_i2s_tx == NULL) {
+        nlr_buf_t nlr;
+        if (nlr_push(&nlr) == 0) {
+            (void)audiopump_i2s_open_raw(&cfg);
+            nlr_pop();
+        } else {
+            audiopump_cap_release();
+            nlr_jump(nlr.ret_val);
+        }
+        audiopump_i2s_holds = AUDIOPUMP_I2S_HOLD_IN;
+        audiopump_cap.armed = true;
+    } else {
+        audiopump_i2s_holds |= AUDIOPUMP_I2S_HOLD_IN;
+    }
+    return mp_obj_new_int_from_uint(len);
+}
+static MP_DEFINE_CONST_FUN_OBJ_KW(audiopump_rx_open_obj, 6, audiopump_rx_open);
+
+// Copy what has been captured into `buf`, up to its length in whole frames.
+// Returns the bytes copied, 0 when nothing is waiting. Never blocks: a
+// recorder decides for itself how long to wait, on its own thread.
+static mp_obj_t audiopump_rx_read(mp_obj_t buf_in) {
+    if (!(audiopump_i2s_holds & AUDIOPUMP_I2S_HOLD_IN)
+        || audiopump_cap.buf == NULL) {
+        mp_raise_OSError(MP_ENODEV);
+    }
+    mp_buffer_info_t buf;
+    mp_get_buffer_raise(buf_in, &buf, MP_BUFFER_WRITE);
+    return mp_obj_new_int_from_uint(
+        audiopump_cap_pull((uint8_t *)buf.buf, (uint32_t)buf.len));
+}
+static MP_DEFINE_CONST_FUN_OBJ_1(audiopump_rx_read_obj, audiopump_rx_read);
+
+// Stop recording. The channel closes only if no output holds it. Safe to
+// call twice.
+static mp_obj_t audiopump_rx_close(void) {
+    if (!(audiopump_i2s_holds & AUDIOPUMP_I2S_HOLD_IN)) {
+        return mp_const_none;
+    }
+    audiopump_cap_release();
+    audiopump_i2s_holds &= (uint8_t)~AUDIOPUMP_I2S_HOLD_IN;
+    if (audiopump_i2s_holds == 0) {
+        audiopump_i2s_close();
+    }
+    return mp_const_none;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_rx_close_obj, audiopump_rx_close);
+
+// (frames captured, frames dropped because the ring was full, bytes waiting).
+// `dropped` is the number a recorder watches: anything but 0 is a hole in
+// the recording, and it means the reader fell further behind than `ring`.
+static mp_obj_t audiopump_rx_stats(void) {
+    audiopump_cap_t *c = &audiopump_cap;
+    const uint32_t waiting = c->buf == NULL ? 0
+        : __atomic_load_n(&c->written, __ATOMIC_ACQUIRE) - c->taken;
+    mp_obj_t items[3] = {
+        mp_obj_new_int_from_uint(c->frames),
+        mp_obj_new_int_from_uint(c->dropped),
+        mp_obj_new_int_from_uint(waiting),
+    };
+    return mp_obj_new_tuple(3, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_rx_stats_obj, audiopump_rx_stats);
+
+// None when no channel is open, else (rate, channels, has_rx, holders):
+// holders is 1 for the output, 2 for the recorder, 3 for both. A board asks
+// this before it touches a clock pin the channel may already be driving.
+static mp_obj_t audiopump_i2s_state(void) {
+    if (audiopump_i2s_tx == NULL) {
+        return mp_const_none;
+    }
+    mp_obj_t items[4] = {
+        mp_obj_new_int(audiopump_i2s_live.rate),
+        mp_obj_new_int(audiopump_i2s_live.channels),
+        mp_obj_new_bool(audiopump_i2s_rx != NULL),
+        mp_obj_new_int(audiopump_i2s_holds),
+    };
+    return mp_obj_new_tuple(4, items);
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(audiopump_i2s_state_obj, audiopump_i2s_state);
 
 // --- audiopump.Input: the capture side, as an audiosample ------------------
 //
@@ -1788,6 +2158,11 @@ static const mp_rom_map_elem_t audioif_driver_globals_table[] = {
       MP_ROM_PTR(&audiopump_i2s_sink_bytes_obj) },
     { MP_ROM_QSTR(MP_QSTR_i2s_starved_bytes),
       MP_ROM_PTR(&audiopump_i2s_starved_bytes_obj) },
+    { MP_ROM_QSTR(MP_QSTR_i2s_state), MP_ROM_PTR(&audiopump_i2s_state_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rx_open), MP_ROM_PTR(&audiopump_rx_open_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rx_read), MP_ROM_PTR(&audiopump_rx_read_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rx_close), MP_ROM_PTR(&audiopump_rx_close_obj) },
+    { MP_ROM_QSTR(MP_QSTR_rx_stats), MP_ROM_PTR(&audiopump_rx_stats_obj) },
     { MP_ROM_QSTR(MP_QSTR_Input), MP_ROM_PTR(&audiopump_input_type) },
     { MP_ROM_QSTR(MP_QSTR_rt_probe), MP_ROM_PTR(&audiopump_rt_probe_obj) },
     { MP_ROM_QSTR(MP_QSTR_lock_probe),
@@ -1826,7 +2201,26 @@ bool audiopump_i2s_is_open(void) {
 
 void audiopump_i2s_shutdown(void) {
     #if AUDIOIF_DRV_ESP
-    audiopump_i2s_close();
+    audiopump_i2s_holds &= (uint8_t)~AUDIOPUMP_I2S_HOLD_OUT;
+    if (audiopump_i2s_holds == 0) {
+        audiopump_i2s_close();
+    }
+    #endif
+}
+
+bool audiopump_i2s_input_held(void) {
+    #if AUDIOIF_DRV_ESP
+    return (audiopump_i2s_holds & AUDIOPUMP_I2S_HOLD_IN) != 0;
+    #else
+    return false;
+    #endif
+}
+
+uint32_t audiopump_i2s_live_rate(void) {
+    #if AUDIOIF_DRV_ESP
+    return audiopump_i2s_tx != NULL ? (uint32_t)audiopump_i2s_live.rate : 0;
+    #else
+    return 0;
     #endif
 }
 
