@@ -910,6 +910,7 @@ static mp_obj_t audiobusio_i2sout_pause(mp_obj_t self_in) {
     // The channel keeps clocking, and because it was opened with auto_clear
     // it clocks zeros -- so a pause is silence with the bus still up, where
     // CircuitPython disables the channel outright. See "what differs".
+    audiopump_i2s_starved_hold();
     (void)audiopump_c_park(200000);
     self->paused = true;
     return mp_const_none;
@@ -922,10 +923,9 @@ static mp_obj_t audiobusio_i2sout_resume(mp_obj_t self_in) {
     audiobusio_check(self);
     if (self->paused) {
         self->paused = false;
-        // A pause clocks zeros deliberately, so the gap it opened between
-        // what the DMA sent and what we fed it is not an underrun. Level up
-        // before the pump comes back to the sink and charges it as one.
-        audiopump_i2s_starved_reset();
+        // A pause clocks zeros deliberately and was not counted. Count
+        // again from the pump's first write after it, keeping the total.
+        audiopump_i2s_starved_resume();
         audiopump_c_unpark();
     }
     return mp_const_none;
@@ -958,10 +958,12 @@ MP_PROPERTY_GETTER(audiobusio_i2sout_paused_obj,
 // full, which is the one situation that is NOT an underrun.
 //
 // It now reports audio that should have played and did not, in bytes --
-// divide by the frame size and the rate for milliseconds. `_audioif` takes
-// two witnesses to get it, because on this board neither the DMA's position
-// nor the wall clock sees both ways the wire goes quiet; the measurement that
-// settles it is written down on `audiopump_i2s_starved()`.
+// divide by the frame size and the rate for milliseconds -- since `play()`.
+// `_audioif` counts it as events in the DMA's interrupt: a descriptor started
+// with nothing written into it, or the DMA standing still. So it reads 0 on a
+// clean playback and never goes down; a pause is not counted, and the count
+// survives one. The witnesses, and the measurements behind each, are written
+// down beside their state in `_audioif.c`.
 //
 // `sink_timeouts()` below keeps the old number under its real name, because
 // it is not worthless -- it says the pump produced a block the DMA had no
