@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.2 (2026-10-10)
 
 - **Record while you play, on one I2S port.** `_audioif.rx_open()` reads the RX
   half of the channel pair while `audiobusio.I2SOut` plays on the TX half, so a
@@ -11,6 +11,23 @@
   at another rate while a recorder is open instead of retuning the bus under
   it. `retarget()` now also refuses a tail with another channel count, which
   used to play at twice or half speed.
+  ([#25](https://github.com/PyDevices/audioif/pull/25))
+- **`audiobusio.I2SOut.starved()` reads 0 through a clean playback.** It was
+  the wire's position minus what the pump had fed, and that difference also
+  carries how full the DMA ring is, so a clean playback on the ESP32-P4 read
+  tens to thousands of bytes, a `gc.collect()` made it fall, and a real
+  underrun read low by the ring's depth. It now counts two events in the DMA's
+  interrupt: a descriptor started with nothing written into it (the ring ran
+  dry), and a gap of more than two descriptor periods between finished
+  descriptors (the DMA itself stood still, as a flash erase does on the
+  ESP32-S3). Counting starts at the pump's first write after `play()` or
+  `resume()`, stops at `pause()`, and only `play()` clears it, so the number
+  never goes down and a pause is not counted.
+  ([#26](https://github.com/PyDevices/audioif/issues/26))
+- `audiobusio.I2SOut(bit_clock, word_select, data)` without `port=` opens. The
+  default used to reach the driver as port -1 and fail with `EIO`; it now lets
+  the driver choose the port, as on CircuitPython.
+  ([#27](https://github.com/PyDevices/audioif/pull/27))
 
 ## v0.1.1 (2026-09-24)
 
