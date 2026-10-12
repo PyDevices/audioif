@@ -199,9 +199,9 @@ it is usually `ports/esp32/boards/manifest.py`, unless your board brings its
 own. Build as usual. audiodsp's README says how to fetch its `ulab` and `mp3`
 dependencies first. This repository's manifest freezes no Python; it only names
 the C module, which gives you `audiobusio` and `_audioif`. The driver finds the
-engine's headers at `../audiodsp`; keep the sibling layout, because on esp32 a
-build that cannot see audiodsp skips this module with only a CMake status line
-to say so. Tested on the unix port against MicroPython v1.29.0, where
+engine's headers among the modules your build names, so audiodsp can be checked
+out anywhere; failing that it looks at `../audiodsp`. A build that names audioif
+but can't find audiodsp stops with an error saying so. Tested on the unix port against MicroPython v1.29.0, where
 `audiopump.driver()` answers `'pthread'`.
 
 The platform driver is unix, Windows and esp32. Any other CMake port (rp2, say)
