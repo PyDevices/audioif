@@ -1268,6 +1268,30 @@ static void audiopump_driver_teardown(void) {
     #endif
 }
 
+// --- memory for a decoder --------------------------------------------------
+//
+// What audiodsp's codecs allocate (the Vorbis decoder's state: tens of
+// kilobytes in small, long-lived blocks that no DMA touches). PSRAM first, so
+// it stays out of the internal RAM that Wi-Fi and DMA need; internal RAM only
+// on a board without PSRAM or with it full. Plain malloc would put every
+// block under CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL (16 KB on the P4) inside.
+// heap_caps_* are thread-safe and never raise, as the hooks must be.
+#if AUDIOIF_DRV_ESP && defined(AUDIODSP_PORT_MEM_HOOKS)
+#define AUDIOIF_MEM_PREFERRED (MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+
+static void *audioif_mem_alloc(size_t size) {
+    return heap_caps_malloc_prefer(size, 2, AUDIOIF_MEM_PREFERRED, MALLOC_CAP_8BIT);
+}
+
+static void *audioif_mem_realloc(void *ptr, size_t size) {
+    return heap_caps_realloc_prefer(ptr, size, 2, AUDIOIF_MEM_PREFERRED, MALLOC_CAP_8BIT);
+}
+
+static void audioif_mem_free(void *ptr) {
+    heap_caps_free(ptr);
+}
+#endif
+
 // --- the table, and the binding -------------------------------------------
 
 static const audiodsp_port_ops_t audiopump_driver_ops = {
@@ -1294,6 +1318,11 @@ static const audiodsp_port_ops_t audiopump_driver_ops = {
     .sink_rx_bytes = audiopump_sink_rx_bytes,
     #endif
     .teardown = audiopump_driver_teardown,
+    #if AUDIOIF_DRV_ESP && defined(AUDIODSP_PORT_MEM_HOOKS)
+    .mem_alloc = audioif_mem_alloc,
+    .mem_realloc = audioif_mem_realloc,
+    .mem_free = audioif_mem_free,
+    #endif
 };
 
 // The override. Strong here, weak in the engine; and this definition sits in
