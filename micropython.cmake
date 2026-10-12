@@ -4,8 +4,9 @@
 # The engine is not here any more: the pull loop, the ring, the events, the tap
 # and the lock all live in audiodsp and are built by audiodsp's own glue. This
 # builds the one file that knows what a thread, a mutex, a clock and a sink
-# are. AUDIOPUMP_AUDIODSP_DIR points at the audiodsp checkout; the default
-# assumes this repo and audiodsp are checked out as siblings.
+# are. AUDIOPUMP_AUDIODSP_DIR points at the audiodsp checkout; without it,
+# audiodsp is looked for among the build's user C modules, then beside this
+# directory.
 
 set(AUDIOPUMP_MOD_DIR ${CMAKE_CURRENT_LIST_DIR})
 
@@ -19,6 +20,21 @@ if(NOT ESP_PLATFORM)
     return()
 endif()
 
+# audiodsp is found first among the modules this build was given (each entry
+# of USER_C_MODULES, which by now includes the manifests' c_module()s, is a
+# module directory or its micropython.cmake), so it can live anywhere: a git
+# worktree, a vendored copy. The sibling layout and CMOD_DIR come after.
+if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
+    foreach(_audioif_mod ${USER_C_MODULES})
+        if(NOT IS_DIRECTORY ${_audioif_mod})
+            get_filename_component(_audioif_mod ${_audioif_mod} DIRECTORY)
+        endif()
+        if(EXISTS ${_audioif_mod}/src/shared/audiodsp_port.h)
+            set(AUDIOPUMP_AUDIODSP_DIR ${_audioif_mod})
+            break()
+        endif()
+    endforeach()
+endif()
 if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
     if(EXISTS ${AUDIOPUMP_MOD_DIR}/../audiodsp/src/shared/audiodsp_port.h)
         set(AUDIOPUMP_AUDIODSP_DIR ${AUDIOPUMP_MOD_DIR}/../audiodsp)
@@ -27,10 +43,19 @@ if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
     endif()
 endif()
 
+# Without audiodsp this module has nothing to drive, and a firmware that quietly
+# left it out would fall back to machine.I2S with nothing failing to say why
+# (#28). So the build stops here, naming the fix.
 if(NOT DEFINED AUDIOPUMP_AUDIODSP_DIR)
-    message(STATUS "audiopump: skipped -- audiodsp not found beside it")
-    return()
+    message(FATAL_ERROR "audioif: audiodsp not found. audioif drives audiodsp's "
+        "audiopump and needs its headers: add audiodsp to the build's modules "
+        "(its manifest, or its directory in USER_C_MODULES), or set "
+        "AUDIOPUMP_AUDIODSP_DIR to an audiodsp checkout.")
+elseif(NOT EXISTS ${AUDIOPUMP_AUDIODSP_DIR}/src/shared/audiodsp_port.h)
+    message(FATAL_ERROR "audioif: AUDIOPUMP_AUDIODSP_DIR is ${AUDIOPUMP_AUDIODSP_DIR}, "
+        "which has no src/shared/audiodsp_port.h; point it at an audiodsp checkout.")
 endif()
+message(STATUS "audioif: audiodsp at ${AUDIOPUMP_AUDIODSP_DIR}")
 
 add_library(usermod_audiopump INTERFACE)
 
